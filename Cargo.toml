@@ -35,9 +35,9 @@ ulid = "*"
 default = ["export-http-protobuf"]
 serde = ["dep:serde"]
 # FIXME might need rustls feature on all of these?
-export-grpc = ["opentelemetry-otlp/grpc-tonic"]
-export-http-protobuf = ["opentelemetry-otlp/http-proto", "opentelemetry-otlp/reqwest-blocking-client"]
-export-http-json = ["opentelemetry-otlp/http-json", "opentelemetry-otlp/reqwest-blocking-client"]
+export-grpc = ["opentelemetry-otlp/grpc-tonic", "opentelemetry-otlp/tls"]
+export-http-protobuf = ["opentelemetry-otlp/http-proto", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
+export-http-json = ["opentelemetry-otlp/http-json", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
 
 [lints.clippy]
 dbg_macro = "deny"
