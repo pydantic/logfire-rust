@@ -489,9 +489,9 @@ impl LogfireSpanExporter {
 const DEFAULT_LOGFIRE_PROTOCOL: Protocol = Protocol::HttpBinary;
 
 // standard OTLP protocol values in configuration
-const OTEL_EXPORTER_OTLP_PROTOCOL_GRPC: &'static str = "grpc";
-const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF: &'static str = "http/protobuf";
-const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_JSON: &'static str = "http/json";
+const OTEL_EXPORTER_OTLP_PROTOCOL_GRPC: &str = "grpc";
+const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF: &str = "http/protobuf";
+const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_JSON: &str = "http/json";
 
 /// Temporary workaround for lack of https://github.com/open-telemetry/opentelemetry-rust/pull/2758
 fn protocol_from_str(value: &str) -> Result<Protocol, ConfigureError> {
@@ -921,7 +921,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            830,
+                            861,
                         ),
                     },
                     KeyValue {
@@ -1047,7 +1047,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            831,
+                            862,
                         ),
                     },
                     KeyValue {
@@ -1183,7 +1183,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            831,
+                            862,
                         ),
                     },
                     KeyValue {
@@ -1325,7 +1325,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            832,
+                            863,
                         ),
                     },
                     KeyValue {
@@ -1467,7 +1467,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            834,
+                            865,
                         ),
                     },
                     KeyValue {
@@ -1637,7 +1637,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            835,
+                            866,
                         ),
                     },
                     KeyValue {
@@ -1716,7 +1716,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:836:17",
+                                "src/lib.rs:867:17",
                             ),
                         ),
                     },
@@ -1783,7 +1783,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            240,
+                            258,
                         ),
                     },
                     KeyValue {
@@ -1881,7 +1881,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            830,
+                            861,
                         ),
                     },
                     KeyValue {
