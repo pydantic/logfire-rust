@@ -76,7 +76,6 @@ where
 
                 let span_id = otel_data.builder.span_id.expect("otel SDK sets span ID");
                 pending_span_builder.span_id = Some(span_id);
-                pending_span_builder.name = format!("{} (pending)", otel_data.builder.name).into();
 
                 let attributes = pending_span_builder
                     .attributes
