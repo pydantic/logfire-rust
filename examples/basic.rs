@@ -9,19 +9,27 @@ static BASIC_COUNTER: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .build()
 });
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let shutdown_handler = logfire::configure()
         .install_panic_handler()
         .send_to_logfire(true)
         .console_mode(logfire::ConsoleMode::Fallback)
-        .finish()
-        .expect("Failed to configure logfire");
+        .finish()?;
 
     logfire::info!("Hello, world!");
 
+    {
+        let _span = logfire::span!("Asking the user their {question}", question = "age").entered();
+
+        println!("When were you born [YYYY-mm-dd]?");
+        let mut dob = String::new();
+        std::io::stdin().read_line(&mut dob)?;
+
+        logfire::debug!("dob={dob}", dob = dob.trim());
+    }
+
     BASIC_COUNTER.add(1, &[KeyValue::new("process", "abc123")]);
 
-    shutdown_handler
-        .shutdown()
-        .expect("Failed to shutdown logfire");
+    shutdown_handler.shutdown()?;
+    Ok(())
 }
