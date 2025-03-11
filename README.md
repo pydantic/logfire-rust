@@ -56,7 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut dob = String::new();
         std::io::stdin().read_line(&mut dob)?;
 
-        logfire::debug!("dob={dob}", dob = dob.trim());
+        logfire::debug!("dob={dob}", dob = dob.trim().to_owned());
     }
 
     shutdown_handler.shutdown()?;
