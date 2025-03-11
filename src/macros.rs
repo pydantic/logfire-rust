@@ -252,11 +252,12 @@ pub fn export_log_span(
         let ts = SystemTime::now();
 
         tracer
+            .inner
             .span_builder(name)
             .with_attributes(attributes)
             .with_start_time(ts)
             // .with_end_time(ts) seems to not be respected, need to explicitly end as per below
-            .start_with_context(tracer, &parent_span.context())
+            .start_with_context(&tracer.inner, &parent_span.context())
             .end_with_timestamp(ts);
     });
 }

@@ -3,12 +3,14 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::panic::PanicHookInfo;
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Once};
 use std::{backtrace::Backtrace, env::VarError, str::FromStr, sync::OnceLock, time::Duration};
 
 use bridges::tracing::LogfireTracingLayer;
 use chrono::{DateTime, Utc};
 use futures_util::future::BoxFuture;
+use internal::constants::ATTRIBUTES_SPAN_TYPE_KEY;
+use internal::exporters::remove_pending::RemovePendingSpansExporter;
 use nu_ansi_term::{Color, Style};
 use opentelemetry::Value;
 use opentelemetry::trace::TracerProvider;
@@ -30,6 +32,8 @@ mod ulid_id_generator;
 pub use macros::*;
 pub use metrics::*;
 use ulid_id_generator::UlidIdGenerator;
+
+mod internal;
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -142,19 +146,18 @@ impl LogfireConfigBuilder {
         let LogfireParts {
             tracer,
             subscriber,
-            panic_handler,
             tracer_provider,
             logfire_token,
         } = self.build_parts()?;
 
-        GLOBAL_TRACER
-            .set(tracer.clone())
-            .map_err(|_| ConfigureError::AlreadyConfigured)?;
-
         tracing::subscriber::set_global_default(subscriber)?;
-        let logger = bridges::log::LogfireLogger::init(tracer);
+        let logger = bridges::log::LogfireLogger::init(tracer.inner.clone());
         log::set_logger(logger)?;
         log::set_max_level(logger.max_level());
+
+        GLOBAL_TRACER
+            .set(tracer)
+            .map_err(|_| ConfigureError::AlreadyConfigured)?;
 
         let propagator = opentelemetry::propagation::TextMapCompositePropagator::new(vec![
             Box::new(opentelemetry_sdk::propagation::TraceContextPropagator::new()),
@@ -178,10 +181,6 @@ impl LogfireConfigBuilder {
             None
         };
 
-        if let Some(handler) = panic_handler {
-            install_panic_handler(handler);
-        }
-
         Ok(ShutdownHandler {
             tracer_provider,
             meter_provider,
@@ -199,10 +198,12 @@ impl LogfireConfigBuilder {
 
             if self.send_to_logfire {
                 tracer_provider_builder.with_span_processor(
-                    BatchSpanProcessor::builder(LogfireSpanExporter {
-                        write_console: self.console_mode == ConsoleMode::Force,
-                        inner: Some(span_exporter(logfire_token.as_deref())?),
-                    })
+                    BatchSpanProcessor::builder(RemovePendingSpansExporter::new(
+                        LogfireSpanExporter {
+                            write_console: self.console_mode == ConsoleMode::Force,
+                            inner: Some(span_exporter(logfire_token.as_deref())?),
+                        },
+                    ))
                     .with_batch_config(
                         BatchConfigBuilder::default()
                             .with_scheduled_delay(Duration::from_millis(500)) // 500 matches Python
@@ -245,28 +246,16 @@ impl LogfireConfigBuilder {
             )
             .with(LogfireTracingLayer(tracer.clone()));
 
-        let panic_handler: Option<PanicHandler> = self.install_panic_handler.then(|| {
-            Box::new(|info: &PanicHookInfo| {
-                let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
-                    s
-                } else if let Some(s) = info.payload().downcast_ref::<String>() {
-                    s
-                } else {
-                    ""
-                };
-
-                crate::error!(
-                    "panic: {message}",
-                    location = info.location().as_ref().map(ToString::to_string),
-                    backtrace = Backtrace::capture().to_string(),
-                );
-            }) as _
-        });
+        if self.install_panic_handler {
+            install_panic_handler();
+        }
 
         Ok(LogfireParts {
-            tracer,
+            tracer: LogfireTracer {
+                inner: tracer,
+                handle_panics: self.install_panic_handler,
+            },
             subscriber: Arc::new(subscriber),
-            panic_handler,
             tracer_provider,
             logfire_token,
         })
@@ -301,23 +290,44 @@ impl ShutdownHandler {
     }
 }
 
-type PanicHandler = Box<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync>;
-
 struct LogfireParts {
-    tracer: Tracer,
+    tracer: LogfireTracer,
     subscriber: Arc<dyn Subscriber + Send + Sync>,
-    panic_handler: Option<PanicHandler>,
     tracer_provider: SdkTracerProvider,
     logfire_token: Option<String>,
 }
 
 /// Install `handler` as part of a chain of panic handlers.
-fn install_panic_handler(handler: PanicHandler) {
-    let prev = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        handler(info);
-        prev(info);
-    }));
+fn install_panic_handler() {
+    fn panic_hook(info: &PanicHookInfo) {
+        if try_with_logfire_tracer(|tracer| tracer.handle_panics) != Some(true) {
+            // this tracer is not handling panics
+            return;
+        }
+
+        let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s
+        } else {
+            ""
+        };
+
+        crate::error!(
+            "panic: {message}",
+            location = info.location().as_ref().map(ToString::to_string),
+            backtrace = Backtrace::capture().to_string(),
+        );
+    }
+
+    static INSTALLED: Once = Once::new();
+    INSTALLED.call_once(|| {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            panic_hook(info);
+            prev(info);
+        }));
+    });
 }
 
 fn get_optional_env(key: &str) -> Result<Option<String>, ConfigureError> {
@@ -402,7 +412,7 @@ impl LogfireSpanExporter {
             .attributes
             .iter()
             .find_map(|attr| {
-                if attr.key.as_str() == "logfire.span_type" {
+                if attr.key.as_str() == ATTRIBUTES_SPAN_TYPE_KEY {
                     Some(attr.value.as_str())
                 } else {
                     None
@@ -434,7 +444,7 @@ impl LogfireSpanExporter {
                 }
                 "code.namespace" => target = Some(kv.value.as_str()),
                 // Filter out known values
-                "logfire.span_type"
+                ATTRIBUTES_SPAN_TYPE_KEY
                 | "logfire.json_schema"
                 | "code.filepath"
                 | "code.lineno"
@@ -640,15 +650,20 @@ where
     }
 }
 
+struct LogfireTracer {
+    inner: Tracer,
+    handle_panics: bool,
+}
+
 // Global tracer configured in `logfire::configure()`
-static GLOBAL_TRACER: OnceLock<Tracer> = OnceLock::new();
+static GLOBAL_TRACER: OnceLock<LogfireTracer> = OnceLock::new();
 
 thread_local! {
-    static LOCAL_TRACER: RefCell<Option<Tracer>> = const { RefCell::new(None) };
+    static LOCAL_TRACER: RefCell<Option<LogfireTracer>> = const { RefCell::new(None) };
 }
 
 /// Internal function to execute some code with the current tracer
-fn try_with_logfire_tracer<R>(f: impl FnOnce(&Tracer) -> R) -> Option<R> {
+fn try_with_logfire_tracer<R>(f: impl FnOnce(&LogfireTracer) -> R) -> Option<R> {
     let mut f = Some(f);
     if let Some(result) = LOCAL_TRACER
         .try_with(|local_logfire| {
@@ -671,7 +686,7 @@ fn try_with_logfire_tracer<R>(f: impl FnOnce(&Tracer) -> R) -> Option<R> {
 /// This is a bit of a mess, it's only implemented far enough to make tests pass...
 #[cfg(test)]
 struct LocalLogfireGuard {
-    prior: Option<Tracer>,
+    prior: Option<LogfireTracer>,
     /// Tracing subscriber which can be used to subscribe tracing
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     /// Shutdown handler
@@ -696,20 +711,14 @@ fn set_local_logfire(config: LogfireConfigBuilder) -> Result<LocalLogfireGuard, 
     let LogfireParts {
         tracer,
         subscriber,
-        panic_handler,
         tracer_provider,
         ..
     } = config.build_parts()?;
 
-    let prior = LOCAL_TRACER.with_borrow_mut(|local_logfire| local_logfire.replace(tracer.clone()));
+    let prior = LOCAL_TRACER.with_borrow_mut(|local_logfire| local_logfire.replace(tracer));
 
     // TODO: logs??
     // TODO: metrics??
-
-    // FIXME: install only for the duration of the guard, I guess need a panic hook linked list...
-    if let Some(handler) = panic_handler {
-        install_panic_handler(handler);
-    }
 
     Ok(LocalLogfireGuard {
         prior,
@@ -736,8 +745,7 @@ mod tests {
     use opentelemetry_sdk::{
         error::OTelSdkResult,
         trace::{
-            IdGenerator, InMemorySpanExporter, InMemorySpanExporterBuilder, SdkTracerProvider,
-            SpanData, SpanExporter,
+            IdGenerator, InMemorySpanExporterBuilder, SdkTracerProvider, SpanData, SpanExporter,
         },
     };
     use tracing::Level;
@@ -745,7 +753,7 @@ mod tests {
     use super::*;
 
     #[derive(Debug)]
-    struct DeterministicIdGenerator {
+    pub struct DeterministicIdGenerator {
         next_trace_id: AtomicU64,
         next_span_id: AtomicU64,
     }
@@ -761,7 +769,7 @@ mod tests {
     }
 
     impl DeterministicIdGenerator {
-        fn new() -> Self {
+        pub fn new() -> Self {
             // start at OxF0 because 0 is reserved for invalid IDs,
             // and if we have a couple of bytes used, it's a more interesting check of
             // the hex formatting
@@ -773,13 +781,13 @@ mod tests {
     }
 
     #[derive(Debug)]
-    struct DeterministicExporter {
-        exporter: InMemorySpanExporter,
+    pub struct DeterministicExporter<Inner> {
+        exporter: Inner,
         next_timestamp: u64,
         timestamp_remap: HashMap<SystemTime, SystemTime>,
     }
 
-    impl SpanExporter for DeterministicExporter {
+    impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
         fn export(
             &mut self,
             mut batch: Vec<SpanData>,
@@ -806,8 +814,8 @@ mod tests {
         }
     }
 
-    impl DeterministicExporter {
-        fn new(exporter: InMemorySpanExporter) -> Self {
+    impl<Inner> DeterministicExporter<Inner> {
+        pub fn new(exporter: Inner) -> Self {
             Self {
                 exporter,
                 next_timestamp: 0,
@@ -921,7 +929,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            861,
+                            869,
                         ),
                     },
                     KeyValue {
@@ -1047,7 +1055,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            862,
+                            870,
                         ),
                     },
                     KeyValue {
@@ -1183,7 +1191,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            862,
+                            870,
                         ),
                     },
                     KeyValue {
@@ -1325,7 +1333,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            863,
+                            871,
                         ),
                     },
                     KeyValue {
@@ -1467,7 +1475,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            865,
+                            873,
                         ),
                     },
                     KeyValue {
@@ -1637,7 +1645,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            866,
+                            874,
                         ),
                     },
                     KeyValue {
@@ -1716,7 +1724,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:867:17",
+                                "src/lib.rs:875:17",
                             ),
                         ),
                     },
@@ -1783,7 +1791,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            258,
+                            316,
                         ),
                     },
                     KeyValue {
@@ -1881,7 +1889,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            861,
+                            869,
                         ),
                     },
                     KeyValue {
