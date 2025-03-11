@@ -894,7 +894,7 @@ mod tests {
                 },
                 parent_span_id: 00000000000000f0,
                 span_kind: Internal,
-                name: "root span (pending)",
+                name: "root span",
                 start_time: SystemTime {
                     tv_sec: 0,
                     tv_nsec: 0,
@@ -1020,7 +1020,7 @@ mod tests {
                 },
                 parent_span_id: 00000000000000f2,
                 span_kind: Internal,
-                name: "hello world span (pending)",
+                name: "hello world span",
                 start_time: SystemTime {
                     tv_sec: 1,
                     tv_nsec: 0,
