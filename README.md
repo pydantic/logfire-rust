@@ -13,7 +13,7 @@
 >
 > This is an initial release of the Logfire Rust SDK. We've been using it internally to build Logfire for some time, and it is serving us well. As we're using it ourselves in production, we figured it's ready for everyone else also using Logfire.
 >
-> We are continually iterating to make this SDK better. We'd love your feedback on all aspects of the SDK and are keen to make the design as idiomatic and performant as possible.
+> We are continually iterating to make this SDK better. We'd love your feedback on all aspects of the SDK and are keen to make the design as idiomatic and performant as possible. There are also many features currently supported by the Python SDK which are not yet supported by this SDK; please open issues to help us prioritize these to close this gap.
 >
 > In particular, the current coupling to `tracing` is an open design point. By building on top of tracing we get widest compatibility and a relatively simple SDK, however to make Logfire-specific adjustments we might prefer in future to move `tracing` to be an optional integration.
 

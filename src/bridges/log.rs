@@ -95,7 +95,9 @@ mod tests {
                     .line(Some(42))
                     .build();
 
-                let _ = crate::configure().send_to_logfire(false).finish();
+                let _ = crate::configure()
+                    .send_to_logfire(crate::SendToLogfire::No)
+                    .finish();
                 crate::span!("root span",).in_scope(|| logger.log(&record));
             },
         );

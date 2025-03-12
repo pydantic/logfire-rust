@@ -52,6 +52,7 @@ impl<Inner: SpanExporter> SpanExporter for RemovePendingSpansExporter<Inner> {
 mod tests {
     use std::time::Duration;
 
+    use crate::config::SendToLogfire;
     use crate::set_local_logfire;
     use crate::tests::DeterministicExporter;
     use crate::tests::DeterministicIdGenerator;
@@ -87,7 +88,7 @@ mod tests {
 
         let mut config = crate::configure();
         config
-            .send_to_logfire(false)
+            .send_to_logfire(SendToLogfire::No)
             .install_panic_handler()
             .with_tracer_provider(provider)
             .with_defalt_level_filter(LevelFilter::TRACE);
