@@ -257,13 +257,13 @@ impl LogfireConfigBuilder {
 
     fn build_parts(
         &self,
-        env: Option<HashMap<String, String>>,
+        env: Option<&HashMap<String, String>>,
     ) -> Result<LogfireParts, ConfigureError> {
-        let logfire_token = get_optional_env("LOGFIRE_TOKEN", env.as_ref())?;
+        let logfire_token = get_optional_env("LOGFIRE_TOKEN", env)?;
 
         let send_to_logfire = match self.send_to_logfire {
             Some(send_to_logfire) => send_to_logfire,
-            None => match get_optional_env("LOGFIRE_SEND_TO_LOGFIRE", env.as_ref())? {
+            None => match get_optional_env("LOGFIRE_SEND_TO_LOGFIRE", env)? {
                 Some(value) => value.parse()?,
                 None => SendToLogfire::Yes,
             },
@@ -2113,7 +2113,7 @@ mod tests {
                 config.send_to_logfire(value);
             }
 
-            let parts = config.build_parts(Some(env)).unwrap();
+            let parts = config.build_parts(Some(&env)).unwrap();
 
             assert_eq!(parts.send_to_logfire, expected);
         }

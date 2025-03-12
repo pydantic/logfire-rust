@@ -40,6 +40,7 @@ impl FromStr for SendToLogfire {
 }
 
 /// Options for controlling console output.
+#[expect(clippy::struct_excessive_bools)] // Config options, bools make sense here.
 pub struct ConsoleOptions {
     pub colors: ConsoleColors,
     /// How spans are shown in the console.
@@ -61,8 +62,8 @@ pub struct ConsoleOptions {
 impl Default for ConsoleOptions {
     fn default() -> Self {
         ConsoleOptions {
-            colors: Default::default(),
-            span_style: Default::default(),
+            colors: ConsoleColors::default(),
+            span_style: SpanStyle::default(),
             include_timestamps: true,
             include_tags: true,
             verbose: false,
