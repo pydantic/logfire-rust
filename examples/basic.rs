@@ -1,3 +1,5 @@
+//! A basic example of using Logfire to instrument Rust code.
+
 use std::sync::LazyLock;
 
 use opentelemetry::{KeyValue, metrics::Counter};
@@ -12,7 +14,6 @@ static BASIC_COUNTER: LazyLock<Counter<u64>> = LazyLock::new(|| {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let shutdown_handler = logfire::configure()
         .install_panic_handler()
-        .send_to_logfire(true)
         .console_mode(logfire::ConsoleMode::Fallback)
         .finish()?;
 

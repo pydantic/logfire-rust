@@ -1,3 +1,58 @@
+//! # Rust SDK for Pydantic Logfire
+//!
+//! This goal of this SDK is to provide a first-class experience instrumenting Rust code for the Pydantic Logfire platform.
+//!
+//! The most important API is [`logfire::configure()`][configure], which is used to set up
+//! integrations with `tracing` and `log`, as well as exporters for `opentelemetry`. Code
+//! instrumented using `tracing` and `log` will *just work* once this configuration is in place.
+//!
+//! This SDK also offers opinionated functions to instrument code following Logfire's design principles:
+//!   - [`logfire::info!()`][info], [`logfire::debug!()`][debug] and similar macros to log messages
+//!     with structured data.
+//!   - [`logfire::span!()`][span] to create a span with structured data.
+//!   - [`logfire::u64_counter()`][u64_counter] and similar functions to create metrics.
+//!
+//! See also:
+//!  - The [integrations](#integrations) section below for more information on the relationship of
+//!    this SDK to other libraries.
+//!  - The [Logfire documentation](https://logfire.pydantic.dev/docs/) for more information about Logfire in general.
+//!  - The [Logfire GitHub repository](https://github.com/pydantic/logfire) for the source of the documentation, the Python SDK and an issue tracker for general questions about Logfire.
+//!
+//! ## Getting Started
+//!
+//! To use Logfire in your Rust project, add the following to your `Cargo.toml`:
+//!
+//! ```toml
+//! [dependencies]
+#![doc = concat!("logfire = \"", env!("CARGO_PKG_VERSION"), "\"\n")]
+//! ```
+//!
+//! Then, in your Rust code, add a call to `logfire::configure()` at the beginning of your program:
+//!
+//! ```rust
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let shutdown_handler = logfire::configure()
+//!         .install_panic_handler()
+//! #        .send_to_logfire(logfire::SendToLogfire::IfTokenPresent)
+//!         .finish()?;
+//!
+//!     logfire::info!("Hello, world!");
+//!
+//!     shutdown_handler.shutdown()?;
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## Configuration
+//!
+//! ## Integrations
+//!
+//! ### With `tracing`
+//!
+//! ### With `opentelemetry`
+//!
+//! ### With `log`
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -26,9 +81,12 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 
 mod bridges;
+mod config;
 mod macros;
 mod metrics;
 mod ulid_id_generator;
+
+pub use config::*;
 pub use macros::*;
 pub use metrics::*;
 use ulid_id_generator::UlidIdGenerator;
@@ -68,6 +126,12 @@ pub enum ConfigureError {
         functionality: String,
     },
 
+    #[error("Invalid configuration value for {parameter}: {value}")]
+    InvalidConfigurationValue {
+        parameter: &'static str,
+        value: String,
+    },
+
     #[error(transparent)]
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
@@ -96,7 +160,7 @@ impl FromStr for ConsoleMode {
 }
 
 pub struct LogfireConfigBuilder {
-    send_to_logfire: bool,
+    send_to_logfire: Option<SendToLogfire>,
     console_mode: ConsoleMode,
     install_panic_handler: bool,
     default_level_filter: Option<LevelFilter>,
@@ -106,7 +170,7 @@ pub struct LogfireConfigBuilder {
 #[must_use]
 pub fn configure() -> LogfireConfigBuilder {
     LogfireConfigBuilder {
-        send_to_logfire: true,
+        send_to_logfire: None,
         console_mode: ConsoleMode::Fallback,
         install_panic_handler: false,
         default_level_filter: None,
@@ -120,8 +184,11 @@ impl LogfireConfigBuilder {
         self
     }
 
-    pub fn send_to_logfire(&mut self, send_to_logfire: bool) -> &mut Self {
-        self.send_to_logfire = send_to_logfire;
+    /// Whether to send data to the Logfire platform.
+    ///
+    /// Defaults to the value of `LOGFIRE_SEND_TO_LOGFIRE` if set, otherwise `Yes`.
+    pub fn send_to_logfire(&mut self, send_to_logfire: SendToLogfire) -> &mut Self {
+        self.send_to_logfire = Some(send_to_logfire);
         self
     }
     pub fn console_mode(&mut self, console_mode: ConsoleMode) -> &mut Self {
@@ -148,7 +215,8 @@ impl LogfireConfigBuilder {
             subscriber,
             tracer_provider,
             logfire_token,
-        } = self.build_parts()?;
+            send_to_logfire,
+        } = self.build_parts(None)?;
 
         tracing::subscriber::set_global_default(subscriber)?;
         let logger = bridges::log::LogfireLogger::init(tracer.inner.clone());
@@ -166,7 +234,7 @@ impl LogfireConfigBuilder {
         opentelemetry::global::set_text_map_propagator(propagator);
 
         // setup metrics only if sending to logfire
-        let meter_provider = if self.send_to_logfire {
+        let meter_provider = if send_to_logfire {
             let metric_reader =
                 PeriodicReader::builder(metric_exporter(logfire_token.as_deref())?).build();
 
@@ -187,8 +255,25 @@ impl LogfireConfigBuilder {
         })
     }
 
-    fn build_parts(&self) -> Result<LogfireParts, ConfigureError> {
-        let logfire_token = get_optional_env("LOGFIRE_TOKEN")?;
+    fn build_parts(
+        &self,
+        env: Option<&HashMap<String, String>>,
+    ) -> Result<LogfireParts, ConfigureError> {
+        let logfire_token = get_optional_env("LOGFIRE_TOKEN", env)?;
+
+        let send_to_logfire = match self.send_to_logfire {
+            Some(send_to_logfire) => send_to_logfire,
+            None => match get_optional_env("LOGFIRE_SEND_TO_LOGFIRE", env)? {
+                Some(value) => value.parse()?,
+                None => SendToLogfire::Yes,
+            },
+        };
+
+        let send_to_logfire = match send_to_logfire {
+            SendToLogfire::Yes => true,
+            SendToLogfire::IfTokenPresent => logfire_token.is_some(),
+            SendToLogfire::No => false,
+        };
 
         let tracer_provider = if let Some(provider) = &self.tracer_provider {
             provider.clone()
@@ -196,7 +281,7 @@ impl LogfireConfigBuilder {
             let tracer_provider_builder =
                 SdkTracerProvider::builder().with_id_generator(UlidIdGenerator::new());
 
-            if self.send_to_logfire {
+            if send_to_logfire {
                 tracer_provider_builder.with_span_processor(
                     BatchSpanProcessor::builder(RemovePendingSpansExporter::new(
                         LogfireSpanExporter {
@@ -223,15 +308,13 @@ impl LogfireConfigBuilder {
         };
 
         let tracer = tracer_provider.tracer("logfire");
-        let default_level_filter = self
-            .default_level_filter
-            .unwrap_or(if self.send_to_logfire {
-                // by default, send everything to the logfire platform, for best UX
-                LevelFilter::TRACE
-            } else {
-                // but if printing locally, just set INFO
-                LevelFilter::INFO
-            });
+        let default_level_filter = self.default_level_filter.unwrap_or(if send_to_logfire {
+            // by default, send everything to the logfire platform, for best UX
+            LevelFilter::TRACE
+        } else {
+            // but if printing locally, just set INFO
+            LevelFilter::INFO
+        });
 
         let filter = tracing_subscriber::EnvFilter::builder()
             .with_default_directive(default_level_filter.into())
@@ -258,6 +341,7 @@ impl LogfireConfigBuilder {
             subscriber: Arc::new(subscriber),
             tracer_provider,
             logfire_token,
+            send_to_logfire,
         })
     }
 }
@@ -295,6 +379,7 @@ struct LogfireParts {
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     tracer_provider: SdkTracerProvider,
     logfire_token: Option<String>,
+    send_to_logfire: bool,
 }
 
 /// Install `handler` as part of a chain of panic handlers.
@@ -330,13 +415,23 @@ fn install_panic_handler() {
     });
 }
 
-fn get_optional_env(key: &str) -> Result<Option<String>, ConfigureError> {
-    match std::env::var(key) {
-        Ok(value) => Ok(Some(value)),
-        Err(VarError::NotPresent) => Ok(None),
-        Err(VarError::NotUnicode(_)) => Err(ConfigureError::Other(
-            format!("{key} is not valid UTF-8").into(),
-        )),
+/// Internal helper to get the `key` from the environment.
+///
+/// If `env` is provided, will use that instead of the process environment.
+fn get_optional_env(
+    key: &str,
+    env: Option<&HashMap<String, String>>,
+) -> Result<Option<String>, ConfigureError> {
+    if let Some(env) = env {
+        Ok(env.get(key).cloned())
+    } else {
+        match std::env::var(key) {
+            Ok(value) => Ok(Some(value)),
+            Err(VarError::NotPresent) => Ok(None),
+            Err(VarError::NotUnicode(_)) => Err(ConfigureError::Other(
+                format!("{key} is not valid UTF-8").into(),
+            )),
+        }
     }
 }
 
@@ -521,7 +616,7 @@ fn protocol_from_env(data_env_var: &str) -> Result<(String, Protocol), Configure
     // try both data-specific env var and general protocol
     [data_env_var, "OTEL_EXPORTER_OTLP_PROTOCOL"]
         .into_iter()
-        .find_map(|var_name| match get_optional_env(var_name) {
+        .find_map(|var_name| match get_optional_env(var_name, None) {
             Ok(Some(value)) => Some(Ok((var_name, value))),
             Ok(None) => None,
             Err(e) => Some(Err(e)),
@@ -713,7 +808,7 @@ fn set_local_logfire(config: LogfireConfigBuilder) -> Result<LocalLogfireGuard, 
         subscriber,
         tracer_provider,
         ..
-    } = config.build_parts()?;
+    } = config.build_parts(None)?;
 
     let prior = LOCAL_TRACER.with_borrow_mut(|local_logfire| local_logfire.replace(tracer));
 
@@ -847,7 +942,7 @@ mod tests {
 
         let mut config = crate::configure();
         config
-            .send_to_logfire(false)
+            .send_to_logfire(SendToLogfire::No)
             .install_panic_handler()
             .with_tracer_provider(provider)
             .with_defalt_level_filter(LevelFilter::TRACE);
@@ -929,7 +1024,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            869,
+                            964,
                         ),
                     },
                     KeyValue {
@@ -1055,7 +1150,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            870,
+                            965,
                         ),
                     },
                     KeyValue {
@@ -1191,7 +1286,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            870,
+                            965,
                         ),
                     },
                     KeyValue {
@@ -1333,7 +1428,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            871,
+                            966,
                         ),
                     },
                     KeyValue {
@@ -1475,7 +1570,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            873,
+                            968,
                         ),
                     },
                     KeyValue {
@@ -1645,7 +1740,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            874,
+                            969,
                         ),
                     },
                     KeyValue {
@@ -1724,7 +1819,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:875:17",
+                                "src/lib.rs:970:17",
                             ),
                         ),
                     },
@@ -1791,7 +1886,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            316,
+                            401,
                         ),
                     },
                     KeyValue {
@@ -1889,7 +1984,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            869,
+                            964,
                         ),
                     },
                     KeyValue {
@@ -1984,5 +2079,43 @@ mod tests {
             },
         ]
         "#);
+    }
+
+    #[test]
+    fn test_send_to_logfire() {
+        for (env, setting, expected) in [
+            (vec![], None, true),
+            (vec![("LOGFIRE_SEND_TO_LOGFIRE", "no")], None, false),
+            (vec![("LOGFIRE_SEND_TO_LOGFIRE", "yes")], None, true),
+            (
+                vec![("LOGFIRE_SEND_TO_LOGFIRE", "if-token-present")],
+                None,
+                false,
+            ),
+            (
+                vec![
+                    ("LOGFIRE_SEND_TO_LOGFIRE", "if-token-present"),
+                    ("LOGFIRE_TOKEN", "a"),
+                ],
+                None,
+                true,
+            ),
+            (
+                vec![("LOGFIRE_SEND_TO_LOGFIRE", "no")],
+                Some(SendToLogfire::Yes),
+                true,
+            ),
+        ] {
+            let env = env.into_iter().map(|(k, v)| (k.into(), v.into())).collect();
+
+            let mut config = crate::configure();
+            if let Some(value) = setting {
+                config.send_to_logfire(value);
+            }
+
+            let parts = config.build_parts(Some(&env)).unwrap();
+
+            assert_eq!(parts.send_to_logfire, expected);
+        }
     }
 }
