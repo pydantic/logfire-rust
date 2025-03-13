@@ -16,6 +16,7 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 pub use crate::__tracing_span as tracing_span;
 
 #[macro_export]
+#[doc(hidden)]
 macro_rules! __tracing_span {
     (parent: $parent:expr, $level:expr, $format:expr, $($($arg:ident = $value:expr),+)?) => {{
         // bind args early to avoid multiple evaluation
@@ -209,6 +210,7 @@ pub fn export_log_span(
 }
 
 #[macro_export]
+#[doc(hidden)]
 macro_rules! __json_schema {
     ($($($args:ident),+)?) => {
         concat!("{\
@@ -223,6 +225,7 @@ macro_rules! __json_schema {
 }
 
 #[macro_export]
+#[doc(hidden)]
 macro_rules! __schema_args {
     ($arg:ident, $($args:ident),+) => {
         // this is done recursively to avoid a trailing comma in JSON :/
