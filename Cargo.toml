@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 rust-version = "1.85"
+description = "Rust SDK for Pydantic Logfire"
+documentation = "https://docs.rs/logfire"
+homepage = "https://github.com/pydantic/logfire-rust"
+repository = "https://github.com/pydantic/logfire-rust"
 
 [dependencies]
 log = "0.4"
