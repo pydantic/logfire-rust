@@ -794,6 +794,7 @@ macro_rules! feature_required {
     ($feature_name:literal, $functionality:expr, $if_enabled:expr) => {{
         #[cfg(feature = $feature_name)]
         {
+            let _ = $functionality;
             Ok($if_enabled)
         }
 
@@ -1185,7 +1186,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1080,
+                            1126,
                         ),
                     },
                     KeyValue {
@@ -1311,7 +1312,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1081,
+                            1127,
                         ),
                     },
                     KeyValue {
@@ -1447,7 +1448,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1081,
+                            1127,
                         ),
                     },
                     KeyValue {
@@ -1589,7 +1590,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1082,
+                            1128,
                         ),
                     },
                     KeyValue {
@@ -1731,7 +1732,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1084,
+                            1130,
                         ),
                     },
                     KeyValue {
@@ -1901,7 +1902,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1085,
+                            1131,
                         ),
                     },
                     KeyValue {
@@ -1980,7 +1981,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:1086:17",
+                                "src/lib.rs:1132:17",
                             ),
                         ),
                     },
@@ -2047,7 +2048,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            513,
+                            558,
                         ),
                     },
                     KeyValue {
@@ -2145,7 +2146,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1080,
+                            1126,
                         ),
                     },
                     KeyValue {
@@ -2245,13 +2246,23 @@ mod tests {
     #[test]
     fn test_send_to_logfire() {
         for (env, setting, expected) in [
-            (vec![], None, true),
-            (vec![("LOGFIRE_SEND_TO_LOGFIRE", "no")], None, false),
-            (vec![("LOGFIRE_SEND_TO_LOGFIRE", "yes")], None, true),
+            (vec![], None, Err(ConfigureError::TokenRequired)),
+            (vec![("LOGFIRE_TOKEN", "a")], None, Ok(true)),
+            (vec![("LOGFIRE_SEND_TO_LOGFIRE", "no")], None, Ok(false)),
+            (
+                vec![("LOGFIRE_SEND_TO_LOGFIRE", "yes")],
+                None,
+                Err(ConfigureError::TokenRequired),
+            ),
+            (
+                vec![("LOGFIRE_SEND_TO_LOGFIRE", "yes"), ("LOGFIRE_TOKEN", "a")],
+                None,
+                Ok(true),
+            ),
             (
                 vec![("LOGFIRE_SEND_TO_LOGFIRE", "if-token-present")],
                 None,
-                false,
+                Ok(false),
             ),
             (
                 vec![
@@ -2259,12 +2270,22 @@ mod tests {
                     ("LOGFIRE_TOKEN", "a"),
                 ],
                 None,
-                true,
+                Ok(true),
+            ),
+            (
+                vec![("LOGFIRE_SEND_TO_LOGFIRE", "no"), ("LOGFIRE_TOKEN", "a")],
+                Some(SendToLogfire::Yes),
+                Ok(true),
+            ),
+            (
+                vec![("LOGFIRE_SEND_TO_LOGFIRE", "no"), ("LOGFIRE_TOKEN", "a")],
+                Some(SendToLogfire::IfTokenPresent),
+                Ok(true),
             ),
             (
                 vec![("LOGFIRE_SEND_TO_LOGFIRE", "no")],
-                Some(SendToLogfire::Yes),
-                true,
+                Some(SendToLogfire::IfTokenPresent),
+                Ok(false),
             ),
         ] {
             let env = env.into_iter().map(|(k, v)| (k.into(), v.into())).collect();
@@ -2274,9 +2295,16 @@ mod tests {
                 config = config.send_to_logfire(value);
             }
 
-            let parts = config.build_parts(Some(&env)).unwrap();
+            let result = config
+                .build_parts(Some(&env))
+                .map(|parts| parts.send_to_logfire);
 
-            assert_eq!(parts.send_to_logfire, expected);
+            match (expected, result) {
+                (Ok(exp), Ok(actual)) => assert_eq!(exp, actual),
+                // compare strings because ConfigureError doesn't implement PartialEq
+                (Err(exp), Err(actual)) => assert_eq!(exp.to_string(), actual.to_string()),
+                (expected, result) => panic!("expected {expected:?}, got {result:?}"),
+            }
         }
     }
 }
