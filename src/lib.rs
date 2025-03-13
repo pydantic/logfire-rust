@@ -73,11 +73,38 @@
 //!
 //! ## Integrations
 //!
+//! The following sections describe briefly the interaction which this SDK has with other libraries.
+//!
 //! ### With `tracing`
+//!
+//! This SDK is built upon `tracing` (and `tracing-opentelemtry`) for the [`span!`] macro. This means
+//! that any code instrumented with `tracing` will automatically be captured by Logfire, and also
+//! that [`span!`] produces a `tracing::Span` which is fully compatible with the `tracing` ecosystem.
+//!
+//! If you are an existing `tracing` user, it is fine to continue to use the `tracing` APIs directly
+//! and ignore [`logfire::span!`][span]. The upside of [`span!`] is that it will show the fields
+//! directly in the logfire UI.
+//!
+//! There are many great APIs in `tracing` which we do not yet provide equivalents for, such as the
+//! [`#[tracing::instrument]`][`macro@tracing::instrument`] proc macro, so even if using [`logfire::span!`][span]
+//! you will likely use `tracing` APIs directly too.
 //!
 //! ### With `opentelemetry`
 //!
+//! This SDK is built upon the `opentelemetry` Rust SDK and will configure the global `opentelemetry`
+//! state as part of a call to [`logfire::configure()`][configure].
+//!
+//! All calls to [`logfire::info!`][info] and similar macros are directly forwarded to `opentelemetry`
+//! machinery without going through `tracing`, for performance.
+//!
+//! The metrics helpers exported by this SDK, such as [`logfire::u64_counter()`][u64_counter], are
+//! very thin wrappers around the `opentelemetry` SDK.
+//!
 //! ### With `log`
+//!
+//! This SDK configures the global `log` state to use an exporter which forwards logs to opentelemetry.
+//!
+//! All code instrumented with `log` will therefore automatically be captured by Logfire.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -1186,7 +1213,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1126,
+                            1153,
                         ),
                     },
                     KeyValue {
@@ -1312,7 +1339,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1127,
+                            1154,
                         ),
                     },
                     KeyValue {
@@ -1448,7 +1475,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1127,
+                            1154,
                         ),
                     },
                     KeyValue {
@@ -1590,7 +1617,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1128,
+                            1155,
                         ),
                     },
                     KeyValue {
@@ -1732,7 +1759,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1130,
+                            1157,
                         ),
                     },
                     KeyValue {
@@ -1902,7 +1929,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1131,
+                            1158,
                         ),
                     },
                     KeyValue {
@@ -1981,7 +2008,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:1132:17",
+                                "src/lib.rs:1159:17",
                             ),
                         ),
                     },
@@ -2048,7 +2075,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            558,
+                            585,
                         ),
                     },
                     KeyValue {
@@ -2146,7 +2173,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1126,
+                            1153,
                         ),
                     },
                     KeyValue {
