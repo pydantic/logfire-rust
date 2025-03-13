@@ -93,6 +93,7 @@ use ulid_id_generator::UlidIdGenerator;
 
 mod internal;
 
+/// An error which may arise when configuring Logfire.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ConfigureError {
@@ -116,26 +117,34 @@ pub enum ConfigureError {
     #[error("Error configuring the OpenTelemetry tracer: {0}")]
     TracingAlreadySetup(#[from] tracing::subscriber::SetGlobalDefaultError),
 
-    /// Error parsing the RUST_LOG environment variable.
+    /// Error parsing the `RUST_LOG` environment variable.
     #[error("Error configuring the OpenTelemetry tracer: {0}")]
     RustLogInvalid(#[from] tracing_subscriber::filter::FromEnvError),
 
+    /// A Rust feature needs to be enabled in the `Cargo.toml`.
     #[error("Rust feature required: `{feature_name}` feature must be enabled for {functionality}")]
     LogfireFeatureRequired {
+        /// The feature which is required.
         feature_name: &'static str,
+        /// The functionality which was attempted to be used.
         functionality: String,
     },
 
+    /// A configuration value (from environment) was invalid.
     #[error("Invalid configuration value for {parameter}: {value}")]
     InvalidConfigurationValue {
+        /// The name of the configuration parameter.
         parameter: &'static str,
+        /// The invalid value passed for the parameter.
         value: String,
     },
 
+    /// Any other error.
     #[error(transparent)]
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
+/// Whether to print to the console.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
@@ -159,15 +168,28 @@ impl FromStr for ConsoleMode {
     }
 }
 
-pub struct LogfireConfigBuilder {
-    send_to_logfire: Option<SendToLogfire>,
-    console_mode: ConsoleMode,
-    install_panic_handler: bool,
-    default_level_filter: Option<LevelFilter>,
-    tracer_provider: Option<SdkTracerProvider>,
-}
-
-#[must_use]
+/// Main entry point to configure logfire.
+///
+/// This should be called once at the start of the program.
+///
+/// See [`LogfireConfigBuilder`] for the full set of configuration options.
+///
+/// # Example
+///
+/// ```rust
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let shutdown_handler = logfire::configure()
+///         .install_panic_handler()
+/// #        .send_to_logfire(logfire::SendToLogfire::IfTokenPresent)
+///         .finish()?;
+///
+///     logfire::info!("Hello world");
+///
+///     shutdown_handler.shutdown()?;
+///     Ok(())
+/// }
+/// ```
+#[must_use = "call `.finish()` to complete logfire configuration."]
 pub fn configure() -> LogfireConfigBuilder {
     LogfireConfigBuilder {
         send_to_logfire: None,
@@ -178,7 +200,19 @@ pub fn configure() -> LogfireConfigBuilder {
     }
 }
 
+/// Builder for logfire configuration, returned from [`logfire::configure()`][configure].
+pub struct LogfireConfigBuilder {
+    send_to_logfire: Option<SendToLogfire>,
+    console_mode: ConsoleMode,
+    install_panic_handler: bool,
+    default_level_filter: Option<LevelFilter>,
+    tracer_provider: Option<SdkTracerProvider>,
+}
+
 impl LogfireConfigBuilder {
+    /// Call to install a hook to log panics.
+    ///
+    /// Any existing panic hook will be preserved and called after the logfire panic hook.
     pub fn install_panic_handler(&mut self) -> &mut Self {
         self.install_panic_handler = true;
         self
@@ -191,20 +225,34 @@ impl LogfireConfigBuilder {
         self.send_to_logfire = Some(send_to_logfire);
         self
     }
+
+    /// Whether to log to the console.
     pub fn console_mode(&mut self, console_mode: ConsoleMode) -> &mut Self {
         self.console_mode = console_mode;
         self
     }
-    pub fn with_tracer_provider(&mut self, tracer_provider: SdkTracerProvider) -> &mut Self {
-        self.tracer_provider = Some(tracer_provider);
-        self
-    }
+
+    /// Override the filter used for traces and logs.
+    ///
+    /// By default this is set to `LevelFilter::TRACE` if sending to logfire, or `LevelFilter::INFO` if not.
+    ///
+    /// The `RUST_LOG` environment variable will override this.
     pub fn with_defalt_level_filter(&mut self, default_level_filter: LevelFilter) -> &mut Self {
         self.default_level_filter = Some(default_level_filter);
         self
     }
 
+    /// Override the tracer provider to use to export opentelemetry data. This will cause
+    /// `send_to_logfire` to be ignored for spans.
+    #[cfg(test)]
+    fn with_tracer_provider(&mut self, tracer_provider: SdkTracerProvider) -> &mut Self {
+        self.tracer_provider = Some(tracer_provider);
+        self
+    }
+
     /// Finish configuring Logfire.
+    ///
+    /// Because this configures global state for the opentelemetry SDK, this can typically only ever be called once per program.
     ///
     /// # Errors
     ///
@@ -346,7 +394,12 @@ impl LogfireConfigBuilder {
     }
 }
 
+/// A handler to shutdown the Logfire configuration.
+///
+/// Calling `.shutdown()` will flush the logfire exporters and make further
+/// logfire calls into no-ops.
 #[derive(Debug, Clone)]
+#[must_use = "this should be kept alive until logging should be stopped"]
 pub struct ShutdownHandler {
     tracer_provider: SdkTracerProvider,
     meter_provider: Option<SdkMeterProvider>,
@@ -598,7 +651,7 @@ const OTEL_EXPORTER_OTLP_PROTOCOL_GRPC: &str = "grpc";
 const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF: &str = "http/protobuf";
 const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_JSON: &str = "http/json";
 
-/// Temporary workaround for lack of https://github.com/open-telemetry/opentelemetry-rust/pull/2758
+/// Temporary workaround for lack of <https://github.com/open-telemetry/opentelemetry-rust/pull/2758>
 fn protocol_from_str(value: &str) -> Result<Protocol, ConfigureError> {
     match value {
         OTEL_EXPORTER_OTLP_PROTOCOL_GRPC => Ok(Protocol::Grpc),
@@ -1024,7 +1077,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            964,
+                            1017,
                         ),
                     },
                     KeyValue {
@@ -1150,7 +1203,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            965,
+                            1018,
                         ),
                     },
                     KeyValue {
@@ -1286,7 +1339,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            965,
+                            1018,
                         ),
                     },
                     KeyValue {
@@ -1428,7 +1481,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            966,
+                            1019,
                         ),
                     },
                     KeyValue {
@@ -1570,7 +1623,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            968,
+                            1021,
                         ),
                     },
                     KeyValue {
@@ -1740,7 +1793,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            969,
+                            1022,
                         ),
                     },
                     KeyValue {
@@ -1819,7 +1872,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:970:17",
+                                "src/lib.rs:1023:17",
                             ),
                         ),
                     },
@@ -1886,7 +1939,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            401,
+                            454,
                         ),
                     },
                     KeyValue {
@@ -1984,7 +2037,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            964,
+                            1017,
                         ),
                     },
                     KeyValue {

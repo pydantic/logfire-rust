@@ -39,13 +39,12 @@ export-grpc = ["opentelemetry-otlp/grpc-tonic", "opentelemetry-otlp/tls"]
 export-http-protobuf = ["opentelemetry-otlp/http-proto", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
 export-http-json = ["opentelemetry-otlp/http-json", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
 
+[lints.rust]
+missing_docs = "warn"
+
 [lints.clippy]
 dbg_macro = "deny"
 unwrap_used = "deny"
 # in general we lint against the pedantic group, but we will whitelist
 # certain lints which we don't want to enforce (for now)
 pedantic = { level = "deny", priority = -1 }
-module_name_repetitions = "allow"
-struct_field_names = "allow"
-large_futures = "allow"                      # TODO remove?
-doc_markdown = "allow"

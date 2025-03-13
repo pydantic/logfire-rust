@@ -7,9 +7,12 @@ use crate::ConfigureError;
 /// Whether to send logs to Logfire.
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SendToLogfire {
+    /// Send logs to Logfire.
     #[default]
     Yes,
+    /// Do not send logs to Logfire (potentially just print them).
     No,
+    /// Send logs to Logfire only if a token is present.
     IfTokenPresent,
 }
 
@@ -42,6 +45,7 @@ impl FromStr for SendToLogfire {
 /// Options for controlling console output.
 #[expect(clippy::struct_excessive_bools)] // Config options, bools make sense here.
 pub struct ConsoleOptions {
+    /// Whether to show colors in the console.
     pub colors: ConsoleColors,
     /// How spans are shown in the console.
     pub span_style: SpanStyle,
@@ -76,18 +80,23 @@ impl Default for ConsoleOptions {
 /// Whether to show colors in the console.
 #[derive(Default)]
 pub enum ConsoleColors {
+    /// Decide based on the terminal.
     #[default]
     Auto,
+    /// Always show colors.
     Always,
+    /// Never show colors.
     Never,
 }
 
 /// Style for rendering spans in the console.
 #[derive(Default)]
 pub enum SpanStyle {
+    /// Show spans in a simple format.
     Simple,
+    /// Show spans in a detailed format.
     Indented,
+    /// Show parent span ids when printing spans.
     #[default]
     ShowParents,
-    HideChildren,
 }
