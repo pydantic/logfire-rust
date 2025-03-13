@@ -208,3 +208,14 @@ impl IdGenerator for BoxedIdGenerator {
         self.0.new_span_id()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::config::SendToLogfire;
+
+    #[test]
+    fn test_send_to_logfire_from_bool() {
+        assert_eq!(SendToLogfire::from(true), SendToLogfire::Yes);
+        assert_eq!(SendToLogfire::from(false), SendToLogfire::No);
+    }
+}
