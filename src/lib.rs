@@ -18,6 +18,23 @@
 //!  - The [Logfire documentation](https://logfire.pydantic.dev/docs/) for more information about Logfire in general.
 //!  - The [Logfire GitHub repository](https://github.com/pydantic/logfire) for the source of the documentation, the Python SDK and an issue tracker for general questions about Logfire.
 //!
+//! > ***Initial release - feedback wanted!***
+//! >
+//! > This is an initial release of the Logfire Rust SDK. We've been using it internally to build
+//! > Logfire for some time, and it is serving us well. As we're using it ourselves in production,
+//! > we figured it's ready for everyone else also using Logfire.
+//! >
+//! > We are continually iterating to make this SDK better. We'd love your feedback on all aspects
+//! > of the SDK and are keen to make the design as idiomatic and performant as possible. There are
+//! > also many features currently supported by the Python SDK which are not yet supported by this
+//! > SDK; please open issues to help us prioritize these to close this gap. For example, we have not
+//! > yet implemented scrubbing in this Rust SDK, although we are aware it is important!
+//! >
+//! > In particular, the current coupling to `tracing` is an open design point. By building on top
+//! > of tracing we get widest compatibility and a relatively simple SDK, however to make
+//! > Logfire-specific adjustments we might prefer in future to move `tracing` to be an optional
+//! > integration.
+//!
 //! ## Getting Started
 //!
 //! To use Logfire in your Rust project, add the following to your `Cargo.toml`:
@@ -44,6 +61,15 @@
 //! ```
 //!
 //! ## Configuration
+//!
+//! After adding basic setup as per above, the most two important environment variables are:
+//! - `LOGFIRE_TOKEN` - (required) the token to send data to the Logfire platform
+//! - `RUST_LOG` - (optional) the level of verbosity to send to the Logfire platform. By default
+//!   logs are captured at `TRACE` level so that all data is available for you to analyze in the
+//!   Logfire platform.
+//!
+//! All environment variables supported by the Rust Opentelemetry SDK are also supported by the
+//! Logfire SDK.
 //!
 //! ## Integrations
 //!
@@ -99,6 +125,12 @@ mod internal;
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum ConfigureError {
+    /// No token was provided to send to logfire.
+    #[error(
+        "A logfire token is required from either `logfire::configure().with_token()` or the `LOGFIRE_TOKEN` environment variable"
+    )]
+    TokenRequired,
+
     /// Logfire has already been configured
     #[error("Logfire has already been configured")]
     AlreadyConfigured,
@@ -195,6 +227,7 @@ impl FromStr for ConsoleMode {
 pub fn configure() -> LogfireConfigBuilder {
     LogfireConfigBuilder {
         send_to_logfire: None,
+        token: None,
         console_mode: ConsoleMode::Fallback,
         additional_span_processors: Vec::new(),
         advanced: None,
@@ -208,7 +241,7 @@ pub struct LogfireConfigBuilder {
     // TODO: support all options supported by the Python SDK
     // local: bool,
     send_to_logfire: Option<SendToLogfire>,
-    // token: Option<String>,
+    token: Option<String>,
     // service_name: Option<String>,
     // service_version: Option<String>,
     // environment: Option<String>,
@@ -254,6 +287,15 @@ impl LogfireConfigBuilder {
     #[must_use]
     pub fn send_to_logfire<T: Into<SendToLogfire>>(mut self, send_to_logfire: T) -> Self {
         self.send_to_logfire = Some(send_to_logfire.into());
+        self
+    }
+
+    /// The token to use for the Logfire platform.
+    ///
+    /// Defaults to the value of `LOGFIRE_TOKEN` if set.
+    #[must_use]
+    pub fn with_token<T: Into<String>>(mut self, token: T) -> Self {
+        self.token = Some(token.into());
         self
     }
 
@@ -307,7 +349,7 @@ impl LogfireConfigBuilder {
             tracer,
             subscriber,
             tracer_provider,
-            logfire_token,
+            token: logfire_token,
             send_to_logfire,
             base_url,
         } = self.build_parts(None)?;
@@ -354,7 +396,10 @@ impl LogfireConfigBuilder {
         self,
         env: Option<&HashMap<String, String>>,
     ) -> Result<LogfireParts, ConfigureError> {
-        let logfire_token = get_optional_env("LOGFIRE_TOKEN", env)?;
+        let mut token = self.token;
+        if token.is_none() {
+            token = get_optional_env("LOGFIRE_TOKEN", env)?;
+        }
 
         let send_to_logfire = match self.send_to_logfire {
             Some(send_to_logfire) => send_to_logfire,
@@ -366,7 +411,7 @@ impl LogfireConfigBuilder {
 
         let send_to_logfire = match send_to_logfire {
             SendToLogfire::Yes => true,
-            SendToLogfire::IfTokenPresent => logfire_token.is_some(),
+            SendToLogfire::IfTokenPresent => token.is_some(),
             SendToLogfire::No => false,
         };
 
@@ -382,13 +427,13 @@ impl LogfireConfigBuilder {
         };
 
         if send_to_logfire {
+            if token.is_none() {
+                return Err(ConfigureError::TokenRequired);
+            }
             tracer_provider_builder = tracer_provider_builder.with_span_processor(
                 BatchSpanProcessor::builder(RemovePendingSpansExporter::new(LogfireSpanExporter {
                     write_console: self.console_mode == ConsoleMode::Force,
-                    inner: Some(span_exporter(
-                        logfire_token.as_deref(),
-                        &advanced_options.base_url,
-                    )?),
+                    inner: Some(span_exporter(token.as_deref(), &advanced_options.base_url)?),
                 }))
                 .with_batch_config(
                     BatchConfigBuilder::default()
@@ -445,7 +490,7 @@ impl LogfireConfigBuilder {
             },
             subscriber: Arc::new(subscriber),
             tracer_provider,
-            logfire_token,
+            token,
             send_to_logfire,
             base_url: advanced_options.base_url,
         })
@@ -489,7 +534,7 @@ struct LogfireParts {
     tracer: LogfireTracer,
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     tracer_provider: SdkTracerProvider,
-    logfire_token: Option<String>,
+    token: Option<String>,
     send_to_logfire: bool,
     base_url: String,
 }
