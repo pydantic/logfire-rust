@@ -33,7 +33,7 @@
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let shutdown_handler = logfire::configure()
 //!         .install_panic_handler()
-//! #        .send_to_logfire(logfire::SendToLogfire::IfTokenPresent)
+//! #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
 //!         .finish()?;
 //!
 //!     logfire::info!("Hello, world!");
@@ -63,6 +63,7 @@ use std::{backtrace::Backtrace, env::VarError, str::FromStr, sync::OnceLock, tim
 
 use bridges::tracing::LogfireTracingLayer;
 use chrono::{DateTime, Utc};
+use config::{AdvancedOptions, BoxedSpanProcessor, SendToLogfire};
 use futures_util::future::BoxFuture;
 use internal::constants::ATTRIBUTES_SPAN_TYPE_KEY;
 use internal::exporters::remove_pending::RemovePendingSpansExporter;
@@ -73,7 +74,9 @@ use opentelemetry_otlp::{
     MetricExporter, Protocol, SpanExporter, WithExportConfig, WithHttpConfig,
 };
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
-use opentelemetry_sdk::trace::{BatchConfigBuilder, BatchSpanProcessor, SimpleSpanProcessor};
+use opentelemetry_sdk::trace::{
+    BatchConfigBuilder, BatchSpanProcessor, SimpleSpanProcessor, SpanProcessor,
+};
 use opentelemetry_sdk::trace::{SdkTracerProvider, SpanData, Tracer};
 use thiserror::Error;
 use tracing::Subscriber;
@@ -81,12 +84,11 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 
 mod bridges;
-mod config;
+pub mod config;
 mod macros;
 mod metrics;
 mod ulid_id_generator;
 
-pub use config::*;
 pub use macros::*;
 pub use metrics::*;
 use ulid_id_generator::UlidIdGenerator;
@@ -180,7 +182,7 @@ impl FromStr for ConsoleMode {
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let shutdown_handler = logfire::configure()
 ///         .install_panic_handler()
-/// #        .send_to_logfire(logfire::SendToLogfire::IfTokenPresent)
+/// #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
 ///         .finish()?;
 ///
 ///     logfire::info!("Hello world");
@@ -194,26 +196,54 @@ pub fn configure() -> LogfireConfigBuilder {
     LogfireConfigBuilder {
         send_to_logfire: None,
         console_mode: ConsoleMode::Fallback,
+        additional_span_processors: Vec::new(),
+        advanced: None,
         install_panic_handler: false,
         default_level_filter: None,
-        tracer_provider: None,
     }
 }
 
 /// Builder for logfire configuration, returned from [`logfire::configure()`][configure].
 pub struct LogfireConfigBuilder {
+    // TODO: support all options supported by the Python SDK
+    // local: bool,
     send_to_logfire: Option<SendToLogfire>,
+    // token: Option<String>,
+    // service_name: Option<String>,
+    // service_version: Option<String>,
+    // environment: Option<String>,
+
+    // TODO: Python supports
+    // console: ConsoleOptions | Literal[False] | None = None,
     console_mode: ConsoleMode,
+
+    // config_dir: Option<PathBuf>,
+    // data_dir: Option<Path>,
+
+    // TODO: change to match Python SDK
+    additional_span_processors: Vec<BoxedSpanProcessor>,
+    // tracer_provider: Option<SdkTracerProvider>,
+
+    // TODO: advanced Python options not yet supported by the Rust SDK
+    // metrics: MetricsOptions | Literal[False] | None = None,
+    // scrubbing: ScrubbingOptions | Literal[False] | None = None,
+    // inspect_arguments: bool | None = None,
+    // sampling: SamplingOptions | None = None,
+    // code_source: CodeSource | None = None,
+    // distributed_tracing: bool | None = None,
+    advanced: Option<AdvancedOptions>,
+
+    // Rust specific options
     install_panic_handler: bool,
     default_level_filter: Option<LevelFilter>,
-    tracer_provider: Option<SdkTracerProvider>,
 }
 
 impl LogfireConfigBuilder {
     /// Call to install a hook to log panics.
     ///
     /// Any existing panic hook will be preserved and called after the logfire panic hook.
-    pub fn install_panic_handler(&mut self) -> &mut Self {
+    #[must_use]
+    pub fn install_panic_handler(mut self) -> Self {
         self.install_panic_handler = true;
         self
     }
@@ -221,13 +251,15 @@ impl LogfireConfigBuilder {
     /// Whether to send data to the Logfire platform.
     ///
     /// Defaults to the value of `LOGFIRE_SEND_TO_LOGFIRE` if set, otherwise `Yes`.
-    pub fn send_to_logfire(&mut self, send_to_logfire: SendToLogfire) -> &mut Self {
-        self.send_to_logfire = Some(send_to_logfire);
+    #[must_use]
+    pub fn send_to_logfire<T: Into<SendToLogfire>>(mut self, send_to_logfire: T) -> Self {
+        self.send_to_logfire = Some(send_to_logfire.into());
         self
     }
 
     /// Whether to log to the console.
-    pub fn console_mode(&mut self, console_mode: ConsoleMode) -> &mut Self {
+    #[must_use]
+    pub fn console_mode(mut self, console_mode: ConsoleMode) -> Self {
         self.console_mode = console_mode;
         self
     }
@@ -237,16 +269,29 @@ impl LogfireConfigBuilder {
     /// By default this is set to `LevelFilter::TRACE` if sending to logfire, or `LevelFilter::INFO` if not.
     ///
     /// The `RUST_LOG` environment variable will override this.
-    pub fn with_defalt_level_filter(&mut self, default_level_filter: LevelFilter) -> &mut Self {
+    #[must_use]
+    pub fn with_default_level_filter(mut self, default_level_filter: LevelFilter) -> Self {
         self.default_level_filter = Some(default_level_filter);
         self
     }
 
-    /// Override the tracer provider to use to export opentelemetry data. This will cause
-    /// `send_to_logfire` to be ignored for spans.
-    #[cfg(test)]
-    fn with_tracer_provider(&mut self, tracer_provider: SdkTracerProvider) -> &mut Self {
-        self.tracer_provider = Some(tracer_provider);
+    /// Add an additional span processor to process spans alongside the main logfire exporter.
+    ///
+    /// To disable the main logfire exporter, set `send_to_logfire` to `false`.
+    #[must_use]
+    pub fn with_additional_span_processor<T: SpanProcessor + 'static>(
+        mut self,
+        span_processor: T,
+    ) -> Self {
+        self.additional_span_processors
+            .push(BoxedSpanProcessor::new(Box::new(span_processor)));
+        self
+    }
+
+    /// Configure [advanced options](crate::config::AdvancedOptions).
+    #[must_use]
+    pub fn with_advanced_options(mut self, advanced: AdvancedOptions) -> Self {
+        self.advanced = Some(advanced);
         self
     }
 
@@ -257,13 +302,14 @@ impl LogfireConfigBuilder {
     /// # Errors
     ///
     /// See [`ConfigureError`] for possible errors.
-    pub fn finish(&self) -> Result<ShutdownHandler, ConfigureError> {
+    pub fn finish(self) -> Result<ShutdownHandler, ConfigureError> {
         let LogfireParts {
             tracer,
             subscriber,
             tracer_provider,
             logfire_token,
             send_to_logfire,
+            base_url,
         } = self.build_parts(None)?;
 
         tracing::subscriber::set_global_default(subscriber)?;
@@ -284,7 +330,8 @@ impl LogfireConfigBuilder {
         // setup metrics only if sending to logfire
         let meter_provider = if send_to_logfire {
             let metric_reader =
-                PeriodicReader::builder(metric_exporter(logfire_token.as_deref())?).build();
+                PeriodicReader::builder(metric_exporter(logfire_token.as_deref(), &base_url)?)
+                    .build();
 
             let meter_provider = SdkMeterProvider::builder()
                 .with_reader(metric_reader)
@@ -304,7 +351,7 @@ impl LogfireConfigBuilder {
     }
 
     fn build_parts(
-        &self,
+        self,
         env: Option<&HashMap<String, String>>,
     ) -> Result<LogfireParts, ConfigureError> {
         let logfire_token = get_optional_env("LOGFIRE_TOKEN", env)?;
@@ -323,37 +370,47 @@ impl LogfireConfigBuilder {
             SendToLogfire::No => false,
         };
 
-        let tracer_provider = if let Some(provider) = &self.tracer_provider {
-            provider.clone()
-        } else {
-            let tracer_provider_builder =
-                SdkTracerProvider::builder().with_id_generator(UlidIdGenerator::new());
+        let advanced_options = self.advanced.unwrap_or_default();
 
-            if send_to_logfire {
-                tracer_provider_builder.with_span_processor(
-                    BatchSpanProcessor::builder(RemovePendingSpansExporter::new(
-                        LogfireSpanExporter {
-                            write_console: self.console_mode == ConsoleMode::Force,
-                            inner: Some(span_exporter(logfire_token.as_deref())?),
-                        },
-                    ))
-                    .with_batch_config(
-                        BatchConfigBuilder::default()
-                            .with_scheduled_delay(Duration::from_millis(500)) // 500 matches Python
-                            .build(),
-                    )
-                    .build(),
-                )
-            } else {
-                tracer_provider_builder.with_span_processor(SimpleSpanProcessor::new(Box::new(
-                    LogfireSpanExporter {
-                        write_console: true,
-                        inner: None,
-                    },
-                )))
-            }
-            .build()
+        let mut tracer_provider_builder = SdkTracerProvider::builder();
+
+        if let Some(id_generator) = advanced_options.id_generator {
+            tracer_provider_builder = tracer_provider_builder.with_id_generator(id_generator);
+        } else {
+            tracer_provider_builder =
+                tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
         };
+
+        if send_to_logfire {
+            tracer_provider_builder = tracer_provider_builder.with_span_processor(
+                BatchSpanProcessor::builder(RemovePendingSpansExporter::new(LogfireSpanExporter {
+                    write_console: self.console_mode == ConsoleMode::Force,
+                    inner: Some(span_exporter(
+                        logfire_token.as_deref(),
+                        &advanced_options.base_url,
+                    )?),
+                }))
+                .with_batch_config(
+                    BatchConfigBuilder::default()
+                        .with_scheduled_delay(Duration::from_millis(500)) // 500 matches Python
+                        .build(),
+                )
+                .build(),
+            );
+        } else {
+            tracer_provider_builder = tracer_provider_builder.with_span_processor(
+                SimpleSpanProcessor::new(Box::new(LogfireSpanExporter {
+                    write_console: true,
+                    inner: None,
+                })),
+            );
+        }
+
+        for span_processor in self.additional_span_processors {
+            tracer_provider_builder = tracer_provider_builder.with_span_processor(span_processor);
+        }
+
+        let tracer_provider = tracer_provider_builder.build();
 
         let tracer = tracer_provider.tracer("logfire");
         let default_level_filter = self.default_level_filter.unwrap_or(if send_to_logfire {
@@ -390,6 +447,7 @@ impl LogfireConfigBuilder {
             tracer_provider,
             logfire_token,
             send_to_logfire,
+            base_url: advanced_options.base_url,
         })
     }
 }
@@ -433,6 +491,7 @@ struct LogfireParts {
     tracer_provider: SdkTracerProvider,
     logfire_token: Option<String>,
     send_to_logfire: bool,
+    base_url: String,
 }
 
 /// Install `handler` as part of a chain of panic handlers.
@@ -703,7 +762,10 @@ macro_rules! feature_required {
     }};
 }
 
-fn span_exporter(logfire_token: Option<&str>) -> Result<SpanExporter, ConfigureError> {
+fn span_exporter(
+    logfire_token: Option<&str>,
+    base_url: &str,
+) -> Result<SpanExporter, ConfigureError> {
     let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")?;
 
     let builder = SpanExporter::builder();
@@ -723,7 +785,7 @@ fn span_exporter(logfire_token: Option<&str>) -> Result<SpanExporter, ConfigureE
                 builder
                     .with_http()
                     .with_protocol(Protocol::HttpBinary)
-                    .with_logfire_http_defaults(logfire_token, "v1/traces")
+                    .with_logfire_http_defaults(logfire_token, base_url, "v1/traces")
                     .build()?
             })
         }
@@ -732,14 +794,17 @@ fn span_exporter(logfire_token: Option<&str>) -> Result<SpanExporter, ConfigureE
                 builder
                     .with_http()
                     .with_protocol(Protocol::HttpBinary)
-                    .with_logfire_http_defaults(logfire_token, "v1/traces")
+                    .with_logfire_http_defaults(logfire_token, base_url, "v1/traces")
                     .build()?
             })
         }
     }
 }
 
-fn metric_exporter(logfire_token: Option<&str>) -> Result<MetricExporter, ConfigureError> {
+fn metric_exporter(
+    logfire_token: Option<&str>,
+    base_url: &str,
+) -> Result<MetricExporter, ConfigureError> {
     let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")?;
 
     let builder =
@@ -760,7 +825,7 @@ fn metric_exporter(logfire_token: Option<&str>) -> Result<MetricExporter, Config
                 builder
                     .with_http()
                     .with_protocol(Protocol::HttpBinary)
-                    .with_logfire_http_defaults(logfire_token, "v1/metrics")
+                    .with_logfire_http_defaults(logfire_token, base_url, "v1/metrics")
                     .build()?
             })
         }
@@ -769,7 +834,7 @@ fn metric_exporter(logfire_token: Option<&str>) -> Result<MetricExporter, Config
                 builder
                     .with_http()
                     .with_protocol(Protocol::HttpBinary)
-                    .with_logfire_http_defaults(logfire_token, "v1/metrics")
+                    .with_logfire_http_defaults(logfire_token, base_url, "v1/metrics")
                     .build()?
             })
         }
@@ -778,14 +843,24 @@ fn metric_exporter(logfire_token: Option<&str>) -> Result<MetricExporter, Config
 
 /// Internal helper to build an exporter with logfire default config
 trait WithLogfireHttpExportDefaults: WithHttpConfig + WithExportConfig + Sized {
-    fn with_logfire_http_defaults(self, logfire_token: Option<&str>, endpoint: &str) -> Self;
+    fn with_logfire_http_defaults(
+        self,
+        logfire_token: Option<&str>,
+        base_url: &str,
+        endpoint: &str,
+    ) -> Self;
 }
 
 impl<T> WithLogfireHttpExportDefaults for T
 where
     T: WithHttpConfig + WithExportConfig + Sized,
 {
-    fn with_logfire_http_defaults(self, logfire_token: Option<&str>, endpoint: &str) -> Self {
+    fn with_logfire_http_defaults(
+        self,
+        logfire_token: Option<&str>,
+        base_url: &str,
+        endpoint: &str,
+    ) -> Self {
         let mut headers = HashMap::new();
         if let Some(logfire_token) = logfire_token {
             headers.insert(
@@ -794,7 +869,7 @@ where
             );
         }
         self.with_headers(headers)
-            .with_endpoint(format!("https://logfire-api.pydantic.dev/{endpoint}"))
+            .with_endpoint(format!("{base_url}/{endpoint}"))
     }
 }
 
@@ -892,9 +967,7 @@ mod tests {
     use opentelemetry::trace::{SpanId, TraceId};
     use opentelemetry_sdk::{
         error::OTelSdkResult,
-        trace::{
-            IdGenerator, InMemorySpanExporterBuilder, SdkTracerProvider, SpanData, SpanExporter,
-        },
+        trace::{IdGenerator, InMemorySpanExporterBuilder, SpanData, SpanExporter},
     };
     use tracing::Level;
 
@@ -988,29 +1061,19 @@ mod tests {
     #[test]
     fn test_basic_span() {
         let exporter = InMemorySpanExporterBuilder::new().build();
-        let provider = SdkTracerProvider::builder()
-            .with_simple_exporter(DeterministicExporter::new(exporter.clone()))
-            .with_id_generator(DeterministicIdGenerator::new())
-            .build();
 
-        let mut config = crate::configure();
-        config
-            .send_to_logfire(SendToLogfire::No)
+        let config = crate::configure()
+            .send_to_logfire(false)
+            .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
+                DeterministicExporter::new(exporter.clone()),
+            )))
             .install_panic_handler()
-            .with_tracer_provider(provider)
-            .with_defalt_level_filter(LevelFilter::TRACE);
+            .with_default_level_filter(LevelFilter::TRACE)
+            .with_advanced_options(
+                AdvancedOptions::default().with_id_generator(DeterministicIdGenerator::new()),
+            );
 
         let guard = set_local_logfire(config).unwrap();
-
-        // let tracer = provider.tracer("test");
-
-        // let subscriber = tracing_subscriber::registry()
-        //     .with(
-        //         tracing_opentelemetry::layer()
-        //             .with_error_records_to_exceptions(true)
-        //             .with_tracer(tracer.clone()),
-        //     )
-        //     .with(LogfireTracingLayer(tracer.clone()));
 
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             tracing::subscriber::with_default(guard.subscriber.clone(), || {
@@ -1077,7 +1140,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1017,
+                            1080,
                         ),
                     },
                     KeyValue {
@@ -1203,7 +1266,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1018,
+                            1081,
                         ),
                     },
                     KeyValue {
@@ -1339,7 +1402,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1018,
+                            1081,
                         ),
                     },
                     KeyValue {
@@ -1481,7 +1544,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1019,
+                            1082,
                         ),
                     },
                     KeyValue {
@@ -1623,7 +1686,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1021,
+                            1084,
                         ),
                     },
                     KeyValue {
@@ -1793,7 +1856,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1022,
+                            1085,
                         ),
                     },
                     KeyValue {
@@ -1872,7 +1935,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:1023:17",
+                                "src/lib.rs:1086:17",
                             ),
                         ),
                     },
@@ -1939,7 +2002,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            454,
+                            513,
                         ),
                     },
                     KeyValue {
@@ -2037,7 +2100,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1017,
+                            1080,
                         ),
                     },
                     KeyValue {
@@ -2163,7 +2226,7 @@ mod tests {
 
             let mut config = crate::configure();
             if let Some(value) = setting {
-                config.send_to_logfire(value);
+                config = config.send_to_logfire(value);
             }
 
             let parts = config.build_parts(Some(&env)).unwrap();

@@ -1,5 +1,10 @@
+//! Configuration options for the Logfire SDK.
+//!
+//! See [`LogfireConfigBuilder`][crate::LogfireConfigBuilder] for documentation of all these options.
+
 use std::{fmt::Display, str::FromStr};
 
+use opentelemetry_sdk::trace::{IdGenerator, SpanProcessor};
 use tracing::Level;
 
 use crate::ConfigureError;
@@ -38,6 +43,16 @@ impl FromStr for SendToLogfire {
                 parameter: "LOGFIRE_SEND_TO_LOGFIRE",
                 value: s.to_owned(),
             }),
+        }
+    }
+}
+
+impl From<bool> for SendToLogfire {
+    fn from(b: bool) -> Self {
+        if b {
+            SendToLogfire::Yes
+        } else {
+            SendToLogfire::No
         }
     }
 }
@@ -99,4 +114,108 @@ pub enum SpanStyle {
     /// Show parent span ids when printing spans.
     #[default]
     ShowParents,
+}
+
+/// Options primarily used for testing by Logfire developers.
+pub struct AdvancedOptions {
+    /// Root URL for the Logfire API.
+    pub(crate) base_url: String,
+    /// Generator for trace and span IDs.
+    pub(crate) id_generator: Option<BoxedIdGenerator>,
+    //
+    //
+    // TODO: arguments below supported by Python
+
+    // /// Generator for nanosecond start and end timestamps of spans.
+    // pub ns_timestamp_generator: Option,
+
+    // /// Configuration for OpenTelemetry logging. This is experimental and may be removed.
+    // pub log_record_processors: Vec<Box<dyn LogRecordProcessor>>,
+}
+
+impl Default for AdvancedOptions {
+    fn default() -> Self {
+        AdvancedOptions {
+            base_url: "https://logfire-api.pydantic.dev".to_string(),
+            id_generator: None,
+        }
+    }
+}
+
+impl AdvancedOptions {
+    /// Set the base URL for the Logfire API.
+    #[must_use]
+    pub fn with_base_url<T: AsRef<str>>(mut self, base_url: T) -> Self {
+        self.base_url = base_url.as_ref().into();
+        self
+    }
+
+    /// Set the ID generator for trace and span IDs.
+    #[must_use]
+    pub fn with_id_generator<T: IdGenerator + Send + Sync + 'static>(
+        mut self,
+        generator: T,
+    ) -> Self {
+        self.id_generator = Some(BoxedIdGenerator::new(Box::new(generator)));
+        self
+    }
+}
+
+/// Wrapper around a `SpanProcessor` to use in `additional_span_processors`.
+#[derive(Debug)]
+pub(crate) struct BoxedSpanProcessor(Box<dyn SpanProcessor>);
+
+impl BoxedSpanProcessor {
+    pub fn new(processor: Box<dyn SpanProcessor + Send + Sync>) -> Self {
+        BoxedSpanProcessor(processor)
+    }
+}
+
+impl SpanProcessor for BoxedSpanProcessor {
+    fn on_start(&self, span: &mut opentelemetry_sdk::trace::Span, cx: &opentelemetry::Context) {
+        self.0.on_start(span, cx);
+    }
+
+    fn on_end(&self, span: opentelemetry_sdk::trace::SpanData) {
+        self.0.on_end(span);
+    }
+
+    fn force_flush(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.0.force_flush()
+    }
+
+    fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.0.shutdown()
+    }
+}
+
+/// Wrapper around an `IdGenerator` to use in `id_generator`.
+#[derive(Debug)]
+pub(crate) struct BoxedIdGenerator(Box<dyn IdGenerator>);
+
+impl BoxedIdGenerator {
+    pub fn new(generator: Box<dyn IdGenerator>) -> Self {
+        BoxedIdGenerator(generator)
+    }
+}
+
+impl IdGenerator for BoxedIdGenerator {
+    fn new_trace_id(&self) -> opentelemetry::trace::TraceId {
+        self.0.new_trace_id()
+    }
+
+    fn new_span_id(&self) -> opentelemetry::trace::SpanId {
+        self.0.new_span_id()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::SendToLogfire;
+
+    #[test]
+    fn test_send_to_logfire_from_bool() {
+        assert_eq!(SendToLogfire::from(true), SendToLogfire::Yes);
+        assert_eq!(SendToLogfire::from(false), SendToLogfire::No);
+    }
 }

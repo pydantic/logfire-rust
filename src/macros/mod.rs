@@ -24,7 +24,7 @@ macro_rules! span {
 
 /// Emit a log at the ERROR level.
 ///
-/// See the [`log!`] macro for more details.
+/// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! error {
     (parent: $parent:expr, $format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
@@ -37,7 +37,7 @@ macro_rules! error {
 
 /// Emit a log at the WARN level.
 ///
-/// See the [`log!`] macro for more details.
+/// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! warn {
     (parent: $parent:expr, $format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
@@ -50,7 +50,7 @@ macro_rules! warn {
 
 /// Emit a log at the INFO level.
 ///
-/// See the [`log!`] macro for more details.
+/// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! info {
     (parent: $parent:expr, $format:expr $(,$arg:ident = $value:expr)* $(,)?) => {
@@ -63,7 +63,7 @@ macro_rules! info {
 
 /// Emit a log at the ERROR level.
 ///
-/// See the [`log!`] macro for more details.
+/// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! debug {
     (parent: $parent:expr, $format:expr $(,$arg:ident = $value:expr)* $(,)?) => {
