@@ -33,7 +33,7 @@ chrono = "0.4.39"
 [dev-dependencies]
 insta = "1.42.1"
 opentelemetry_sdk = { version = "0.28", default-features = false, features = ["testing"] }
-ulid = "*"
+ulid = "1.2.0"
 
 [features]
 default = ["export-http-protobuf"]
