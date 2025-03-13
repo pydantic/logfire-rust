@@ -117,7 +117,7 @@ pub enum ConfigureError {
     #[error("Error configuring the OpenTelemetry tracer: {0}")]
     TracingAlreadySetup(#[from] tracing::subscriber::SetGlobalDefaultError),
 
-    /// Error parsing the RUST_LOG environment variable.
+    /// Error parsing the `RUST_LOG` environment variable.
     #[error("Error configuring the OpenTelemetry tracer: {0}")]
     RustLogInvalid(#[from] tracing_subscriber::filter::FromEnvError),
 
@@ -651,7 +651,7 @@ const OTEL_EXPORTER_OTLP_PROTOCOL_GRPC: &str = "grpc";
 const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF: &str = "http/protobuf";
 const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_JSON: &str = "http/json";
 
-/// Temporary workaround for lack of https://github.com/open-telemetry/opentelemetry-rust/pull/2758
+/// Temporary workaround for lack of <https://github.com/open-telemetry/opentelemetry-rust/pull/2758>
 fn protocol_from_str(value: &str) -> Result<Protocol, ConfigureError> {
     match value {
         OTEL_EXPORTER_OTLP_PROTOCOL_GRPC => Ok(Protocol::Grpc),
@@ -1077,7 +1077,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            964,
+                            1017,
                         ),
                     },
                     KeyValue {
@@ -1203,7 +1203,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            965,
+                            1018,
                         ),
                     },
                     KeyValue {
@@ -1339,7 +1339,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            965,
+                            1018,
                         ),
                     },
                     KeyValue {
@@ -1481,7 +1481,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            966,
+                            1019,
                         ),
                     },
                     KeyValue {
@@ -1623,7 +1623,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            968,
+                            1021,
                         ),
                     },
                     KeyValue {
@@ -1793,7 +1793,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            969,
+                            1022,
                         ),
                     },
                     KeyValue {
@@ -1872,7 +1872,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:970:17",
+                                "src/lib.rs:1023:17",
                             ),
                         ),
                     },
@@ -1939,7 +1939,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            401,
+                            454,
                         ),
                     },
                     KeyValue {
@@ -2037,7 +2037,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            964,
+                            1017,
                         ),
                     },
                     KeyValue {
