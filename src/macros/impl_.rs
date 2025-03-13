@@ -1,3 +1,8 @@
+//! Implementation details of the macros.
+//!
+//! Note that macros exported here will end up at the crate root, they should probably all be prefixed with
+//! __ just to help avoid collisions with real APIs.
+
 use std::{marker::PhantomData, ops::Deref, time::SystemTime};
 
 use crate::{bridges::tracing::level_to_level_number, try_with_logfire_tracer};
@@ -6,64 +11,11 @@ use opentelemetry::{
 };
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-#[macro_export]
-macro_rules! span {
-    (parent: $parent:expr, level: $level:expr, $format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__tracing_span!(parent: $parent, $level, $format, $($arg = $value),*)
-    };
-    (parent: $parent:expr, $format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__tracing_span!(parent: $parent, tracing::Level::INFO, $format, $($arg = $value),*)
-    };
-    (level: $level:expr, $format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__tracing_span!($level, $format, $($arg = $value),*)
-    };
-    ($format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__tracing_span!(tracing::Level::INFO, $format, $($arg = $value),*)
-    };
-}
+// Re-export macros marked with `#[macro_export]` from this module, because `#[macro_export]` places
+// them at the crate root.
+pub use crate::__tracing_span as tracing_span;
 
 #[macro_export]
-macro_rules! error {
-    (parent: $parent:expr, $format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__export_otel_log_span!(parent: $parent, tracing::Level::ERROR, $format, $($arg = $value),*)
-    };
-    ($format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__export_otel_log_span!(tracing::Level::ERROR, $format, $($arg = $value),*)
-    };
-}
-
-#[macro_export]
-macro_rules! warn {
-    (parent: $parent:expr, $format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__export_otel_log_span!(parent: $parent, tracing::Level::WARN, $format, $($arg = $value),*)
-    };
-    ($format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__export_otel_log_span!(tracing::Level::WARN, $format, $($arg = $value),*)
-    };
-}
-
-#[macro_export]
-macro_rules! info {
-    (parent: $parent:expr, $format:expr $(,$arg:ident = $value:expr)* $(,)?) => {
-        $crate::__export_otel_log_span!(parent: $parent, tracing::Level::INFO, $format, $($arg = $value),*)
-    };
-    ($format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__export_otel_log_span!(tracing::Level::INFO, $format, $($arg = $value),*)
-    };
-}
-
-#[macro_export]
-macro_rules! debug {
-    (parent: $parent:expr, $format:expr $(,$arg:ident = $value:expr)* $(,)?) => {
-        $crate::__export_otel_log_span!(parent: $parent, tracing::Level::DEBUG, $format, $($arg = $value),*)
-    };
-    ($format:expr $(, $arg:ident = $value:expr)* $(,)?) => {
-        $crate::__export_otel_log_span!(tracing::Level::DEBUG, $format, $($arg = $value),*)
-    };
-}
-
-#[macro_export]
-#[doc(hidden)]
 macro_rules! __tracing_span {
     (parent: $parent:expr, $level:expr, $format:expr, $($($arg:ident = $value:expr),+)?) => {{
         // bind args early to avoid multiple evaluation
@@ -90,7 +42,6 @@ macro_rules! __tracing_span {
     }};
 }
 
-#[doc(hidden)]
 pub struct LogfireValue {
     name: Key,
     value: Option<Value>,
@@ -110,16 +61,12 @@ impl LogfireValue {
 // otel arguments. Otel arguments are not allowed to be optional, so we
 // have to lift this a layer.
 
-#[doc(hidden)]
 pub struct FallbackToConvertValue<T>(PhantomData<T>);
 
-#[doc(hidden)]
 pub struct TryConvertOption<T>(FallbackToConvertValue<T>);
 
-#[doc(hidden)]
 pub struct LogfireConverter<T>(TryConvertOption<T>);
 
-#[doc(hidden)]
 #[must_use]
 pub fn converter<T>(_: &T) -> LogfireConverter<T> {
     LogfireConverter(TryConvertOption(FallbackToConvertValue(PhantomData)))
@@ -149,7 +96,7 @@ impl LogfireConverter<&'_ String> {
     }
 }
 
-impl<T> std::ops::Deref for LogfireConverter<T> {
+impl<T> Deref for LogfireConverter<T> {
     type Target = TryConvertOption<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -185,7 +132,6 @@ impl<T> FallbackToConvertValue<T> {
     }
 }
 
-#[doc(hidden)]
 #[expect(clippy::too_many_arguments)] // FIXME probably can group these
 pub fn export_log_span(
     name: &'static str,
@@ -263,50 +209,6 @@ pub fn export_log_span(
 }
 
 #[macro_export]
-#[doc(hidden)]
-macro_rules! __export_otel_log_span {
-    (parent: $parent:expr, $level:expr, $format:expr, $($($arg:ident = $value:expr),+)?) => {{
-        if tracing::span_enabled!($level) {
-            // bind args early to avoid multiple evaluation
-            $($(let $arg = $value;)*)?
-            $crate::export_log_span(
-                $format,
-                $parent,
-                format!($format),
-                $level,
-                $crate::__json_schema!($($($arg),+)?),
-                file!(),
-                line!(),
-                module_path!(),
-                [
-                    $($($crate::LogfireValue::new(stringify!($arg), $crate::converter(&$arg).convert_value($arg)),)*)?
-                ]
-            );
-        }
-    }};
-    ($level:expr, $format:expr, $($($arg:ident = $value:expr),+)?) => {{
-        if tracing::span_enabled!($level) {
-            // bind args early to avoid multiple evaluation
-            $($(let $arg = $value;)*)?
-            $crate::export_log_span(
-                $format,
-                &tracing::Span::current(),
-                format!($format),
-                $level,
-                $crate::__json_schema!($($($arg),+)?),
-                file!(),
-                line!(),
-                module_path!(),
-                [
-                    $($($crate::LogfireValue::new(stringify!($arg), $crate::converter(&$arg).convert_value($arg)),)*)?
-                ]
-            );
-        }
-    }};
-}
-
-#[macro_export]
-#[doc(hidden)]
 macro_rules! __json_schema {
     ($($($args:ident),+)?) => {
         concat!("{\
@@ -321,7 +223,6 @@ macro_rules! __json_schema {
 }
 
 #[macro_export]
-#[doc(hidden)]
 macro_rules! __schema_args {
     ($arg:ident, $($args:ident),+) => {
         // this is done recursively to avoid a trailing comma in JSON :/
