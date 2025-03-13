@@ -52,7 +52,7 @@ impl<Inner: SpanExporter> SpanExporter for RemovePendingSpansExporter<Inner> {
 mod tests {
     use std::time::Duration;
 
-    use crate::config::SendToLogfire;
+    use crate::config::AdvancedOptions;
     use crate::set_local_logfire;
     use crate::tests::DeterministicExporter;
     use crate::tests::DeterministicIdGenerator;
@@ -62,15 +62,17 @@ mod tests {
     use opentelemetry_sdk::trace::BatchConfigBuilder;
     use opentelemetry_sdk::trace::BatchSpanProcessor;
     use opentelemetry_sdk::trace::InMemorySpanExporterBuilder;
-    use opentelemetry_sdk::trace::SdkTracerProvider;
     use tracing::Level;
     use tracing::level_filters::LevelFilter;
 
     #[test]
     fn test_remove_pending_spans() {
         let exporter = InMemorySpanExporterBuilder::new().build();
-        let provider = SdkTracerProvider::builder()
-            .with_span_processor(
+
+        let config = crate::configure()
+            .send_to_logfire(false)
+            .install_panic_handler()
+            .with_additional_span_processor(
                 BatchSpanProcessor::builder(DeterministicExporter::new(
                     RemovePendingSpansExporter(exporter.clone()),
                 ))
@@ -83,15 +85,10 @@ mod tests {
                 )
                 .build(),
             )
-            .with_id_generator(DeterministicIdGenerator::new())
-            .build();
-
-        let mut config = crate::configure();
-        config
-            .send_to_logfire(SendToLogfire::No)
-            .install_panic_handler()
-            .with_tracer_provider(provider)
-            .with_defalt_level_filter(LevelFilter::TRACE);
+            .with_default_level_filter(LevelFilter::TRACE)
+            .with_advanced_options(
+                AdvancedOptions::default().with_id_generator(DeterministicIdGenerator::new()),
+            );
 
         let guard = set_local_logfire(config).unwrap();
 

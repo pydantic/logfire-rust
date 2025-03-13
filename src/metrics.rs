@@ -33,7 +33,7 @@ static ", $var_name, ": LazyLock<opentelemetry::metrics::", stringify!($ty), "> 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ensure logfire is configured before accessing the metric for the first time
     let shutdown_handler = logfire::configure()
-#        .send_to_logfire(logfire::SendToLogfire::IfTokenPresent)
+#        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
         .finish()?;
 
     // send a value to the metric
@@ -127,7 +127,7 @@ static ", $var_name, ": LazyLock<opentelemetry::metrics::", stringify!($ty), "> 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ensure logfire is configured before accessing the metric for the first time
     let shutdown_handler = logfire::configure()
-#        .send_to_logfire(logfire::SendToLogfire::IfTokenPresent)
+#        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
         .finish()?;
 
     // initialize the metric
