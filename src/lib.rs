@@ -47,17 +47,7 @@
 //! Then, in your Rust code, add a call to `logfire::configure()` at the beginning of your program:
 //!
 //! ```rust
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let shutdown_handler = logfire::configure()
-//!         .install_panic_handler()
-//! #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
-//!         .finish()?;
-//!
-//!     logfire::info!("Hello, world!");
-//!
-//!     shutdown_handler.shutdown()?;
-//!     Ok(())
-//! }
+#![doc = include_str!("../examples/basic.rs")]
 //! ```
 //!
 //! ## Configuration
@@ -119,13 +109,10 @@ use chrono::{DateTime, Utc};
 use config::{AdvancedOptions, BoxedSpanProcessor, SendToLogfire};
 use futures_util::future::BoxFuture;
 use internal::constants::ATTRIBUTES_SPAN_TYPE_KEY;
-use internal::exporters::remove_pending::RemovePendingSpansExporter;
 use nu_ansi_term::{Color, Style};
 use opentelemetry::Value;
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_otlp::{
-    MetricExporter, Protocol, SpanExporter, WithExportConfig, WithHttpConfig,
-};
+use opentelemetry_otlp::SpanExporter;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::trace::{
     BatchConfigBuilder, BatchSpanProcessor, SimpleSpanProcessor, SpanProcessor,
@@ -138,6 +125,7 @@ use tracing_subscriber::layer::SubscriberExt;
 
 mod bridges;
 pub mod config;
+pub mod exporters;
 mod macros;
 mod metrics;
 mod ulid_id_generator;
@@ -376,9 +364,9 @@ impl LogfireConfigBuilder {
             tracer,
             subscriber,
             tracer_provider,
-            token: logfire_token,
-            send_to_logfire,
             base_url,
+            http_headers,
+            send_to_logfire,
         } = self.build_parts(None)?;
 
         tracing::subscriber::set_global_default(subscriber)?;
@@ -399,7 +387,7 @@ impl LogfireConfigBuilder {
         // setup metrics only if sending to logfire
         let meter_provider = if send_to_logfire {
             let metric_reader =
-                PeriodicReader::builder(metric_exporter(logfire_token.as_deref(), &base_url)?)
+                PeriodicReader::builder(exporters::metric_exporter(&base_url, http_headers)?)
                     .build();
 
             let meter_provider = SdkMeterProvider::builder()
@@ -453,15 +441,21 @@ impl LogfireConfigBuilder {
                 tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
         };
 
+        let mut http_headers: Option<HashMap<String, String>> = None;
+
         if send_to_logfire {
-            if token.is_none() {
+            let Some(token) = token else {
                 return Err(ConfigureError::TokenRequired);
-            }
+            };
+            http_headers
+                .get_or_insert_default()
+                .insert("Authorization".to_string(), format!("Bearer {token}"));
+
             tracer_provider_builder = tracer_provider_builder.with_span_processor(
-                BatchSpanProcessor::builder(RemovePendingSpansExporter::new(LogfireSpanExporter {
-                    write_console: self.console_mode == ConsoleMode::Force,
-                    inner: Some(span_exporter(token.as_deref(), &advanced_options.base_url)?),
-                }))
+                BatchSpanProcessor::builder(exporters::span_exporter(
+                    &advanced_options.base_url,
+                    http_headers.clone(),
+                )?)
                 .with_batch_config(
                     BatchConfigBuilder::default()
                         .with_scheduled_delay(Duration::from_millis(500)) // 500 matches Python
@@ -470,6 +464,21 @@ impl LogfireConfigBuilder {
                 .build(),
             );
         } else {
+            tracer_provider_builder = tracer_provider_builder.with_span_processor(
+                SimpleSpanProcessor::new(Box::new(LogfireSpanExporter {
+                    write_console: true,
+                    inner: None,
+                })),
+            );
+        }
+
+        // TODO make this behaviour closer to Python
+        let write_console = match self.console_mode {
+            ConsoleMode::Fallback => send_to_logfire,
+            ConsoleMode::Force => true,
+        };
+
+        if write_console {
             tracer_provider_builder = tracer_provider_builder.with_span_processor(
                 SimpleSpanProcessor::new(Box::new(LogfireSpanExporter {
                     write_console: true,
@@ -517,9 +526,9 @@ impl LogfireConfigBuilder {
             },
             subscriber: Arc::new(subscriber),
             tracer_provider,
-            token,
-            send_to_logfire,
             base_url: advanced_options.base_url,
+            http_headers,
+            send_to_logfire,
         })
     }
 }
@@ -561,9 +570,9 @@ struct LogfireParts {
     tracer: LogfireTracer,
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     tracer_provider: SdkTracerProvider,
-    token: Option<String>,
-    send_to_logfire: bool,
     base_url: String,
+    http_headers: Option<HashMap<String, String>>,
+    send_to_logfire: bool,
 }
 
 /// Install `handler` as part of a chain of panic handlers.
@@ -771,178 +780,6 @@ impl LogfireSpanExporter {
         }
 
         Ok(())
-    }
-}
-
-// current default logfire protocol is to export over HTTP in binary format
-const DEFAULT_LOGFIRE_PROTOCOL: Protocol = Protocol::HttpBinary;
-
-// standard OTLP protocol values in configuration
-const OTEL_EXPORTER_OTLP_PROTOCOL_GRPC: &str = "grpc";
-const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF: &str = "http/protobuf";
-const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_JSON: &str = "http/json";
-
-/// Temporary workaround for lack of <https://github.com/open-telemetry/opentelemetry-rust/pull/2758>
-fn protocol_from_str(value: &str) -> Result<Protocol, ConfigureError> {
-    match value {
-        OTEL_EXPORTER_OTLP_PROTOCOL_GRPC => Ok(Protocol::Grpc),
-        OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF => Ok(Protocol::HttpBinary),
-        OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_JSON => Ok(Protocol::HttpJson),
-        _ => Err(ConfigureError::Other(
-            format!("unsupported protocol: {value}").into(),
-        )),
-    }
-}
-
-/// Get a protocol from the environment (or default value), returning a string describing the source
-/// plus the parsed protocol.
-fn protocol_from_env(data_env_var: &str) -> Result<(String, Protocol), ConfigureError> {
-    // try both data-specific env var and general protocol
-    [data_env_var, "OTEL_EXPORTER_OTLP_PROTOCOL"]
-        .into_iter()
-        .find_map(|var_name| match get_optional_env(var_name, None) {
-            Ok(Some(value)) => Some(Ok((var_name, value))),
-            Ok(None) => None,
-            Err(e) => Some(Err(e)),
-        })
-        .transpose()?
-        .map_or_else(
-            || {
-                Ok((
-                    "the default logfire export protocol".to_string(),
-                    DEFAULT_LOGFIRE_PROTOCOL,
-                ))
-            },
-            |(var_name, value)| Ok((format!("`{var_name}={value}`"), protocol_from_str(&value)?)),
-        )
-}
-
-macro_rules! feature_required {
-    ($feature_name:literal, $functionality:expr, $if_enabled:expr) => {{
-        #[cfg(feature = $feature_name)]
-        {
-            let _ = $functionality;
-            Ok($if_enabled)
-        }
-
-        #[cfg(not(feature = $feature_name))]
-        {
-            Err(ConfigureError::LogfireFeatureRequired {
-                feature_name: $feature_name,
-                functionality: $functionality,
-            })
-        }
-    }};
-}
-
-fn span_exporter(
-    logfire_token: Option<&str>,
-    base_url: &str,
-) -> Result<SpanExporter, ConfigureError> {
-    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")?;
-
-    let builder = SpanExporter::builder();
-
-    // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
-    // OTEL_EXPORTER_OTLP_PROTOCOL or OTEL_EXPORTER_OTLP_TRACES_PROTOCOL is set and let the SDK
-    // make a builder. (If unset, we could supply our preferred exporter.)
-    //
-    // But at the moment otel-rust ignores these env vars; see
-    // https://github.com/open-telemetry/opentelemetry-rust/issues/1983
-    match protocol {
-        Protocol::Grpc => {
-            feature_required!("export-grpc", source, { builder.with_tonic().build()? })
-        }
-        Protocol::HttpBinary => {
-            feature_required!("export-http-protobuf", source, {
-                builder
-                    .with_http()
-                    .with_protocol(Protocol::HttpBinary)
-                    .with_logfire_http_defaults(logfire_token, base_url, "v1/traces")
-                    .build()?
-            })
-        }
-        Protocol::HttpJson => {
-            feature_required!("export-http-json", source, {
-                builder
-                    .with_http()
-                    .with_protocol(Protocol::HttpBinary)
-                    .with_logfire_http_defaults(logfire_token, base_url, "v1/traces")
-                    .build()?
-            })
-        }
-    }
-}
-
-fn metric_exporter(
-    logfire_token: Option<&str>,
-    base_url: &str,
-) -> Result<MetricExporter, ConfigureError> {
-    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")?;
-
-    let builder =
-        MetricExporter::builder().with_temporality(opentelemetry_sdk::metrics::Temporality::Delta);
-
-    // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
-    // OTEL_EXPORTER_OTLP_PROTOCOL or OTEL_EXPORTER_OTLP_METRICS_PROTOCOL is set and let the SDK
-    // make a builder. (If unset, we could supply our preferred exporter.)
-    //
-    // But at the moment otel-rust ignores these env vars; see
-    // https://github.com/open-telemetry/opentelemetry-rust/issues/1983
-    match protocol {
-        Protocol::Grpc => {
-            feature_required!("export-grpc", source, { builder.with_tonic().build()? })
-        }
-        Protocol::HttpBinary => {
-            feature_required!("export-http-protobuf", source, {
-                builder
-                    .with_http()
-                    .with_protocol(Protocol::HttpBinary)
-                    .with_logfire_http_defaults(logfire_token, base_url, "v1/metrics")
-                    .build()?
-            })
-        }
-        Protocol::HttpJson => {
-            feature_required!("export-http-json", source, {
-                builder
-                    .with_http()
-                    .with_protocol(Protocol::HttpBinary)
-                    .with_logfire_http_defaults(logfire_token, base_url, "v1/metrics")
-                    .build()?
-            })
-        }
-    }
-}
-
-/// Internal helper to build an exporter with logfire default config
-trait WithLogfireHttpExportDefaults: WithHttpConfig + WithExportConfig + Sized {
-    fn with_logfire_http_defaults(
-        self,
-        logfire_token: Option<&str>,
-        base_url: &str,
-        endpoint: &str,
-    ) -> Self;
-}
-
-impl<T> WithLogfireHttpExportDefaults for T
-where
-    T: WithHttpConfig + WithExportConfig + Sized,
-{
-    fn with_logfire_http_defaults(
-        self,
-        logfire_token: Option<&str>,
-        base_url: &str,
-        endpoint: &str,
-    ) -> Self {
-        let mut headers = HashMap::new();
-        if let Some(logfire_token) = logfire_token {
-            headers.insert(
-                "Authorization".to_string(),
-                format!("Bearer {logfire_token}"),
-            );
-        }
-        self.with_headers(headers)
-            .with_endpoint(format!("{base_url}/{endpoint}"))
     }
 }
 
@@ -1213,7 +1050,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1153,
+                            990,
                         ),
                     },
                     KeyValue {
@@ -1339,7 +1176,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1154,
+                            991,
                         ),
                     },
                     KeyValue {
@@ -1475,7 +1312,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1154,
+                            991,
                         ),
                     },
                     KeyValue {
@@ -1617,7 +1454,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1155,
+                            992,
                         ),
                     },
                     KeyValue {
@@ -1759,7 +1596,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1157,
+                            994,
                         ),
                     },
                     KeyValue {
@@ -1929,7 +1766,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1158,
+                            995,
                         ),
                     },
                     KeyValue {
@@ -2008,7 +1845,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:1159:17",
+                                "src/lib.rs:996:17",
                             ),
                         ),
                     },
@@ -2075,7 +1912,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            585,
+                            594,
                         ),
                     },
                     KeyValue {
@@ -2173,7 +2010,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            1153,
+                            990,
                         ),
                     },
                     KeyValue {

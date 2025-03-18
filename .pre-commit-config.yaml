@@ -20,13 +20,13 @@ repos:
     pass_filenames: false
   - id: clippy
     name: Clippy
-    entry: cargo clippy -- -D warnings
+    entry: cargo clippy --all-features -- -D warnings
     types: [rust]
     language: system
     pass_filenames: false
   - id: test
     name: Test
-    entry: cargo test
+    entry: cargo test --all-features
     types: [rust]
     language: system
     pass_filenames: false

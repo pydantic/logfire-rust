@@ -74,6 +74,9 @@ jobs:
 
     - run: cargo llvm-cov --all-features --codecov --output-path codecov.json
 
+    # rust doctests (not included in cargo llvm-cov, see https://github.com/taiki-e/cargo-llvm-cov/issues/2)
+    - run: cargo test --doc
+
     - uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
