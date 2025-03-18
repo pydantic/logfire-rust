@@ -8,6 +8,10 @@ on:
       - '**'
   pull_request: {}
 
+env:
+  # avoid attempting to send logs to logfire from tests
+  LOGFIRE_SEND_TO_LOGFIRE: no
+
 jobs:
   lint:
     runs-on: ubuntu-latest
