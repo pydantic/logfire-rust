@@ -153,8 +153,8 @@ macro_rules! debug {
 ///
 /// // Typically a span will be "entered" to set the parent implicitly
 /// root_span.in_scope(|| {
-///     // This logf will be a child of root_span
-///     logfire::log!(level::INFO, "Nested log", x = 42, y = "hello");
+///     // This log will be a child of root_span
+///     logfire::log!(Level::INFO, "Nested log", x = 42, y = "hello");
 ///     // or
 ///     logfire::info!("Nested log", x = 42, y = "hello");
 ///

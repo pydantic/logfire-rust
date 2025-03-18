@@ -46,6 +46,18 @@ impl<Inner: SpanExporter> SpanExporter for RemovePendingSpansExporter<Inner> {
         spans.extend(spans_by_id.into_values());
         self.0.export(spans)
     }
+
+    fn shutdown(&mut self) -> OTelSdkResult {
+        self.0.shutdown()
+    }
+
+    fn force_flush(&mut self) -> OTelSdkResult {
+        self.0.force_flush()
+    }
+
+    fn set_resource(&mut self, resource: &opentelemetry_sdk::Resource) {
+        self.0.set_resource(resource);
+    }
 }
 
 #[cfg(test)]

@@ -1,0 +1,10 @@
+## Unreleased
+
+- Add `span_exporter()` helper to build a span exporter directly in [#20](https://github.com/pydantic/logfire-rust/pull/20)
+- Fix `set_resource` not being called on span processors added with `with_additional_span_processor()` in [#20](https://github.com/pydantic/logfire-rust/pull/20)
+
+## [v0.1.0] (2025-03-13)
+
+Initial release.
+
+[v0.1.0]: https://github.com/pydantic/logfire-rust/commits/v0.1.0

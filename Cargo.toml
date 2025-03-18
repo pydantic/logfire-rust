@@ -13,6 +13,10 @@ repository = "https://github.com/pydantic/logfire-rust"
 log = "0.4"
 env_filter = "0.1"
 
+# deps for grpc export
+http = { version = "1.2", optional = true }
+tonic = { version = "0.12", optional = true }
+
 rand = "0.9.0"
 
 opentelemetry = { version = "0.28", default-features = false, features = ["trace"] }
@@ -39,7 +43,7 @@ ulid = "1.2.0"
 default = ["export-http-protobuf"]
 serde = ["dep:serde"]
 # FIXME might need rustls feature on all of these?
-export-grpc = ["opentelemetry-otlp/grpc-tonic", "opentelemetry-otlp/tls"]
+export-grpc = ["opentelemetry-otlp/grpc-tonic", "opentelemetry-otlp/tls", "dep:http", "dep:tonic"]
 export-http-protobuf = ["opentelemetry-otlp/http-proto", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
 export-http-json = ["opentelemetry-otlp/http-json", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
 
@@ -52,3 +56,4 @@ unwrap_used = "deny"
 # in general we lint against the pedantic group, but we will whitelist
 # certain lints which we don't want to enforce (for now)
 pedantic = { level = "deny", priority = -1 }
+implicit_hasher = "allow"

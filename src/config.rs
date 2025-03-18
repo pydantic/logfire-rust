@@ -187,6 +187,10 @@ impl SpanProcessor for BoxedSpanProcessor {
     fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
         self.0.shutdown()
     }
+
+    fn set_resource(&mut self, resource: &opentelemetry_sdk::Resource) {
+        self.0.set_resource(resource);
+    }
 }
 
 /// Wrapper around an `IdGenerator` to use in `id_generator`.
