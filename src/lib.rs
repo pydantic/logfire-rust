@@ -104,7 +104,7 @@ use std::{backtrace::Backtrace, env::VarError, str::FromStr, sync::OnceLock, tim
 
 use bridges::tracing::LogfireTracingLayer;
 use config::{AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, SendToLogfire};
-use internal::exporters::console::SimpleConsoleSpanExporter;
+use internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanExporter};
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::trace::{
@@ -476,9 +476,11 @@ impl LogfireConfigBuilder {
             console_options = Some(ConsoleOptions::default());
         }
 
-        if let Some(console_options) = console_options {
+        let console_writer = console_options.map(ConsoleWriter::new).map(Arc::new);
+
+        if let Some(console_writer) = console_writer.clone() {
             tracer_provider_builder = tracer_provider_builder.with_span_processor(
-                SimpleSpanProcessor::new(Box::new(SimpleConsoleSpanExporter::new(console_options))),
+                SimpleSpanProcessor::new(Box::new(SimpleConsoleSpanExporter::new(console_writer))),
             );
         }
 
@@ -518,6 +520,7 @@ impl LogfireConfigBuilder {
             tracer: LogfireTracer {
                 inner: tracer,
                 handle_panics: self.install_panic_handler,
+                console_writer,
             },
             subscriber: Arc::new(subscriber),
             tracer_provider,
@@ -586,6 +589,7 @@ fn install_panic_handler() {
             ""
         };
 
+        // FIXME: code.lineno and code.filepath should probably be set here to the panic location
         crate::error!(
             "panic: {message}",
             location = info.location().as_ref().map(ToString::to_string),
@@ -625,6 +629,7 @@ fn get_optional_env(
 struct LogfireTracer {
     inner: Tracer,
     handle_panics: bool,
+    console_writer: Option<Arc<ConsoleWriter>>,
 }
 
 // Global tracer configured in `logfire::configure()`
@@ -713,7 +718,10 @@ mod tests {
     };
 
     use insta::assert_debug_snapshot;
-    use opentelemetry::trace::{SpanId, TraceId};
+    use opentelemetry::{
+        Value,
+        trace::{SpanId, TraceId},
+    };
     use opentelemetry_sdk::{
         error::OTelSdkResult,
         trace::{IdGenerator, InMemorySpanExporterBuilder, SpanData, SpanExporter},
@@ -755,6 +763,9 @@ mod tests {
         exporter: Inner,
         next_timestamp: u64,
         timestamp_remap: HashMap<SystemTime, SystemTime>,
+        // Information used to adjust line number to help minimise test churn
+        file: &'static str,
+        line_offset: u32,
     }
 
     impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
@@ -769,15 +780,48 @@ mod tests {
                 span.start_time = self.remap_timestamp(span.start_time);
                 span.end_time = self.remap_timestamp(span.end_time);
 
-                // thread info is not deterministic
-                // nor are timings
+                let mut remap_line = false;
+
                 for attr in &mut span.attributes {
+                    // thread info is not deterministic
+                    // nor are timings
                     if attr.key.as_str() == "thread.id"
                         || attr.key.as_str() == "busy_ns"
                         || attr.key.as_str() == "idle_ns"
                     {
                         attr.value = 0.into();
                     }
+
+                    // to minimize churn on tests, remap line numbers in the test to be relative to
+                    // the test function
+                    if attr.key.as_str() == "code.filepath" && attr.value.as_str() == self.file {
+                        remap_line = true;
+                    }
+                }
+
+                if remap_line {
+                    for attr in &mut span.attributes {
+                        if attr.key.as_str() == "code.lineno" {
+                            if let Value::I64(line) = &mut attr.value {
+                                *line -= i64::from(self.line_offset);
+                            }
+                        }
+
+                        // panic location
+                        if attr.key.as_str() == "location" {
+                            let string_value = attr.value.as_str();
+                            let mut parts = string_value.splitn(3, ':');
+                            let file = parts.next().unwrap();
+                            let line = parts.next().unwrap().parse::<i64>().unwrap()
+                                - i64::from(self.line_offset);
+                            let column = parts.next().unwrap();
+                            attr.value = format!("{file}:{line}:{column}").into();
+                        }
+                    }
+                }
+
+                for event in &mut span.events.events {
+                    event.timestamp = self.remap_timestamp(event.timestamp);
                 }
             }
             self.exporter.export(batch)
@@ -785,11 +829,14 @@ mod tests {
     }
 
     impl<Inner> DeterministicExporter<Inner> {
-        pub fn new(exporter: Inner) -> Self {
+        /// Create deterministic exporter, feeding it current file and line.
+        pub fn new(exporter: Inner, file: &'static str, line_offset: u32) -> Self {
             Self {
                 exporter,
                 next_timestamp: 0,
                 timestamp_remap: HashMap::new(),
+                file,
+                line_offset,
             }
         }
 
@@ -814,7 +861,7 @@ mod tests {
         let config = crate::configure()
             .send_to_logfire(false)
             .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
-                DeterministicExporter::new(exporter.clone()),
+                DeterministicExporter::new(exporter.clone(), file!(), line!()),
             )))
             .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE)
@@ -889,7 +936,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            829,
+                            12,
                         ),
                     },
                     KeyValue {
@@ -1015,7 +1062,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            830,
+                            13,
                         ),
                     },
                     KeyValue {
@@ -1151,7 +1198,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            830,
+                            13,
                         ),
                     },
                     KeyValue {
@@ -1293,7 +1340,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            831,
+                            14,
                         ),
                     },
                     KeyValue {
@@ -1429,7 +1476,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            831,
+                            14,
                         ),
                     },
                     KeyValue {
@@ -1571,7 +1618,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            833,
+                            16,
                         ),
                     },
                     KeyValue {
@@ -1707,7 +1754,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            833,
+                            16,
                         ),
                     },
                     KeyValue {
@@ -1877,7 +1924,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            834,
+                            17,
                         ),
                     },
                     KeyValue {
@@ -1956,7 +2003,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:835:17",
+                                "src/lib.rs:18:17",
                             ),
                         ),
                     },
@@ -2023,7 +2070,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            589,
+                            -271,
                         ),
                     },
                     KeyValue {
@@ -2121,7 +2168,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            829,
+                            12,
                         ),
                     },
                     KeyValue {

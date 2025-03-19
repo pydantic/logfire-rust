@@ -63,7 +63,7 @@ impl From<bool> for SendToLogfire {
 
 /// Options for controlling console output.
 #[expect(clippy::struct_excessive_bools)] // Config options, bools make sense here.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConsoleOptions {
     /// Whether to show colors in the console.
     pub colors: ConsoleColors,
@@ -101,7 +101,7 @@ impl Default for ConsoleOptions {
 }
 
 /// Whether to show colors in the console.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 pub enum ConsoleColors {
     /// Decide based on the terminal.
     #[default]
@@ -113,7 +113,7 @@ pub enum ConsoleColors {
 }
 
 /// Style for rendering spans in the console.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone, Copy)]
 pub enum SpanStyle {
     /// Show spans in a simple format.
     Simple,
@@ -125,7 +125,7 @@ pub enum SpanStyle {
 }
 
 /// Console target, either `stdout`, `stderr` or a custom pipe.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub enum Target {
     /// Console output will be sent to standard output.
     Stdout,

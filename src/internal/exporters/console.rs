@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     io::{self, BufWriter, Write},
-    sync::LazyLock,
+    sync::{Arc, LazyLock},
 };
 
 use chrono::{DateTime, Utc};
@@ -9,8 +9,10 @@ use futures_util::future::BoxFuture;
 use nu_ansi_term::{Color, Style};
 use opentelemetry::Value;
 use opentelemetry_sdk::trace::SpanData;
+use tracing::field::Visit;
 
 use crate::{
+    bridges::tracing::level_to_level_number,
     config::{ConsoleOptions, Target},
     internal::constants::ATTRIBUTES_SPAN_TYPE_KEY,
 };
@@ -19,22 +21,14 @@ use crate::{
 #[derive(Debug)]
 pub struct SimpleConsoleSpanExporter {
     stopped: bool,
-    console_options: ConsoleOptions,
+    writer: Arc<ConsoleWriter>,
 }
 
 impl SimpleConsoleSpanExporter {
-    pub fn new(console_options: ConsoleOptions) -> Self {
+    pub fn new(writer: Arc<ConsoleWriter>) -> Self {
         Self {
-            console_options,
+            writer,
             stopped: false,
-        }
-    }
-
-    fn with_writer<R>(&self, f: impl FnOnce(&mut dyn Write) -> R) -> R {
-        match &self.console_options.target {
-            Target::Stdout => f(&mut io::stdout()),
-            Target::Stderr => f(&mut io::stderr()),
-            Target::Pipe(p) => f(&mut *p.lock().expect("pipe lock poisoned")),
         }
     }
 }
@@ -45,12 +39,7 @@ impl opentelemetry_sdk::trace::SpanExporter for SimpleConsoleSpanExporter {
         batch: Vec<opentelemetry_sdk::trace::SpanData>,
     ) -> BoxFuture<'static, opentelemetry_sdk::error::OTelSdkResult> {
         if !self.stopped {
-            self.with_writer(|w| {
-                let mut buffer = BufWriter::new(w);
-                for span in &batch {
-                    let _ = Self::print_span(span, &mut buffer);
-                }
-            });
+            self.writer.write_batch(&batch);
         }
         Box::pin(std::future::ready(Ok(())))
     }
@@ -77,8 +66,41 @@ fn level_int_to_text<W: io::Write>(level: i64, w: &mut W) -> io::Result<()> {
     }
 }
 
-impl SimpleConsoleSpanExporter {
-    fn print_span<W: io::Write>(span: &SpanData, w: &mut W) -> io::Result<()> {
+#[derive(Debug)]
+pub struct ConsoleWriter {
+    options: ConsoleOptions,
+}
+
+impl ConsoleWriter {
+    pub fn new(options: ConsoleOptions) -> Self {
+        Self { options }
+    }
+
+    pub fn write_batch(&self, batch: &[opentelemetry_sdk::trace::SpanData]) {
+        self.with_writer(|w| {
+            let mut buffer = BufWriter::new(w);
+            for span in batch {
+                let _ = Self::span_to_writer(span, &mut buffer);
+            }
+        });
+    }
+
+    pub fn write_tracing_event(&self, event: &tracing::Event<'_>) {
+        self.with_writer(|w| {
+            let mut buffer = BufWriter::new(w);
+            let _ = Self::event_to_writer(event, &mut buffer);
+        });
+    }
+
+    fn with_writer<R>(&self, f: impl FnOnce(&mut dyn Write) -> R) -> R {
+        match &self.options.target {
+            Target::Stdout => f(&mut io::stdout()),
+            Target::Stderr => f(&mut io::stderr()),
+            Target::Pipe(p) => f(&mut *p.lock().expect("pipe lock poisoned")),
+        }
+    }
+
+    fn span_to_writer<W: io::Write>(span: &SpanData, w: &mut W) -> io::Result<()> {
         let span_type = span
             .attributes
             .iter()
@@ -165,6 +187,64 @@ impl SimpleConsoleSpanExporter {
 
         writeln!(w)
     }
+
+    fn event_to_writer<W: io::Write>(event: &tracing::Event<'_>, w: &mut W) -> io::Result<()> {
+        let timestamp: DateTime<Utc> = Utc::now();
+        let level = level_to_level_number(*event.metadata().level());
+        let target = event.metadata().module_path();
+
+        let mut visitor = FieldsVisitor {
+            message: None,
+            // TODO: support formatting the fields? Maybe according to `ConsoleOptions`.
+            // fields: Vec::new(),
+        };
+
+        event.record(&mut visitor);
+
+        let msg = visitor
+            .message
+            .unwrap_or_else(|| event.metadata().name().to_string());
+
+        write!(
+            w,
+            "{}",
+            DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+        )?;
+
+        level_int_to_text(level, w)?;
+
+        if let Some(target) = target {
+            write!(w, " {}", DIMMED_AND_ITALIC.paint(target))?;
+        }
+
+        write!(w, " {}", BOLD.paint(msg))?;
+
+        writeln!(w)
+    }
+}
+
+/// Internal helper to `visit` a `tracing::Event` and collect relevant fields.
+struct FieldsVisitor {
+    message: Option<String>,
+    // fields: Vec<(&'static str, String)>,
+}
+
+impl Visit for FieldsVisitor {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "message" {
+            self.message = Some(value.to_string());
+        } else {
+            // self.fields.push((field.name(), value.to_string()));
+        }
+    }
+
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.message = Some(format!("{value:?}"));
+        } else {
+            // self.fields.push((field.name(), format!("{value:?}")));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -177,7 +257,7 @@ mod tests {
 
     use crate::{
         config::{ConsoleOptions, Target},
-        internal::exporters::console::SimpleConsoleSpanExporter,
+        internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanExporter},
         set_local_logfire,
         tests::DeterministicExporter,
     };
@@ -194,7 +274,11 @@ mod tests {
         let config = crate::configure()
             .send_to_logfire(false)
             .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
-                DeterministicExporter::new(SimpleConsoleSpanExporter::new(console_options)),
+                DeterministicExporter::new(
+                    SimpleConsoleSpanExporter::new(ConsoleWriter::new(console_options).into()),
+                    file!(),
+                    line!(),
+                ),
             )))
             .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE);
@@ -224,7 +308,7 @@ mod tests {
         [2m1970-01-01T00:00:03.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:05.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:07.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:211:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:295:17, [3mbacktrace[0m=disabled backtrace
         "#);
     }
 }
