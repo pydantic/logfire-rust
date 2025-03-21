@@ -2,7 +2,11 @@
 //!
 //! See [`LogfireConfigBuilder`][crate::LogfireConfigBuilder] for documentation of all these options.
 
-use std::{fmt::Display, str::FromStr};
+use std::{
+    fmt::Display,
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 
 use opentelemetry_sdk::trace::{IdGenerator, SpanProcessor};
 use tracing::Level;
@@ -59,6 +63,7 @@ impl From<bool> for SendToLogfire {
 
 /// Options for controlling console output.
 #[expect(clippy::struct_excessive_bools)] // Config options, bools make sense here.
+#[derive(Debug)]
 pub struct ConsoleOptions {
     /// Whether to show colors in the console.
     pub colors: ConsoleColors,
@@ -76,6 +81,8 @@ pub struct ConsoleOptions {
     pub min_log_level: Level,
     /// Whether to print the URL of the Logfire project after initialization.
     pub show_project_link: bool,
+    /// Where to send output
+    pub target: Target,
 }
 
 impl Default for ConsoleOptions {
@@ -88,12 +95,13 @@ impl Default for ConsoleOptions {
             verbose: false,
             min_log_level: Level::INFO,
             show_project_link: true,
+            target: Target::default(),
         }
     }
 }
 
 /// Whether to show colors in the console.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub enum ConsoleColors {
     /// Decide based on the terminal.
     #[default]
@@ -105,7 +113,7 @@ pub enum ConsoleColors {
 }
 
 /// Style for rendering spans in the console.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub enum SpanStyle {
     /// Show spans in a simple format.
     Simple,
@@ -114,6 +122,36 @@ pub enum SpanStyle {
     /// Show parent span ids when printing spans.
     #[default]
     ShowParents,
+}
+
+/// Console target, either `stdout`, `stderr` or a custom pipe.
+#[derive(Default)]
+pub enum Target {
+    /// Console output will be sent to standard output.
+    Stdout,
+    /// Console output will be sent to standard error.
+    #[default]
+    Stderr,
+    /// Console output will be sent to a custom pipe.
+    ///
+    /// The outer Arc is useful for testing, (i.e. allows inspecting the output
+    /// from a different source.)
+    ///
+    /// The use of a `Mutex` might not be great for performance due to repeated
+    /// locking, however performance sensitive use cases might want to just use
+    /// stderr (which does lock but is probably better optimized) or not use
+    /// console output at all.
+    Pipe(Arc<Mutex<dyn std::io::Write + Send + 'static>>),
+}
+
+impl std::fmt::Debug for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Target::Stdout => write!(f, "stdout"),
+            Target::Stderr => write!(f, "stderr"),
+            Target::Pipe(_) => write!(f, "pipe"),
+        }
+    }
 }
 
 /// Options primarily used for testing by Logfire developers.
