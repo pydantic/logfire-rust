@@ -34,7 +34,7 @@ impl SimpleConsoleSpanExporter {
         match &self.console_options.target {
             Target::Stdout => f(&mut io::stdout()),
             Target::Stderr => f(&mut io::stderr()),
-            Target::Pipe(p) => f(&mut *p.lock().unwrap()),
+            Target::Pipe(p) => f(&mut *p.lock().expect("pipe lock poisoned")),
         }
     }
 }
@@ -162,7 +162,7 @@ impl SimpleConsoleSpanExporter {
             }
         }
 
-        write!(w, "\n")
+        writeln!(w)
     }
 }
 

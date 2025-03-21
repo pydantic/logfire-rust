@@ -473,7 +473,7 @@ impl LogfireConfigBuilder {
         if console_options.is_none() && !send_to_logfire {
             // FIXME: in Python the console and logfire settings are independent, we should not have
             // "fallback" like this.
-            console_options = Some(ConsoleOptions::default())
+            console_options = Some(ConsoleOptions::default());
         }
 
         if let Some(console_options) = console_options {
