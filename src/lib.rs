@@ -96,28 +96,21 @@
 //!
 //! All code instrumented with `log` will therefore automatically be captured by Logfire.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt;
 use std::panic::PanicHookInfo;
-use std::sync::{Arc, LazyLock, Once};
+use std::sync::{Arc, Once};
 use std::{backtrace::Backtrace, env::VarError, str::FromStr, sync::OnceLock, time::Duration};
 
 use bridges::tracing::LogfireTracingLayer;
-use chrono::{DateTime, Utc};
-use config::{AdvancedOptions, BoxedSpanProcessor, SendToLogfire};
-use futures_util::future::BoxFuture;
-use internal::constants::ATTRIBUTES_SPAN_TYPE_KEY;
-use nu_ansi_term::{Color, Style};
-use opentelemetry::Value;
+use config::{AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, SendToLogfire};
+use internal::exporters::console::SimpleConsoleSpanExporter;
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_otlp::SpanExporter;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::trace::{
     BatchConfigBuilder, BatchSpanProcessor, SimpleSpanProcessor, SpanProcessor,
 };
-use opentelemetry_sdk::trace::{SdkTracerProvider, SpanData, Tracer};
+use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use thiserror::Error;
 use tracing::Subscriber;
 use tracing::level_filters::LevelFilter;
@@ -243,7 +236,7 @@ pub fn configure() -> LogfireConfigBuilder {
     LogfireConfigBuilder {
         send_to_logfire: None,
         token: None,
-        console_mode: ConsoleMode::Fallback,
+        console_options: None,
         additional_span_processors: Vec::new(),
         advanced: None,
         install_panic_handler: false,
@@ -260,10 +253,7 @@ pub struct LogfireConfigBuilder {
     // service_name: Option<String>,
     // service_version: Option<String>,
     // environment: Option<String>,
-
-    // TODO: Python supports
-    // console: ConsoleOptions | Literal[False] | None = None,
-    console_mode: ConsoleMode,
+    console_options: Option<ConsoleOptions>,
 
     // config_dir: Option<PathBuf>,
     // data_dir: Option<Path>,
@@ -317,7 +307,20 @@ impl LogfireConfigBuilder {
     /// Whether to log to the console.
     #[must_use]
     pub fn console_mode(mut self, console_mode: ConsoleMode) -> Self {
-        self.console_mode = console_mode;
+        // FIXME: remove this API and make it match Python, see `console_options()` below
+        match console_mode {
+            ConsoleMode::Fallback => {
+                self.console_options = None;
+            }
+            ConsoleMode::Force => self.console_options = Some(ConsoleOptions::default()),
+        }
+        self
+    }
+
+    /// Set the options for logging to console.
+    #[cfg(test)] // FIXME: not all options exposed actually work yet, so not public
+    pub fn console_options(mut self, console_options: ConsoleOptions) -> Self {
+        self.console_options = Some(console_options);
         self
     }
 
@@ -463,27 +466,19 @@ impl LogfireConfigBuilder {
                 )
                 .build(),
             );
-        } else {
-            tracer_provider_builder = tracer_provider_builder.with_span_processor(
-                SimpleSpanProcessor::new(Box::new(LogfireSpanExporter {
-                    write_console: true,
-                    inner: None,
-                })),
-            );
         }
 
         // TODO make this behaviour closer to Python
-        let write_console = match self.console_mode {
-            ConsoleMode::Fallback => send_to_logfire,
-            ConsoleMode::Force => true,
-        };
+        let mut console_options = self.console_options;
+        if console_options.is_none() && !send_to_logfire {
+            // FIXME: in Python the console and logfire settings are independent, we should not have
+            // "fallback" like this.
+            console_options = Some(ConsoleOptions::default());
+        }
 
-        if write_console {
+        if let Some(console_options) = console_options {
             tracer_provider_builder = tracer_provider_builder.with_span_processor(
-                SimpleSpanProcessor::new(Box::new(LogfireSpanExporter {
-                    write_console: true,
-                    inner: None,
-                })),
+                SimpleSpanProcessor::new(Box::new(SimpleConsoleSpanExporter::new(console_options))),
             );
         }
 
@@ -627,162 +622,6 @@ fn get_optional_env(
         }
     }
 }
-
-/// Simple span exporter which attempts to match the "simple" Python logfire console exporter.
-#[derive(Debug)]
-struct LogfireSpanExporter {
-    write_console: bool,
-    inner: Option<SpanExporter>,
-}
-
-impl opentelemetry_sdk::trace::SpanExporter for LogfireSpanExporter {
-    fn export(
-        &mut self,
-        batch: Vec<opentelemetry_sdk::trace::SpanData>,
-    ) -> BoxFuture<'static, opentelemetry_sdk::error::OTelSdkResult> {
-        if self.write_console {
-            for span in &batch {
-                let mut buffer = String::new();
-                if Self::print_span(span, &mut buffer).is_ok() && !buffer.is_empty() {
-                    println!("{buffer}");
-                };
-            }
-        }
-        if let Some(inner) = &mut self.inner {
-            inner.export(batch)
-        } else {
-            Box::pin(async { Ok(()) })
-        }
-    }
-
-    fn shutdown(&mut self) -> opentelemetry_sdk::error::OTelSdkResult {
-        if let Some(inner) = &mut self.inner {
-            inner.shutdown()
-        } else {
-            Ok(())
-        }
-    }
-
-    fn force_flush(&mut self) -> opentelemetry_sdk::error::OTelSdkResult {
-        if let Some(inner) = &mut self.inner {
-            inner.force_flush()
-        } else {
-            Ok(())
-        }
-    }
-
-    fn set_resource(&mut self, resource: &opentelemetry_sdk::Resource) {
-        if let Some(inner) = &mut self.inner {
-            inner.set_resource(resource);
-        }
-    }
-}
-
-static DIMMED: LazyLock<Style> = LazyLock::new(|| Style::new().dimmed());
-static DIMMED_AND_ITALIC: LazyLock<Style> = LazyLock::new(|| DIMMED.italic());
-static BOLD: LazyLock<Style> = LazyLock::new(|| Style::new().bold());
-static ITALIC: LazyLock<Style> = LazyLock::new(|| Style::new().italic());
-
-fn level_int_to_text<W: fmt::Write>(level: i64, w: &mut W) -> fmt::Result {
-    match level {
-        1 => write!(w, "{}", Color::Purple.paint(" TRACE")),
-        2..=5 => write!(w, "{}", Color::Blue.paint(" DEBUG")),
-        6..=9 => write!(w, "{}", Color::Green.paint("  INFO")),
-        10..=13 => write!(w, "{}", Color::Yellow.paint("  WARN")),
-        14.. => write!(w, "{}", Color::Red.paint(" ERROR")),
-        _ => write!(w, "{}", Color::DarkGray.paint(" -----")),
-    }
-}
-
-impl LogfireSpanExporter {
-    fn print_span<W: fmt::Write>(span: &SpanData, w: &mut W) -> fmt::Result {
-        let span_type = span
-            .attributes
-            .iter()
-            .find_map(|attr| {
-                if attr.key.as_str() == ATTRIBUTES_SPAN_TYPE_KEY {
-                    Some(attr.value.as_str())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(Cow::Borrowed("span"));
-
-        // only print for pending span and logs
-        if span_type == "pending_span" {
-            return Ok(());
-        }
-
-        let timestamp: DateTime<Utc> = span.start_time.into();
-        let mut msg = None;
-        let mut level = None;
-        let mut target = None;
-
-        let mut fields = Vec::new();
-
-        for kv in &span.attributes {
-            match kv.key.as_str() {
-                "logfire.msg" => {
-                    msg = Some(kv.value.as_str());
-                }
-                "logfire.level_num" => {
-                    if let Value::I64(val) = kv.value {
-                        level = Some(val);
-                    }
-                }
-                "code.namespace" => target = Some(kv.value.as_str()),
-                // Filter out known values
-                ATTRIBUTES_SPAN_TYPE_KEY
-                | "logfire.json_schema"
-                | "code.filepath"
-                | "code.lineno"
-                | "thread.id"
-                | "thread.name"
-                | "logfire.null_args"
-                | "busy_ns"
-                | "idle_ns" => (),
-                _ => {
-                    fields.push(kv);
-                }
-            }
-        }
-
-        if msg.is_none() {
-            msg = Some(span.name.clone());
-        }
-
-        write!(
-            w,
-            "{}",
-            DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-        )?;
-        if let Some(level) = level {
-            level_int_to_text(level, w)?;
-        }
-
-        if let Some(target) = target {
-            write!(w, " {}", DIMMED_AND_ITALIC.paint(target))?;
-        }
-
-        if let Some(msg) = msg {
-            write!(w, " {}", BOLD.paint(msg))?;
-        }
-
-        if !fields.is_empty() {
-            for (idx, kv) in fields.iter().enumerate() {
-                let key = kv.key.as_str();
-                let value = kv.value.as_str();
-                write!(w, " {}={value}", ITALIC.paint(key))?;
-                if idx < fields.len() - 1 {
-                    write!(w, ",")?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
-
 struct LogfireTracer {
     inner: Tracer,
     handle_panics: bool,
@@ -1050,7 +889,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            990,
+                            829,
                         ),
                     },
                     KeyValue {
@@ -1176,7 +1015,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            991,
+                            830,
                         ),
                     },
                     KeyValue {
@@ -1312,7 +1151,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            991,
+                            830,
                         ),
                     },
                     KeyValue {
@@ -1454,7 +1293,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            992,
+                            831,
                         ),
                     },
                     KeyValue {
@@ -1596,7 +1435,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            994,
+                            833,
                         ),
                     },
                     KeyValue {
@@ -1766,7 +1605,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            995,
+                            834,
                         ),
                     },
                     KeyValue {
@@ -1845,7 +1684,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "src/lib.rs:996:17",
+                                "src/lib.rs:835:17",
                             ),
                         ),
                     },
@@ -1912,7 +1751,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            594,
+                            589,
                         ),
                     },
                     KeyValue {
@@ -2010,7 +1849,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            990,
+                            829,
                         ),
                     },
                     KeyValue {
