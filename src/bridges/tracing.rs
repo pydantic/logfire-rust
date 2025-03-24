@@ -3,7 +3,7 @@ use opentelemetry::{
     global::ObjectSafeSpan,
     trace::{SamplingDecision, TraceContextExt},
 };
-use tracing::{Subscriber, span};
+use tracing::Subscriber;
 use tracing_opentelemetry::{OtelData, PreSampledTracer};
 use tracing_subscriber::{Layer, registry::LookupSpan};
 
@@ -31,28 +31,9 @@ where
                 "logfire.level_num",
                 level_to_level_number(*attrs.metadata().level()),
             ));
-
             attributes.push(KeyValue::new("logfire.span_type", "span"));
-        }
-    }
 
-    // Emit a pending span when this span is first entered, if this span will be sampled.
-    fn on_enter(&self, id: &span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
-        /// Dummy struct to mark that we've already entered this span.
-        struct LogfireSpanEntered;
-
-        let span = ctx.span(id).expect("span not found");
-        let mut extensions = span.extensions_mut();
-
-        if extensions.get_mut::<LogfireSpanEntered>().is_some() {
-            return;
-        }
-
-        extensions.insert(LogfireSpanEntered);
-
-        // Guaranteed to be on first entering of the span
-
-        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
+            // Emit a pending span, if this span will be sampled.
             let context = self.0.sampled_context(otel_data);
             let sampling_result = otel_data
                 .builder
