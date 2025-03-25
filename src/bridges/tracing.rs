@@ -44,7 +44,7 @@ where
     /// We do this on first enter, not on creation, because some SDKs set the parent span after
     /// creation.
     ///
-    /// e.g. https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/blob/5830c9113b0d42b72167567bf8e5f4c6b20933c8/axum-tracing-opentelemetry/src/middleware/trace_extractor.rs#L132
+    /// e.g. <https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/blob/5830c9113b0d42b72167567bf8e5f4c6b20933c8/axum-tracing-opentelemetry/src/middleware/trace_extractor.rs#L132>
     fn on_enter(&self, id: &tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
         let span = ctx.span(id).expect("span not found");
         let mut extensions = span.extensions_mut();
