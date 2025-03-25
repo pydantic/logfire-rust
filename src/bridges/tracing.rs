@@ -36,7 +36,27 @@ where
                 level_to_level_number(*attrs.metadata().level()),
             ));
             attributes.push(KeyValue::new("logfire.span_type", "span"));
+        }
+    }
 
+    /// Emit a pending span when this span is first entered, if this span will be sampled.
+    ///
+    /// We do this on first enter, not on creation, because some SDKs set the parent span after
+    /// creation.
+    ///
+    /// e.g. https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/blob/5830c9113b0d42b72167567bf8e5f4c6b20933c8/axum-tracing-opentelemetry/src/middleware/trace_extractor.rs#L132
+    fn on_enter(&self, id: &tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        let span = ctx.span(id).expect("span not found");
+        let mut extensions = span.extensions_mut();
+
+        if extensions.get_mut::<LogfirePendingSpanSent>().is_some() {
+            return;
+        }
+
+        extensions.insert(LogfirePendingSpanSent);
+
+        // Guaranteed to be on first entering of the span
+        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
             // Emit a pending span, if this span will be sampled.
             let context = self.0.sampled_context(otel_data);
             let sampling_result = otel_data
@@ -119,6 +139,39 @@ where
         });
     }
 }
+
+/// Helper to print spans when dropped; if it was never entered then the pending span
+/// is never sent (the console writer uses pending spans).
+///
+/// This needs to be a separate layer so that it can access the `OtelData` before the
+/// `tracing_opentelemetry` layer removes it.
+pub struct LogfireTracingPendingSpanNotSentLayer;
+
+impl<S> Layer<S> for LogfireTracingPendingSpanNotSentLayer
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
+    fn on_close(&self, id: tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        let span = ctx.span(&id).expect("span not found");
+        let mut extensions = span.extensions_mut();
+
+        if extensions.get_mut::<LogfirePendingSpanSent>().is_some() {
+            return;
+        }
+
+        // Guaranteed to be on first entering of the span
+        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
+            try_with_logfire_tracer(|tracer| {
+                if let Some(writer) = &tracer.console_writer {
+                    writer.write_tracing_opentelemetry_data(otel_data);
+                }
+            });
+        }
+    }
+}
+
+/// Dummy struct to mark that we've already entered this span.
+struct LogfirePendingSpanSent;
 
 pub(crate) fn level_to_level_number(level: tracing::Level) -> i64 {
     // These numbers were chosen to match the values emitted by the Python logfire SDK.
@@ -222,18 +275,18 @@ impl Visit for FieldsVisitor {
 
 #[cfg(test)]
 mod tests {
-    use core::time;
     use std::sync::{Arc, Mutex};
 
     use insta::{assert_debug_snapshot, assert_snapshot};
     use opentelemetry_sdk::trace::{InMemorySpanExporterBuilder, SimpleSpanProcessor};
-    use regex::{Captures, Regex};
     use tracing::{Level, level_filters::LevelFilter};
 
     use crate::{
         config::{AdvancedOptions, ConsoleOptions, Target},
         set_local_logfire,
-        test_utils::{DeterministicExporter, DeterministicIdGenerator},
+        test_utils::{
+            DeterministicExporter, DeterministicIdGenerator, remap_timestamps_in_console_output,
+        },
     };
 
     #[test]
@@ -286,7 +339,7 @@ mod tests {
                 },
                 parent_span_id: 0000000000000000,
                 span_kind: Internal,
-                name: "event src/bridges/tracing.rs:260",
+                name: "event src/bridges/tracing.rs:313",
                 start_time: SystemTime {
                     tv_sec: 0,
                     tv_nsec: 0,
@@ -825,122 +878,6 @@ mod tests {
             SpanData {
                 span_context: SpanContext {
                     trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000f7,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f6,
-                span_kind: Internal,
-                name: "debug span",
-                start_time: SystemTime {
-                    tv_sec: 5,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 5,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/bridges/tracing.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::bridges::tracing::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            18,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "bridges::tracing::tests::test_tracing_bridge",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "pending_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.pending_parent_id",
-                        ),
-                        value: String(
-                            Owned(
-                                "00000000000000f2",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
                     span_id: 00000000000000f6,
                     trace_flags: TraceFlags(
                         1,
@@ -1063,123 +1000,7 @@ mod tests {
             SpanData {
                 span_context: SpanContext {
                     trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000f9,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f8,
-                span_kind: Internal,
-                name: "debug span with explicit parent",
-                start_time: SystemTime {
-                    tv_sec: 7,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 7,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/bridges/tracing.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::bridges::tracing::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            19,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "bridges::tracing::tests::test_tracing_bridge",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "pending_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.pending_parent_id",
-                        ),
-                        value: String(
-                            Owned(
-                                "00000000000000f2",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000f8,
+                    span_id: 00000000000000f7,
                     trace_flags: TraceFlags(
                         1,
                     ),
@@ -1458,7 +1279,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     value: I64(
-                                        268,
+                                        321,
                                     ),
                                 },
                             ],
@@ -1524,7 +1345,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     value: I64(
-                                        269,
+                                        322,
                                     ),
                                 },
                             ],
@@ -1586,15 +1407,7 @@ mod tests {
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
-
-        // Replace all timestamps in output to make them deterministic
-        let mut timestamp = chrono::DateTime::UNIX_EPOCH;
-        let re = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z").unwrap();
-        let output = re.replace_all(output, |_: &Captures<'_>| {
-            let replaced = timestamp.to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
-            timestamp += time::Duration::from_micros(1);
-            replaced
-        });
+        let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @r#"
         [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event[0m

@@ -1,7 +1,7 @@
 use std::{
-    borrow::Cow,
     io::{self, BufWriter, Write},
     sync::{Arc, LazyLock},
+    time::SystemTime,
 };
 
 use chrono::{DateTime, Utc};
@@ -10,11 +10,12 @@ use nu_ansi_term::{Color, Style};
 use opentelemetry::Value;
 use opentelemetry_sdk::trace::SpanData;
 use tracing::field::Visit;
+use tracing_opentelemetry::OtelData;
 
 use crate::{
     bridges::tracing::level_to_level_number,
     config::{ConsoleOptions, Target},
-    internal::constants::ATTRIBUTES_SPAN_TYPE_KEY,
+    internal::{constants::ATTRIBUTES_SPAN_TYPE_KEY, span_data_ext::SpanDataExt},
 };
 
 /// Simple span exporter which attempts to match the "simple" Python logfire console exporter.
@@ -92,6 +93,13 @@ impl ConsoleWriter {
         });
     }
 
+    pub fn write_tracing_opentelemetry_data(&self, data: &OtelData) {
+        self.with_writer(|w| {
+            let mut buffer = BufWriter::new(w);
+            let _ = Self::otel_data_to_writer(data, &mut buffer);
+        });
+    }
+
     fn with_writer<R>(&self, f: impl FnOnce(&mut dyn Write) -> R) -> R {
         match &self.options.target {
             Target::Stdout => f(&mut io::stdout()),
@@ -101,20 +109,8 @@ impl ConsoleWriter {
     }
 
     fn span_to_writer<W: io::Write>(span: &SpanData, w: &mut W) -> io::Result<()> {
-        let span_type = span
-            .attributes
-            .iter()
-            .find_map(|attr| {
-                if attr.key.as_str() == ATTRIBUTES_SPAN_TYPE_KEY {
-                    Some(attr.value.as_str())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(Cow::Borrowed("span"));
-
         // only print for pending span and logs
-        if span_type == "span" {
+        if span.get_span_type().is_none_or(|ty| ty == "span") {
             return Ok(());
         }
 
@@ -229,6 +225,85 @@ impl ConsoleWriter {
 
         writeln!(w)
     }
+
+    fn otel_data_to_writer<W: io::Write>(
+        data: &tracing_opentelemetry::OtelData,
+        w: &mut W,
+    ) -> io::Result<()> {
+        let timestamp: DateTime<Utc> = data
+            .builder
+            .start_time
+            .unwrap_or_else(SystemTime::now)
+            .into();
+
+        let mut msg = None;
+        let mut level = None;
+        let mut target = None;
+
+        let mut fields = Vec::new();
+
+        for kv in data.builder.attributes.iter().flatten() {
+            match kv.key.as_str() {
+                "logfire.msg" => {
+                    msg = Some(kv.value.as_str());
+                }
+                "logfire.level_num" => {
+                    if let Value::I64(val) = kv.value {
+                        level = Some(val);
+                    }
+                }
+                "code.namespace" => target = Some(kv.value.as_str()),
+                // Filter out known values
+                ATTRIBUTES_SPAN_TYPE_KEY
+                | "logfire.json_schema"
+                | "logfire.pending_parent_id"
+                | "code.filepath"
+                | "code.lineno"
+                | "thread.id"
+                | "thread.name"
+                | "logfire.null_args"
+                | "busy_ns"
+                | "idle_ns" => (),
+                _ => {
+                    fields.push(kv);
+                }
+            }
+        }
+
+        if msg.is_none() {
+            msg = Some(data.builder.name.clone());
+        }
+
+        write!(
+            w,
+            "{}",
+            DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+        )?;
+        if let Some(level) = level {
+            level_int_to_text(level, w)?;
+        }
+
+        if let Some(target) = target {
+            write!(w, " {}", DIMMED_AND_ITALIC.paint(target))?;
+        }
+
+        if let Some(msg) = msg {
+            write!(w, " {}", BOLD.paint(msg))?;
+        }
+
+        if !fields.is_empty() {
+            for (idx, kv) in fields.iter().enumerate() {
+                let key = kv.key.as_str();
+                let value = kv.value.as_str();
+                write!(w, " {}={value}", ITALIC.paint(key))?;
+                if idx < fields.len() - 1 {
+                    write!(w, ",")?;
+                }
+            }
+        }
+
+        writeln!(w)
+    }
 }
 
 /// Internal helper to `visit` a `tracing::Event` and collect relevant fields.
@@ -260,14 +335,12 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use insta::assert_snapshot;
-    use opentelemetry_sdk::trace::SimpleSpanProcessor;
     use tracing::{Level, level_filters::LevelFilter};
 
     use crate::{
         config::{ConsoleOptions, Target},
-        internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanExporter},
         set_local_logfire,
-        test_utils::DeterministicExporter,
+        test_utils::remap_timestamps_in_console_output,
     };
 
     #[test]
@@ -282,13 +355,7 @@ mod tests {
         let handler = crate::configure()
             .local()
             .send_to_logfire(false)
-            .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
-                DeterministicExporter::new(
-                    SimpleConsoleSpanExporter::new(ConsoleWriter::new(console_options).into()),
-                    file!(),
-                    line!(),
-                ),
-            )))
+            .console_options(console_options)
             .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
@@ -312,14 +379,15 @@ mod tests {
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
+        let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @r#"
         [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
-        [2m1970-01-01T00:00:01.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
-        [2m1970-01-01T00:00:03.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
-        [2m1970-01-01T00:00:05.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
-        [2m1970-01-01T00:00:07.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:306:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
+        [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
+        [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
+        [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
+        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:373:17, [3mbacktrace[0m=disabled backtrace
         "#);
     }
 }
