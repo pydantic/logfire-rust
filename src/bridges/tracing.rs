@@ -165,11 +165,16 @@ mod tests {
         let guard = set_local_logfire(handler);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
+            tracing::info!("root event"); // FIXME: this event is not emitted
+            tracing::info!(name: "root event with value", field_value = 1); // FIXME: this event is not emitted
+
             let root = tracing::span!(Level::INFO, "root span").entered();
             let _ = tracing::span!(Level::INFO, "hello world span").entered();
             let _ = tracing::span!(Level::DEBUG, "debug span");
             let _ = tracing::span!(parent: &root, Level::DEBUG, "debug span with explicit parent");
+
             tracing::info!("hello world log");
+            tracing::info!(name: "hello world log with value", field_value = 1);
         });
 
         let spans = exporter.get_finished_spans().unwrap();
@@ -224,7 +229,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            13,
+                            16,
                         ),
                     },
                     KeyValue {
@@ -330,7 +335,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            14,
+                            17,
                         ),
                     },
                     KeyValue {
@@ -446,7 +451,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            14,
+                            17,
                         ),
                     },
                     KeyValue {
@@ -568,7 +573,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            15,
+                            18,
                         ),
                     },
                     KeyValue {
@@ -684,7 +689,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            15,
+                            18,
                         ),
                     },
                     KeyValue {
@@ -806,7 +811,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            16,
+                            19,
                         ),
                     },
                     KeyValue {
@@ -922,7 +927,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            16,
+                            19,
                         ),
                     },
                     KeyValue {
@@ -1044,7 +1049,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            13,
+                            16,
                         ),
                     },
                     KeyValue {
@@ -1155,7 +1160,73 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     value: I64(
-                                        172,
+                                        176,
+                                    ),
+                                },
+                            ],
+                            dropped_attributes_count: 0,
+                        },
+                        Event {
+                            name: "hello world log with value",
+                            timestamp: SystemTime {
+                                tv_sec: 9,
+                                tv_nsec: 0,
+                            },
+                            attributes: [
+                                KeyValue {
+                                    key: Static(
+                                        "level",
+                                    ),
+                                    value: String(
+                                        Static(
+                                            "INFO",
+                                        ),
+                                    ),
+                                },
+                                KeyValue {
+                                    key: Static(
+                                        "target",
+                                    ),
+                                    value: String(
+                                        Static(
+                                            "logfire::bridges::tracing::tests",
+                                        ),
+                                    ),
+                                },
+                                KeyValue {
+                                    key: Static(
+                                        "field_value",
+                                    ),
+                                    value: I64(
+                                        1,
+                                    ),
+                                },
+                                KeyValue {
+                                    key: Static(
+                                        "code.filepath",
+                                    ),
+                                    value: String(
+                                        Static(
+                                            "src/bridges/tracing.rs",
+                                        ),
+                                    ),
+                                },
+                                KeyValue {
+                                    key: Static(
+                                        "code.namespace",
+                                    ),
+                                    value: String(
+                                        Static(
+                                            "logfire::bridges::tracing::tests",
+                                        ),
+                                    ),
+                                },
+                                KeyValue {
+                                    key: Static(
+                                        "code.lineno",
+                                    ),
+                                    value: I64(
+                                        177,
                                     ),
                                 },
                             ],
@@ -1201,11 +1272,16 @@ mod tests {
         let guard = crate::set_local_logfire(handler);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
+            tracing::info!("root event");
+            tracing::info!(name: "root event with value", field_value = 1);
+
             let root = tracing::span!(Level::INFO, "root span").entered();
             let _ = tracing::span!(Level::INFO, "hello world span").entered();
             let _ = tracing::span!(Level::DEBUG, "debug span");
             let _ = tracing::span!(parent: &root, Level::DEBUG, "debug span with explicit parent");
+
             tracing::info!("hello world log");
+            tracing::info!(name: "hello world log with value", field_value = 1);
         });
 
         guard.shutdown_handler.shutdown().unwrap();
@@ -1223,11 +1299,14 @@ mod tests {
         });
 
         assert_snapshot!(output, @r#"
-        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot span[0m
-        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world span[0m
-        [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span[0m
-        [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span with explicit parent[0m
-        [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log[0m
+        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event[0m
+        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event with value[0m [3mfield_value[0m=1
+        [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot span[0m
+        [2m1970-01-01T00:00:00.000003Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world span[0m
+        [2m1970-01-01T00:00:00.000004Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span[0m
+        [2m1970-01-01T00:00:00.000005Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span with explicit parent[0m
+        [2m1970-01-01T00:00:00.000006Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log[0m
+        [2m1970-01-01T00:00:00.000007Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log with value[0m [3mfield_value[0m=1
         "#);
     }
 }

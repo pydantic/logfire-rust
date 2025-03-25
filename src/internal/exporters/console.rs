@@ -195,7 +195,6 @@ impl ConsoleWriter {
 
         let mut visitor = FieldsVisitor {
             message: None,
-            // TODO: support formatting the fields? Maybe according to `ConsoleOptions`.
             fields: Vec::new(),
         };
 
@@ -320,7 +319,7 @@ mod tests {
         [2m1970-01-01T00:00:03.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:05.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:07.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:307:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:306:17, [3mbacktrace[0m=disabled backtrace
         "#);
     }
 }
