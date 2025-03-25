@@ -92,7 +92,7 @@ impl SimpleConsoleSpanExporter {
             .unwrap_or(Cow::Borrowed("span"));
 
         // only print for pending span and logs
-        if span_type == "pending_span" {
+        if span_type == "span" {
             return Ok(());
         }
 
@@ -117,6 +117,7 @@ impl SimpleConsoleSpanExporter {
                 // Filter out known values
                 ATTRIBUTES_SPAN_TYPE_KEY
                 | "logfire.json_schema"
+                | "logfire.pending_parent_id"
                 | "code.filepath"
                 | "code.lineno"
                 | "thread.id"
@@ -218,12 +219,12 @@ mod tests {
         let output = std::str::from_utf8(&output).unwrap();
 
         assert_snapshot!(output, @r#"
+        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
         [2m1970-01-01T00:00:01.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
         [2m1970-01-01T00:00:03.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:05.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:07.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:210:17, [3mbacktrace[0m=disabled backtrace
-        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
+        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:211:17, [3mbacktrace[0m=disabled backtrace
         "#);
     }
 }
