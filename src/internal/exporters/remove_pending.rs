@@ -87,6 +87,8 @@ mod tests {
             .with_additional_span_processor(
                 BatchSpanProcessor::builder(DeterministicExporter::new(
                     RemovePendingSpansExporter(exporter.clone()),
+                    file!(),
+                    line!(),
                 ))
                 .with_batch_config(
                     // Set a batch delay large enough that all spans will be in a single batch
