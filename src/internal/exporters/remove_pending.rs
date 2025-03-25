@@ -81,8 +81,8 @@ mod tests {
         let exporter = InMemorySpanExporterBuilder::new().build();
 
         let guard = crate::configure()
+            .local()
             .send_to_logfire(false)
-            .install_panic_handler()
             .with_additional_span_processor(
                 BatchSpanProcessor::builder(DeterministicExporter::new(
                     RemovePendingSpansExporter(exporter.clone()),

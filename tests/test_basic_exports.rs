@@ -1,10 +1,16 @@
 //! Basic snapshot tests for data produced by the logfire APIs.
 
-use std::time::Duration;
+use std::sync::Arc;
 
 use insta::assert_debug_snapshot;
 use opentelemetry_sdk::{
-    metrics::{InMemoryMetricExporterBuilder, PeriodicReader},
+    Resource,
+    metrics::{
+        InMemoryMetricExporterBuilder, ManualReader,
+        data::ResourceMetrics,
+        exporter::{self},
+        reader::MetricReader,
+    },
     trace::{InMemorySpanExporterBuilder, SimpleSpanProcessor},
 };
 use tracing::{Level, level_filters::LevelFilter};
@@ -1171,7 +1177,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Owned(
-                            "tests/test_basic_exports.rs:50:13",
+                            "tests/test_basic_exports.rs:56:13",
                         ),
                     ),
                 },
@@ -1238,7 +1244,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        637,
+                        646,
                     ),
                 },
                 KeyValue {
@@ -1433,20 +1439,78 @@ fn test_basic_span() {
     "#);
 }
 
-#[test]
-fn test_basic_metrics() {
-    let exporter = InMemoryMetricExporterBuilder::new().build();
+#[derive(Clone, Debug)]
+struct SharedManualReader {
+    reader: Arc<ManualReader>,
+}
 
-    let interval = Duration::from_millis(500);
+impl SharedManualReader {
+    fn new(reader: ManualReader) -> Self {
+        Self {
+            reader: Arc::new(reader),
+        }
+    }
+
+    async fn export(&self, exporter: &mut dyn exporter::PushMetricExporter) {
+        let mut metrics = ResourceMetrics {
+            resource: Resource::builder_empty().build(),
+            scope_metrics: Vec::new(),
+        };
+        dbg!(&metrics);
+        self.reader.collect(&mut metrics).unwrap();
+        dbg!(&metrics);
+        exporter.export(&mut metrics).await.unwrap();
+    }
+}
+
+impl MetricReader for SharedManualReader {
+    fn register_pipeline(&self, pipeline: std::sync::Weak<opentelemetry_sdk::metrics::Pipeline>) {
+        self.reader.register_pipeline(pipeline);
+    }
+
+    fn collect(
+        &self,
+        rm: &mut opentelemetry_sdk::metrics::data::ResourceMetrics,
+    ) -> opentelemetry_sdk::metrics::MetricResult<()> {
+        self.reader.collect(rm)
+    }
+
+    fn force_flush(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.reader.force_flush()
+    }
+
+    fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.reader.shutdown()
+    }
+
+    fn temporality(
+        &self,
+        kind: opentelemetry_sdk::metrics::InstrumentKind,
+    ) -> opentelemetry_sdk::metrics::Temporality {
+        self.reader.temporality(kind)
+    }
+}
+
+#[tokio::test]
+async fn test_basic_metrics() {
+    let mut exporter = DeterministicExporter::new(
+        InMemoryMetricExporterBuilder::new().build(),
+        file!(),
+        line!(),
+    );
+
+    let reader = SharedManualReader::new(
+        ManualReader::builder()
+            .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
+            .build(),
+    );
 
     let handler = logfire::configure()
         .send_to_logfire(false)
-        .with_metrics_options(
-            MetricsOptions::default().with_additional_reader(
-                PeriodicReader::builder(exporter.clone())
-                    .with_interval(interval)
-                    .build(),
-            ),
+        .with_metrics_options(MetricsOptions::default().with_additional_reader(reader.clone()))
+        .with_advanced_options(
+            AdvancedOptions::default()
+                .with_resource(Resource::builder_empty().with_service_name("test").build()),
         )
         .finish()
         .unwrap();
@@ -1462,16 +1526,14 @@ fn test_basic_metrics() {
         .build();
 
     counter.add(1, &[]);
-
-    std::thread::sleep(interval * 2);
+    reader.export(&mut exporter).await;
 
     counter.add(2, &[]);
-
-    std::thread::sleep(interval * 2);
+    reader.export(&mut exporter).await;
 
     handler.shutdown().unwrap();
 
-    let metrics = exporter.get_finished_metrics().unwrap();
+    let metrics = exporter.inner().get_finished_metrics().unwrap();
 
     assert_debug_snapshot!(metrics, @r#"
     [
@@ -1480,31 +1542,10 @@ fn test_basic_metrics() {
                 inner: ResourceInner {
                     attrs: {
                         Static(
-                            "telemetry.sdk.name",
-                        ): String(
-                            Static(
-                                "opentelemetry",
-                            ),
-                        ),
-                        Static(
-                            "telemetry.sdk.language",
-                        ): String(
-                            Static(
-                                "rust",
-                            ),
-                        ),
-                        Static(
-                            "telemetry.sdk.version",
-                        ): String(
-                            Static(
-                                "0.28.0",
-                            ),
-                        ),
-                        Static(
                             "service.name",
                         ): String(
                             Static(
-                                "unknown_service",
+                                "test",
                             ),
                         ),
                     },
@@ -1533,14 +1574,14 @@ fn test_basic_metrics() {
                                     },
                                 ],
                                 start_time: SystemTime {
-                                    tv_sec: 1742912513,
-                                    tv_nsec: 696872000,
+                                    tv_sec: 0,
+                                    tv_nsec: 0,
                                 },
                                 time: SystemTime {
-                                    tv_sec: 1742912514,
-                                    tv_nsec: 195601000,
+                                    tv_sec: 1,
+                                    tv_nsec: 0,
                                 },
-                                temporality: Cumulative,
+                                temporality: Delta,
                                 is_monotonic: true,
                             },
                         },
@@ -1553,31 +1594,10 @@ fn test_basic_metrics() {
                 inner: ResourceInner {
                     attrs: {
                         Static(
-                            "telemetry.sdk.name",
-                        ): String(
-                            Static(
-                                "opentelemetry",
-                            ),
-                        ),
-                        Static(
-                            "telemetry.sdk.language",
-                        ): String(
-                            Static(
-                                "rust",
-                            ),
-                        ),
-                        Static(
-                            "telemetry.sdk.version",
-                        ): String(
-                            Static(
-                                "0.28.0",
-                            ),
-                        ),
-                        Static(
                             "service.name",
                         ): String(
                             Static(
-                                "unknown_service",
+                                "test",
                             ),
                         ),
                     },
@@ -1601,165 +1621,19 @@ fn test_basic_metrics() {
                                 data_points: [
                                     SumDataPoint {
                                         attributes: [],
-                                        value: 3,
+                                        value: 2,
                                         exemplars: [],
                                     },
                                 ],
                                 start_time: SystemTime {
-                                    tv_sec: 1742912513,
-                                    tv_nsec: 696872000,
+                                    tv_sec: 1,
+                                    tv_nsec: 0,
                                 },
                                 time: SystemTime {
-                                    tv_sec: 1742912514,
-                                    tv_nsec: 698014000,
+                                    tv_sec: 2,
+                                    tv_nsec: 0,
                                 },
-                                temporality: Cumulative,
-                                is_monotonic: true,
-                            },
-                        },
-                    ],
-                },
-            ],
-        },
-        ResourceMetrics {
-            resource: Resource {
-                inner: ResourceInner {
-                    attrs: {
-                        Static(
-                            "telemetry.sdk.name",
-                        ): String(
-                            Static(
-                                "opentelemetry",
-                            ),
-                        ),
-                        Static(
-                            "telemetry.sdk.language",
-                        ): String(
-                            Static(
-                                "rust",
-                            ),
-                        ),
-                        Static(
-                            "telemetry.sdk.version",
-                        ): String(
-                            Static(
-                                "0.28.0",
-                            ),
-                        ),
-                        Static(
-                            "service.name",
-                        ): String(
-                            Static(
-                                "unknown_service",
-                            ),
-                        ),
-                    },
-                    schema_url: None,
-                },
-            },
-            scope_metrics: [
-                ScopeMetrics {
-                    scope: InstrumentationScope {
-                        name: "logfire",
-                        version: None,
-                        schema_url: None,
-                        attributes: [],
-                    },
-                    metrics: [
-                        Metric {
-                            name: "basic_counter",
-                            description: "",
-                            unit: "",
-                            data: Sum {
-                                data_points: [
-                                    SumDataPoint {
-                                        attributes: [],
-                                        value: 3,
-                                        exemplars: [],
-                                    },
-                                ],
-                                start_time: SystemTime {
-                                    tv_sec: 1742912513,
-                                    tv_nsec: 696872000,
-                                },
-                                time: SystemTime {
-                                    tv_sec: 1742912515,
-                                    tv_nsec: 202834000,
-                                },
-                                temporality: Cumulative,
-                                is_monotonic: true,
-                            },
-                        },
-                    ],
-                },
-            ],
-        },
-        ResourceMetrics {
-            resource: Resource {
-                inner: ResourceInner {
-                    attrs: {
-                        Static(
-                            "telemetry.sdk.name",
-                        ): String(
-                            Static(
-                                "opentelemetry",
-                            ),
-                        ),
-                        Static(
-                            "telemetry.sdk.language",
-                        ): String(
-                            Static(
-                                "rust",
-                            ),
-                        ),
-                        Static(
-                            "telemetry.sdk.version",
-                        ): String(
-                            Static(
-                                "0.28.0",
-                            ),
-                        ),
-                        Static(
-                            "service.name",
-                        ): String(
-                            Static(
-                                "unknown_service",
-                            ),
-                        ),
-                    },
-                    schema_url: None,
-                },
-            },
-            scope_metrics: [
-                ScopeMetrics {
-                    scope: InstrumentationScope {
-                        name: "logfire",
-                        version: None,
-                        schema_url: None,
-                        attributes: [],
-                    },
-                    metrics: [
-                        Metric {
-                            name: "basic_counter",
-                            description: "",
-                            unit: "",
-                            data: Sum {
-                                data_points: [
-                                    SumDataPoint {
-                                        attributes: [],
-                                        value: 3,
-                                        exemplars: [],
-                                    },
-                                ],
-                                start_time: SystemTime {
-                                    tv_sec: 1742912513,
-                                    tv_nsec: 696872000,
-                                },
-                                time: SystemTime {
-                                    tv_sec: 1742912515,
-                                    tv_nsec: 705693000,
-                                },
-                                temporality: Cumulative,
+                                temporality: Delta,
                                 is_monotonic: true,
                             },
                         },

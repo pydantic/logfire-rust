@@ -163,6 +163,8 @@ pub struct AdvancedOptions {
     pub(crate) base_url: String,
     /// Generator for trace and span IDs.
     pub(crate) id_generator: Option<BoxedIdGenerator>,
+    /// Resource to override default resource detection.
+    pub(crate) resource: Option<opentelemetry_sdk::Resource>,
     //
     //
     // TODO: arguments below supported by Python
@@ -179,6 +181,7 @@ impl Default for AdvancedOptions {
         AdvancedOptions {
             base_url: "https://logfire-api.pydantic.dev".to_string(),
             id_generator: None,
+            resource: None,
         }
     }
 }
@@ -198,6 +201,13 @@ impl AdvancedOptions {
         generator: T,
     ) -> Self {
         self.id_generator = Some(BoxedIdGenerator::new(Box::new(generator)));
+        self
+    }
+
+    /// Set the resource; overrides default resource detection.
+    #[must_use]
+    pub fn with_resource(mut self, resource: opentelemetry_sdk::Resource) -> Self {
+        self.resource = Some(resource);
         self
     }
 }

@@ -467,6 +467,10 @@ impl LogfireConfigBuilder {
                 tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
         };
 
+        if let Some(resource) = advanced_options.resource.clone() {
+            tracer_provider_builder = tracer_provider_builder.with_resource(resource);
+        }
+
         let mut http_headers: Option<HashMap<String, String>> = None;
 
         if send_to_logfire {
@@ -551,6 +555,10 @@ impl LogfireConfigBuilder {
             for reader in metrics.additional_readers {
                 meter_provider_builder = meter_provider_builder.with_reader(reader);
             }
+        }
+
+        if let Some(resource) = advanced_options.resource {
+            meter_provider_builder = meter_provider_builder.with_resource(resource);
         }
 
         let meter_provider = meter_provider_builder.build();

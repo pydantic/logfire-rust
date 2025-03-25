@@ -149,6 +149,7 @@ mod tests {
         let exporter = InMemorySpanExporterBuilder::new().build();
 
         let handler = crate::configure()
+            .local()
             .send_to_logfire(false)
             .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
                 DeterministicExporter::new(exporter.clone(), file!(), line!()),
@@ -223,7 +224,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            11,
+                            13,
                         ),
                     },
                     KeyValue {
@@ -329,7 +330,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            12,
+                            14,
                         ),
                     },
                     KeyValue {
@@ -445,7 +446,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            12,
+                            14,
                         ),
                     },
                     KeyValue {
@@ -567,7 +568,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            13,
+                            15,
                         ),
                     },
                     KeyValue {
@@ -683,7 +684,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            13,
+                            15,
                         ),
                     },
                     KeyValue {
@@ -805,7 +806,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            14,
+                            16,
                         ),
                     },
                     KeyValue {
@@ -921,7 +922,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            14,
+                            16,
                         ),
                     },
                     KeyValue {
@@ -1043,7 +1044,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            11,
+                            13,
                         ),
                     },
                     KeyValue {
@@ -1154,7 +1155,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     value: I64(
-                                        169,
+                                        172,
                                     ),
                                 },
                             ],

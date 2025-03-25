@@ -1,17 +1,28 @@
+#![allow(dead_code)] // used by lib and test suites individually
+
 use std::{
     collections::{HashMap, hash_map::Entry},
     future::Future,
     pin::Pin,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::SystemTime,
 };
 
+use async_trait::async_trait;
 use opentelemetry::{
     Value,
     trace::{SpanId, TraceId},
 };
 use opentelemetry_sdk::{
     error::OTelSdkResult,
+    metrics::{
+        Temporality,
+        data::{ResourceMetrics, Sum},
+        exporter::PushMetricExporter,
+    },
     trace::{IdGenerator, SpanData, SpanExporter},
 };
 
@@ -46,11 +57,16 @@ impl DeterministicIdGenerator {
 #[derive(Debug)]
 pub struct DeterministicExporter<Inner> {
     exporter: Inner,
-    next_timestamp: u64,
-    timestamp_remap: HashMap<SystemTime, SystemTime>,
+    timestamp_remap: Arc<Mutex<TimestampRemapper>>,
     // Information used to adjust line number to help minimise test churn
     file: &'static str,
     line_offset: u32,
+}
+
+impl<Inner> DeterministicExporter<Inner> {
+    pub fn inner(&self) -> &Inner {
+        &self.exporter
+    }
 }
 
 impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
@@ -113,15 +129,70 @@ impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
     }
 }
 
+#[async_trait]
+impl<Inner: PushMetricExporter> PushMetricExporter for DeterministicExporter<Inner> {
+    async fn export(&self, metrics: &mut ResourceMetrics) -> OTelSdkResult {
+        let timestamp_remap = self.timestamp_remap.clone();
+        for scope in &mut metrics.scope_metrics {
+            for metric in &mut scope.metrics {
+                if let Some(sum) = (*metric.data).as_mut().downcast_mut::<Sum<u64>>() {
+                    sum.start_time = timestamp_remap
+                        .lock()
+                        .unwrap()
+                        .remap_timestamp(sum.start_time);
+                    sum.time = timestamp_remap.lock().unwrap().remap_timestamp(sum.time);
+
+                    for data_point in &mut sum.data_points {
+                        data_point
+                            .attributes
+                            .sort_by_cached_key(|kv| kv.key.to_string());
+                    }
+                }
+            }
+        }
+        self.exporter.export(metrics).await
+    }
+
+    async fn force_flush(&self) -> OTelSdkResult {
+        self.exporter.force_flush().await
+    }
+
+    fn shutdown(&self) -> OTelSdkResult {
+        self.exporter.shutdown()
+    }
+
+    fn temporality(&self) -> Temporality {
+        self.exporter.temporality()
+    }
+}
+
 impl<Inner> DeterministicExporter<Inner> {
     /// Create deterministic exporter, feeding it current file and line.
     pub fn new(exporter: Inner, file: &'static str, line_offset: u32) -> Self {
         Self {
             exporter,
-            next_timestamp: 0,
-            timestamp_remap: HashMap::new(),
+            timestamp_remap: Arc::new(Mutex::new(TimestampRemapper::new())),
             file,
             line_offset,
+        }
+    }
+
+    fn remap_timestamp(&mut self, from: SystemTime) -> SystemTime {
+        self.timestamp_remap.lock().unwrap().remap_timestamp(from)
+    }
+}
+
+#[derive(Debug)]
+struct TimestampRemapper {
+    next_timestamp: u64,
+    timestamp_remap: HashMap<SystemTime, SystemTime>,
+}
+
+impl TimestampRemapper {
+    fn new() -> Self {
+        Self {
+            next_timestamp: 0,
+            timestamp_remap: HashMap::new(),
         }
     }
 
