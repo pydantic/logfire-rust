@@ -112,8 +112,9 @@ where
                 // Need to emit this as a log, because it is not part of a span and will be lost
                 // otherwise.
                 emit_event_as_log_span(tracer, event, &tracing::Span::current());
-            }
-            if let Some(writer) = &tracer.console_writer {
+            } else if let Some(writer) = &tracer.console_writer {
+                // If it's not being emitted as a top-level log, need to print it to console
+                // (if it's emitted, the console processor will handle it)
                 writer.write_tracing_event(event);
             }
         });
@@ -286,7 +287,7 @@ mod tests {
                 },
                 parent_span_id: 0000000000000000,
                 span_kind: Internal,
-                name: "event src/bridges/tracing.rs:260",
+                name: "event src/bridges/tracing.rs:261",
                 start_time: SystemTime {
                     tv_sec: 0,
                     tv_nsec: 0,
@@ -1458,7 +1459,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     value: I64(
-                                        268,
+                                        269,
                                     ),
                                 },
                             ],
@@ -1524,7 +1525,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     value: I64(
-                                        269,
+                                        270,
                                     ),
                                 },
                             ],
@@ -1598,15 +1599,13 @@ mod tests {
 
         assert_snapshot!(output, @r#"
         [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event[0m
-        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event[0m
-        [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event with value[0m [3mfield_value[0m=1
-        [2m1970-01-01T00:00:00.000003Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event with value[0m [3mfield_value[0m=1
-        [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot span[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world span[0m
-        [2m1970-01-01T00:00:00.000006Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span[0m
-        [2m1970-01-01T00:00:00.000007Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span with explicit parent[0m
-        [2m1970-01-01T00:00:00.000008Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000009Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log with value[0m [3mfield_value[0m=1
+        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event with value[0m [3mfield_value[0m=1
+        [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot span[0m
+        [2m1970-01-01T00:00:00.000003Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world span[0m
+        [2m1970-01-01T00:00:00.000004Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span[0m
+        [2m1970-01-01T00:00:00.000005Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span with explicit parent[0m
+        [2m1970-01-01T00:00:00.000006Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log[0m
+        [2m1970-01-01T00:00:00.000007Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log with value[0m [3mfield_value[0m=1
         "#);
     }
 }
