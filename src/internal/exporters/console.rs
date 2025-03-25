@@ -267,7 +267,7 @@ mod tests {
         config::{ConsoleOptions, Target},
         internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanExporter},
         set_local_logfire,
-        tests::DeterministicExporter,
+        test_utils::DeterministicExporter,
     };
 
     #[test]
@@ -279,7 +279,8 @@ mod tests {
             ..ConsoleOptions::default()
         };
 
-        let config = crate::configure()
+        let handler = crate::configure()
+            .local()
             .send_to_logfire(false)
             .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
                 DeterministicExporter::new(
@@ -289,12 +290,14 @@ mod tests {
                 ),
             )))
             .install_panic_handler()
-            .with_default_level_filter(LevelFilter::TRACE);
+            .with_default_level_filter(LevelFilter::TRACE)
+            .finish()
+            .unwrap();
 
-        let guard = set_local_logfire(config).unwrap();
+        let guard = set_local_logfire(handler);
 
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            tracing::subscriber::with_default(guard.subscriber.clone(), || {
+            tracing::subscriber::with_default(guard.subscriber().clone(), || {
                 let root = crate::span!("root span").entered();
                 let _ = crate::span!("hello world span").entered();
                 let _ = crate::span!(level: Level::DEBUG, "debug span");
@@ -316,7 +319,7 @@ mod tests {
         [2m1970-01-01T00:00:03.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:05.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:07.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:303:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:306:17, [3mbacktrace[0m=disabled backtrace
         "#);
     }
 }

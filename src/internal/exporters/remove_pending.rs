@@ -66,8 +66,7 @@ mod tests {
 
     use crate::config::AdvancedOptions;
     use crate::set_local_logfire;
-    use crate::tests::DeterministicExporter;
-    use crate::tests::DeterministicIdGenerator;
+    use crate::test_utils::{DeterministicExporter, DeterministicIdGenerator};
 
     use super::*;
 
@@ -81,9 +80,9 @@ mod tests {
     fn test_remove_pending_spans() {
         let exporter = InMemorySpanExporterBuilder::new().build();
 
-        let config = crate::configure()
+        let guard = crate::configure()
+            .local()
             .send_to_logfire(false)
-            .install_panic_handler()
             .with_additional_span_processor(
                 BatchSpanProcessor::builder(DeterministicExporter::new(
                     RemovePendingSpansExporter(exporter.clone()),
@@ -102,11 +101,13 @@ mod tests {
             .with_default_level_filter(LevelFilter::TRACE)
             .with_advanced_options(
                 AdvancedOptions::default().with_id_generator(DeterministicIdGenerator::new()),
-            );
+            )
+            .finish()
+            .unwrap();
 
-        let guard = set_local_logfire(config).unwrap();
+        let guard = set_local_logfire(guard);
 
-        tracing::subscriber::with_default(guard.subscriber.clone(), || {
+        tracing::subscriber::with_default(guard.subscriber(), || {
             let _root = crate::span!("root span").entered();
             let _hello = crate::span!("hello world span").entered();
             let _debug = crate::span!(level: Level::DEBUG, "debug span").entered();

@@ -102,9 +102,6 @@ use std::panic::PanicHookInfo;
 use std::sync::{Arc, Once};
 use std::{backtrace::Backtrace, env::VarError, str::FromStr, sync::OnceLock, time::Duration};
 
-use bridges::tracing::LogfireTracingLayer;
-use config::{AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, SendToLogfire};
-use internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanExporter};
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::trace::{
@@ -115,6 +112,12 @@ use thiserror::Error;
 use tracing::Subscriber;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
+
+use crate::bridges::tracing::LogfireTracingLayer;
+use crate::config::{
+    AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
+};
+use crate::internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanExporter};
 
 mod bridges;
 pub mod config;
@@ -234,11 +237,14 @@ impl FromStr for ConsoleMode {
 #[must_use = "call `.finish()` to complete logfire configuration."]
 pub fn configure() -> LogfireConfigBuilder {
     LogfireConfigBuilder {
+        local: false,
         send_to_logfire: None,
         token: None,
         console_options: None,
         additional_span_processors: Vec::new(),
         advanced: None,
+        metrics: None,
+        enable_metrics: true,
         install_panic_handler: false,
         default_level_filter: None,
     }
@@ -246,8 +252,7 @@ pub fn configure() -> LogfireConfigBuilder {
 
 /// Builder for logfire configuration, returned from [`logfire::configure()`][configure].
 pub struct LogfireConfigBuilder {
-    // TODO: support all options supported by the Python SDK
-    // local: bool,
+    local: bool,
     send_to_logfire: Option<SendToLogfire>,
     token: Option<String>,
     // service_name: Option<String>,
@@ -263,13 +268,14 @@ pub struct LogfireConfigBuilder {
     // tracer_provider: Option<SdkTracerProvider>,
 
     // TODO: advanced Python options not yet supported by the Rust SDK
-    // metrics: MetricsOptions | Literal[False] | None = None,
     // scrubbing: ScrubbingOptions | Literal[False] | None = None,
     // inspect_arguments: bool | None = None,
     // sampling: SamplingOptions | None = None,
     // code_source: CodeSource | None = None,
     // distributed_tracing: bool | None = None,
     advanced: Option<AdvancedOptions>,
+    metrics: Option<MetricsOptions>,
+    enable_metrics: bool,
 
     // Rust specific options
     install_panic_handler: bool,
@@ -277,6 +283,16 @@ pub struct LogfireConfigBuilder {
 }
 
 impl LogfireConfigBuilder {
+    /// Call to configure Logfire for local use only.
+    ///
+    /// This prevents the configured `Logfire` from setting global `tracing`, `log` and `opentelemetry` state.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn local(mut self) -> Self {
+        self.local = true;
+        self
+    }
+
     /// Call to install a hook to log panics.
     ///
     /// Any existing panic hook will be preserved and called after the logfire panic hook.
@@ -355,6 +371,22 @@ impl LogfireConfigBuilder {
         self
     }
 
+    /// Configure [metrics options](crate::config::MetricsOptions).
+    #[must_use]
+    pub fn with_metrics_options(mut self, metrics: MetricsOptions) -> Self {
+        self.metrics = Some(metrics);
+        self
+    }
+
+    /// Whether to enable metrics.
+    ///
+    /// If set to false, this will override [`with_metrics_options`][Self::with_metrics_options].
+    #[must_use]
+    pub fn enable_metrics(mut self, enable: bool) -> Self {
+        self.enable_metrics = enable;
+        self
+    }
+
     /// Finish configuring Logfire.
     ///
     /// Because this configures global state for the opentelemetry SDK, this can typically only ever be called once per program.
@@ -364,52 +396,43 @@ impl LogfireConfigBuilder {
     /// See [`ConfigureError`] for possible errors.
     pub fn finish(self) -> Result<ShutdownHandler, ConfigureError> {
         let LogfireParts {
+            local,
             tracer,
             subscriber,
             tracer_provider,
-            base_url,
-            http_headers,
-            send_to_logfire,
+            meter_provider,
+            ..
         } = self.build_parts(None)?;
 
-        tracing::subscriber::set_global_default(subscriber)?;
-        let logger = bridges::log::LogfireLogger::init(tracer.inner.clone());
-        log::set_logger(logger)?;
-        log::set_max_level(logger.max_level());
+        if !local {
+            tracing::subscriber::set_global_default(subscriber.clone())?;
+            let logger = bridges::log::LogfireLogger::init(tracer.inner.clone());
+            log::set_logger(logger)?;
+            log::set_max_level(logger.max_level());
 
-        GLOBAL_TRACER
-            .set(tracer)
-            .map_err(|_| ConfigureError::AlreadyConfigured)?;
+            GLOBAL_TRACER
+                .set(tracer.clone())
+                .map_err(|_| ConfigureError::AlreadyConfigured)?;
 
-        let propagator = opentelemetry::propagation::TextMapCompositePropagator::new(vec![
-            Box::new(opentelemetry_sdk::propagation::TraceContextPropagator::new()),
-            Box::new(opentelemetry_sdk::propagation::BaggagePropagator::new()),
-        ]);
-        opentelemetry::global::set_text_map_propagator(propagator);
+            let propagator = opentelemetry::propagation::TextMapCompositePropagator::new(vec![
+                Box::new(opentelemetry_sdk::propagation::TraceContextPropagator::new()),
+                Box::new(opentelemetry_sdk::propagation::BaggagePropagator::new()),
+            ]);
+            opentelemetry::global::set_text_map_propagator(propagator);
 
-        // setup metrics only if sending to logfire
-        let meter_provider = if send_to_logfire {
-            let metric_reader =
-                PeriodicReader::builder(exporters::metric_exporter(&base_url, http_headers)?)
-                    .build();
-
-            let meter_provider = SdkMeterProvider::builder()
-                .with_reader(metric_reader)
-                .build();
-
+            println!("setting meter provider");
             opentelemetry::global::set_meter_provider(meter_provider.clone());
-
-            Some(meter_provider)
-        } else {
-            None
-        };
+        }
 
         Ok(ShutdownHandler {
             tracer_provider,
+            tracer,
+            subscriber,
             meter_provider,
         })
     }
 
+    #[expect(clippy::too_many_lines)]
     fn build_parts(
         self,
         env: Option<&HashMap<String, String>>,
@@ -443,6 +466,10 @@ impl LogfireConfigBuilder {
             tracer_provider_builder =
                 tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
         };
+
+        if let Some(resource) = advanced_options.resource.clone() {
+            tracer_provider_builder = tracer_provider_builder.with_resource(resource);
+        }
 
         let mut http_headers: Option<HashMap<String, String>> = None;
 
@@ -512,11 +539,36 @@ impl LogfireConfigBuilder {
             )
             .with(LogfireTracingLayer(tracer.clone()));
 
+        let mut meter_provider_builder = SdkMeterProvider::builder();
+
+        if send_to_logfire && self.enable_metrics {
+            let metric_reader = PeriodicReader::builder(exporters::metric_exporter(
+                &advanced_options.base_url,
+                http_headers,
+            )?)
+            .build();
+
+            meter_provider_builder = meter_provider_builder.with_reader(metric_reader);
+        };
+
+        if let Some(metrics) = self.metrics.filter(|_| self.enable_metrics) {
+            for reader in metrics.additional_readers {
+                meter_provider_builder = meter_provider_builder.with_reader(reader);
+            }
+        }
+
+        if let Some(resource) = advanced_options.resource {
+            meter_provider_builder = meter_provider_builder.with_resource(resource);
+        }
+
+        let meter_provider = meter_provider_builder.build();
+
         if self.install_panic_handler {
             install_panic_handler();
         }
 
         Ok(LogfireParts {
+            local: self.local,
             tracer: LogfireTracer {
                 inner: tracer,
                 handle_panics: self.install_panic_handler,
@@ -524,8 +576,8 @@ impl LogfireConfigBuilder {
             },
             subscriber: Arc::new(subscriber),
             tracer_provider,
-            base_url: advanced_options.base_url,
-            http_headers,
+            meter_provider,
+            #[cfg(test)]
             send_to_logfire,
         })
     }
@@ -535,11 +587,13 @@ impl LogfireConfigBuilder {
 ///
 /// Calling `.shutdown()` will flush the logfire exporters and make further
 /// logfire calls into no-ops.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[must_use = "this should be kept alive until logging should be stopped"]
 pub struct ShutdownHandler {
     tracer_provider: SdkTracerProvider,
-    meter_provider: Option<SdkMeterProvider>,
+    tracer: LogfireTracer,
+    subscriber: Arc<dyn Subscriber + Send + Sync>,
+    meter_provider: SdkMeterProvider,
 }
 
 impl ShutdownHandler {
@@ -555,21 +609,20 @@ impl ShutdownHandler {
         self.tracer_provider
             .shutdown()
             .map_err(|e| ConfigureError::Other(e.into()))?;
-        if let Some(meter_provider) = &self.meter_provider {
-            meter_provider
-                .shutdown()
-                .map_err(|e| ConfigureError::Other(e.into()))?;
-        }
+        self.meter_provider
+            .shutdown()
+            .map_err(|e| ConfigureError::Other(e.into()))?;
         Ok(())
     }
 }
 
 struct LogfireParts {
+    local: bool,
     tracer: LogfireTracer,
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     tracer_provider: SdkTracerProvider,
-    base_url: String,
-    http_headers: Option<HashMap<String, String>>,
+    meter_provider: SdkMeterProvider,
+    #[cfg(test)]
     send_to_logfire: bool,
 }
 
@@ -626,6 +679,8 @@ fn get_optional_env(
         }
     }
 }
+
+#[derive(Clone)]
 struct LogfireTracer {
     inner: Tracer,
     handle_panics: bool,
@@ -661,17 +716,28 @@ fn try_with_logfire_tracer<R>(f: impl FnOnce(&LogfireTracer) -> R) -> Option<R> 
 /// Helper for installing a logfire guard locally to a thread.
 ///
 /// This is a bit of a mess, it's only implemented far enough to make tests pass...
-#[cfg(test)]
-struct LocalLogfireGuard {
+#[doc(hidden)]
+pub struct LocalLogfireGuard {
     prior: Option<LogfireTracer>,
-    /// Tracing subscriber which can be used to subscribe tracing
-    subscriber: Arc<dyn Subscriber + Send + Sync>,
     /// Shutdown handler
     #[allow(dead_code)]
     shutdown_handler: ShutdownHandler,
 }
 
-#[cfg(test)]
+impl LocalLogfireGuard {
+    /// Get the current tracer.
+    #[must_use]
+    pub fn subscriber(&self) -> Arc<dyn Subscriber + Send + Sync> {
+        self.shutdown_handler.subscriber.clone()
+    }
+
+    /// Ge the current meter provider
+    #[must_use]
+    pub fn meter_provider(&self) -> &SdkMeterProvider {
+        &self.shutdown_handler.meter_provider
+    }
+}
+
 impl Drop for LocalLogfireGuard {
     fn drop(&mut self) {
         // FIXME: if drop order is not consistent with creation order, does this create strange
@@ -682,1588 +748,27 @@ impl Drop for LocalLogfireGuard {
     }
 }
 
-#[cfg(test)]
-#[expect(clippy::needless_pass_by_value)] // might consume in the future, leave it for now
-fn set_local_logfire(config: LogfireConfigBuilder) -> Result<LocalLogfireGuard, ConfigureError> {
-    let LogfireParts {
-        tracer,
-        subscriber,
-        tracer_provider,
-        ..
-    } = config.build_parts(None)?;
-
-    let prior = LOCAL_TRACER.with_borrow_mut(|local_logfire| local_logfire.replace(tracer));
+#[doc(hidden)] // used in tests
+#[must_use]
+pub fn set_local_logfire(shutdown_handler: ShutdownHandler) -> LocalLogfireGuard {
+    let prior = LOCAL_TRACER
+        .with_borrow_mut(|local_logfire| local_logfire.replace(shutdown_handler.tracer.clone()));
 
     // TODO: logs??
     // TODO: metrics??
 
-    Ok(LocalLogfireGuard {
+    LocalLogfireGuard {
         prior,
-        subscriber,
-        shutdown_handler: ShutdownHandler {
-            tracer_provider,
-            meter_provider: None,
-        },
-    })
+        shutdown_handler,
+    }
 }
 
 #[cfg(test)]
+mod test_utils;
+
+#[cfg(test)]
 mod tests {
-    use std::{
-        collections::{HashMap, hash_map::Entry},
-        future::Future,
-        pin::Pin,
-        sync::atomic::{AtomicU64, Ordering},
-        time::SystemTime,
-    };
-
-    use insta::assert_debug_snapshot;
-    use opentelemetry::{
-        Value,
-        trace::{SpanId, TraceId},
-    };
-    use opentelemetry_sdk::{
-        error::OTelSdkResult,
-        trace::{IdGenerator, InMemorySpanExporterBuilder, SpanData, SpanExporter},
-    };
-    use tracing::Level;
-
-    use super::*;
-
-    #[derive(Debug)]
-    pub struct DeterministicIdGenerator {
-        next_trace_id: AtomicU64,
-        next_span_id: AtomicU64,
-    }
-
-    impl IdGenerator for DeterministicIdGenerator {
-        fn new_trace_id(&self) -> opentelemetry::trace::TraceId {
-            TraceId::from_u128(self.next_trace_id.fetch_add(1, Ordering::Relaxed).into())
-        }
-
-        fn new_span_id(&self) -> opentelemetry::trace::SpanId {
-            SpanId::from_u64(self.next_span_id.fetch_add(1, Ordering::Relaxed))
-        }
-    }
-
-    impl DeterministicIdGenerator {
-        pub fn new() -> Self {
-            // start at OxF0 because 0 is reserved for invalid IDs,
-            // and if we have a couple of bytes used, it's a more interesting check of
-            // the hex formatting
-            Self {
-                next_trace_id: 0xF0.into(),
-                next_span_id: 0xF0.into(),
-            }
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct DeterministicExporter<Inner> {
-        exporter: Inner,
-        next_timestamp: u64,
-        timestamp_remap: HashMap<SystemTime, SystemTime>,
-        // Information used to adjust line number to help minimise test churn
-        file: &'static str,
-        line_offset: u32,
-    }
-
-    impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
-        fn export(
-            &mut self,
-            mut batch: Vec<SpanData>,
-        ) -> Pin<Box<dyn Future<Output = OTelSdkResult> + Send>> {
-            for span in &mut batch {
-                // By remapping timestamps to deterministic values, we should find that
-                // - pending spans have the same start time as their real span
-                // - pending spans also have the same end as start
-                span.start_time = self.remap_timestamp(span.start_time);
-                span.end_time = self.remap_timestamp(span.end_time);
-
-                let mut remap_line = false;
-
-                for attr in &mut span.attributes {
-                    // thread info is not deterministic
-                    // nor are timings
-                    if attr.key.as_str() == "thread.id"
-                        || attr.key.as_str() == "busy_ns"
-                        || attr.key.as_str() == "idle_ns"
-                    {
-                        attr.value = 0.into();
-                    }
-
-                    // to minimize churn on tests, remap line numbers in the test to be relative to
-                    // the test function
-                    if attr.key.as_str() == "code.filepath" && attr.value.as_str() == self.file {
-                        remap_line = true;
-                    }
-                }
-
-                if remap_line {
-                    for attr in &mut span.attributes {
-                        if attr.key.as_str() == "code.lineno" {
-                            if let Value::I64(line) = &mut attr.value {
-                                *line -= i64::from(self.line_offset);
-                            }
-                        }
-
-                        // panic location
-                        if attr.key.as_str() == "location" {
-                            let string_value = attr.value.as_str();
-                            let mut parts = string_value.splitn(3, ':');
-                            let file = parts.next().unwrap();
-                            let line = parts.next().unwrap().parse::<i64>().unwrap()
-                                - i64::from(self.line_offset);
-                            let column = parts.next().unwrap();
-                            attr.value = format!("{file}:{line}:{column}").into();
-                        }
-                    }
-                }
-
-                for event in &mut span.events.events {
-                    event.timestamp = self.remap_timestamp(event.timestamp);
-                }
-            }
-            self.exporter.export(batch)
-        }
-    }
-
-    impl<Inner> DeterministicExporter<Inner> {
-        /// Create deterministic exporter, feeding it current file and line.
-        pub fn new(exporter: Inner, file: &'static str, line_offset: u32) -> Self {
-            Self {
-                exporter,
-                next_timestamp: 0,
-                timestamp_remap: HashMap::new(),
-                file,
-                line_offset,
-            }
-        }
-
-        fn remap_timestamp(&mut self, from: SystemTime) -> SystemTime {
-            match self.timestamp_remap.entry(from) {
-                Entry::Occupied(entry) => *entry.get(),
-                Entry::Vacant(entry) => {
-                    let new_timestamp = SystemTime::UNIX_EPOCH
-                        + std::time::Duration::from_secs(self.next_timestamp);
-                    self.next_timestamp += 1;
-                    *entry.insert(new_timestamp)
-                }
-            }
-        }
-    }
-
-    #[expect(clippy::too_many_lines)]
-    #[test]
-    fn test_basic_span() {
-        let exporter = InMemorySpanExporterBuilder::new().build();
-
-        let config = crate::configure()
-            .send_to_logfire(false)
-            .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
-                DeterministicExporter::new(exporter.clone(), file!(), line!()),
-            )))
-            .install_panic_handler()
-            .with_default_level_filter(LevelFilter::TRACE)
-            .with_advanced_options(
-                AdvancedOptions::default().with_id_generator(DeterministicIdGenerator::new()),
-            );
-
-        let guard = set_local_logfire(config).unwrap();
-
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            tracing::subscriber::with_default(guard.subscriber.clone(), || {
-                let root = span!("root span").entered();
-                let _ = span!("hello world span").entered();
-                let _ = span!(level: Level::DEBUG, "debug span");
-                let _ =
-                    span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
-                info!("hello world log");
-                panic!("oh no!");
-            });
-        }))
-        .unwrap_err();
-
-        let spans = exporter.get_finished_spans().unwrap();
-        assert_debug_snapshot!(spans, @r#"
-        [
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f1,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f0,
-                span_kind: Internal,
-                name: "root span",
-                start_time: SystemTime {
-                    tv_sec: 0,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 0,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            12,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "root span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Owned(
-                                "{\"type\":\"object\",\"properties\":{}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "pending_span",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f3,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f2,
-                span_kind: Internal,
-                name: "hello world span",
-                start_time: SystemTime {
-                    tv_sec: 1,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 1,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            13,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "hello world span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Owned(
-                                "{\"type\":\"object\",\"properties\":{}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "pending_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.pending_parent_id",
-                        ),
-                        value: String(
-                            Owned(
-                                "00000000000000f0",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f2,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f0,
-                span_kind: Internal,
-                name: "hello world span",
-                start_time: SystemTime {
-                    tv_sec: 1,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 2,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            13,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "hello world span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Owned(
-                                "{\"type\":\"object\",\"properties\":{}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "busy_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "idle_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f5,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f4,
-                span_kind: Internal,
-                name: "debug span",
-                start_time: SystemTime {
-                    tv_sec: 3,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 3,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            14,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "debug span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Owned(
-                                "{\"type\":\"object\",\"properties\":{}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "pending_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.pending_parent_id",
-                        ),
-                        value: String(
-                            Owned(
-                                "00000000000000f0",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f4,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f0,
-                span_kind: Internal,
-                name: "debug span",
-                start_time: SystemTime {
-                    tv_sec: 3,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 4,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            14,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "debug span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Owned(
-                                "{\"type\":\"object\",\"properties\":{}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "busy_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "idle_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f7,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f6,
-                span_kind: Internal,
-                name: "debug span with explicit parent",
-                start_time: SystemTime {
-                    tv_sec: 5,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 5,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            16,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "debug span with explicit parent",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Owned(
-                                "{\"type\":\"object\",\"properties\":{}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "pending_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.pending_parent_id",
-                        ),
-                        value: String(
-                            Owned(
-                                "00000000000000f0",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f6,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f0,
-                span_kind: Internal,
-                name: "debug span with explicit parent",
-                start_time: SystemTime {
-                    tv_sec: 5,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 6,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            16,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "debug span with explicit parent",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Owned(
-                                "{\"type\":\"object\",\"properties\":{}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "busy_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "idle_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f8,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f0,
-                span_kind: Internal,
-                name: "hello world log",
-                start_time: SystemTime {
-                    tv_sec: 7,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 7,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "hello world log",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "log",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Static(
-                                "{\"type\":\"object\",\"properties\":{}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            17,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f9,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f0,
-                span_kind: Internal,
-                name: "panic: {message}",
-                start_time: SystemTime {
-                    tv_sec: 8,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 8,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "location",
-                        ),
-                        value: String(
-                            Owned(
-                                "src/lib.rs:18:17",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "backtrace",
-                        ),
-                        value: String(
-                            Owned(
-                                "disabled backtrace",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "panic: oh no!",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            17,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "log",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Static(
-                                "{\"type\":\"object\",\"properties\":{\"location\":{},\"backtrace\":{}}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            -271,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f0,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 0000000000000000,
-                span_kind: Internal,
-                name: "root span",
-                start_time: SystemTime {
-                    tv_sec: 0,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 9,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/lib.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            12,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "tests::test_basic_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "root span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.json_schema",
-                        ),
-                        value: String(
-                            Owned(
-                                "{\"type\":\"object\",\"properties\":{}}",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "busy_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "idle_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-        ]
-        "#);
-    }
+    use crate::{ConfigureError, config::SendToLogfire};
 
     #[test]
     fn test_send_to_logfire() {
