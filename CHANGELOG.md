@@ -1,3 +1,8 @@
+## [v0.3.1] (2025-03-25)
+
+* fix double-print to console of tracing events outside spans by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/30
+* revert to only emit pending spans on first enter by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/29
+
 ## [v0.3.0] (2025-03-25)
 
 * support printing tracing events (to console) by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/21
@@ -9,8 +14,8 @@
 
 ## [v0.2.0] (2025-03-19)
 
-- Add `span_exporter()` helper to build a span exporter directly in [#20](https://github.com/pydantic/logfire-rust/pull/20)
-- Fix `set_resource` not being called on span processors added with `with_additional_span_processor()` in [#20](https://github.com/pydantic/logfire-rust/pull/20)
+* Add `span_exporter()` helper to build a span exporter directly in [#20](https://github.com/pydantic/logfire-rust/pull/20)
+* Fix `set_resource` not being called on span processors added with `with_additional_span_processor()` in [#20](https://github.com/pydantic/logfire-rust/pull/20)
 
 ## [v0.1.0] (2025-03-13)
 
@@ -18,4 +23,5 @@ Initial release.
 
 [v0.1.0]: https://github.com/pydantic/logfire-rust/commits/v0.1.0
 [v0.2.0]: https://github.com/pydantic/logfire-rust/compare/v0.1.0..v0.2.0
-[v0.3.0]: https://github.com/pydantic/logfire-rust/compare/v0.1.0..v0.3.0
+[v0.3.0]: https://github.com/pydantic/logfire-rust/compare/v0.2.0..v0.3.0
+[v0.3.1]: https://github.com/pydantic/logfire-rust/compare/v0.3.0..v0.3.1
