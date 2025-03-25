@@ -27,7 +27,7 @@ macro_rules! feature_required {
     }};
 }
 
-/// Build a [`SpanExporter`][opentelemetry::trace::SpanExporter] for passing to
+/// Build a [`SpanExporter`][opentelemetry_sdk::trace::SpanExporter] for passing to
 /// [`with_additional_span_processor()`][crate::LogfireConfigBuilder::with_additional_span_processor].
 ///
 /// This uses `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` environment
@@ -98,8 +98,21 @@ pub fn span_exporter(
     Ok(RemovePendingSpansExporter::new(span_exporter))
 }
 
-// TODO: make this public?
-pub(crate) fn metric_exporter(
+/// Build a [`PushMetricExporter`][opentelemetry_sdk::metrics::exporter::PushMetricExporter] for passing to
+/// [`with_metrics_options()`][crate::LogfireConfigBuilder::with_metrics_options].
+///
+/// This uses `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` environment
+/// variables to determine the protocol to use (or otherwise defaults to [`Protocol::HttpBinary`]).
+///
+/// # Errors
+///
+/// Returns an error if the protocol specified by the env var is not supported or if the required feature is not enabled for
+/// the given protocol.
+///
+/// Returns an error if the endpoint is not a valid URI.
+///
+/// Returns an error if any headers are not valid HTTP headers.
+pub fn metric_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl PushMetricExporter + use<>, ConfigureError> {

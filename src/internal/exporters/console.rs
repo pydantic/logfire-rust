@@ -196,7 +196,7 @@ impl ConsoleWriter {
         let mut visitor = FieldsVisitor {
             message: None,
             // TODO: support formatting the fields? Maybe according to `ConsoleOptions`.
-            // fields: Vec::new(),
+            fields: Vec::new(),
         };
 
         event.record(&mut visitor);
@@ -219,6 +219,15 @@ impl ConsoleWriter {
 
         write!(w, " {}", BOLD.paint(msg))?;
 
+        if !visitor.fields.is_empty() {
+            for (idx, (key, value)) in visitor.fields.iter().enumerate() {
+                write!(w, " {}={value}", ITALIC.paint(*key))?;
+                if idx < visitor.fields.len() - 1 {
+                    write!(w, ",")?;
+                }
+            }
+        }
+
         writeln!(w)
     }
 }
@@ -226,7 +235,7 @@ impl ConsoleWriter {
 /// Internal helper to `visit` a `tracing::Event` and collect relevant fields.
 struct FieldsVisitor {
     message: Option<String>,
-    // fields: Vec<(&'static str, String)>,
+    fields: Vec<(&'static str, String)>,
 }
 
 impl Visit for FieldsVisitor {
@@ -234,7 +243,7 @@ impl Visit for FieldsVisitor {
         if field.name() == "message" {
             self.message = Some(value.to_string());
         } else {
-            // self.fields.push((field.name(), value.to_string()));
+            self.fields.push((field.name(), value.to_string()));
         }
     }
 
@@ -242,7 +251,7 @@ impl Visit for FieldsVisitor {
         if field.name() == "message" {
             self.message = Some(format!("{value:?}"));
         } else {
-            // self.fields.push((field.name(), format!("{value:?}")));
+            self.fields.push((field.name(), format!("{value:?}")));
         }
     }
 }
@@ -259,7 +268,7 @@ mod tests {
         config::{ConsoleOptions, Target},
         internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanExporter},
         set_local_logfire,
-        tests::DeterministicExporter,
+        test_utils::DeterministicExporter,
     };
 
     #[test]
@@ -271,7 +280,8 @@ mod tests {
             ..ConsoleOptions::default()
         };
 
-        let config = crate::configure()
+        let handler = crate::configure()
+            .local()
             .send_to_logfire(false)
             .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
                 DeterministicExporter::new(
@@ -281,12 +291,14 @@ mod tests {
                 ),
             )))
             .install_panic_handler()
-            .with_default_level_filter(LevelFilter::TRACE);
+            .with_default_level_filter(LevelFilter::TRACE)
+            .finish()
+            .unwrap();
 
-        let guard = set_local_logfire(config).unwrap();
+        let guard = set_local_logfire(handler);
 
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            tracing::subscriber::with_default(guard.subscriber.clone(), || {
+            tracing::subscriber::with_default(guard.subscriber().clone(), || {
                 let root = crate::span!("root span").entered();
                 let _ = crate::span!("hello world span").entered();
                 let _ = crate::span!(level: Level::DEBUG, "debug span");

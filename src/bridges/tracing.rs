@@ -141,14 +141,14 @@ mod tests {
     use crate::{
         config::{AdvancedOptions, ConsoleOptions, Target},
         set_local_logfire,
-        tests::{DeterministicExporter, DeterministicIdGenerator},
+        test_utils::{DeterministicExporter, DeterministicIdGenerator},
     };
 
     #[test]
     fn test_tracing_bridge() {
         let exporter = InMemorySpanExporterBuilder::new().build();
 
-        let config = crate::configure()
+        let handler = crate::configure()
             .send_to_logfire(false)
             .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
                 DeterministicExporter::new(exporter.clone(), file!(), line!()),
@@ -157,11 +157,13 @@ mod tests {
             .with_default_level_filter(LevelFilter::TRACE)
             .with_advanced_options(
                 AdvancedOptions::default().with_id_generator(DeterministicIdGenerator::new()),
-            );
+            )
+            .finish()
+            .unwrap();
 
-        let guard = set_local_logfire(config).unwrap();
+        let guard = set_local_logfire(handler);
 
-        tracing::subscriber::with_default(guard.subscriber.clone(), || {
+        tracing::subscriber::with_default(guard.subscriber().clone(), || {
             let root = tracing::span!(Level::INFO, "root span").entered();
             let _ = tracing::span!(Level::INFO, "hello world span").entered();
             let _ = tracing::span!(Level::DEBUG, "debug span");
@@ -1186,15 +1188,18 @@ mod tests {
             ..ConsoleOptions::default()
         };
 
-        let config = crate::configure()
+        let handler = crate::configure()
+            .local()
             .send_to_logfire(false)
             .console_options(console_options.clone())
             .install_panic_handler()
-            .with_default_level_filter(LevelFilter::TRACE);
+            .with_default_level_filter(LevelFilter::TRACE)
+            .finish()
+            .unwrap();
 
-        let guard = set_local_logfire(config).unwrap();
+        let guard = crate::set_local_logfire(handler);
 
-        tracing::subscriber::with_default(guard.subscriber.clone(), || {
+        tracing::subscriber::with_default(guard.subscriber().clone(), || {
             let root = tracing::span!(Level::INFO, "root span").entered();
             let _ = tracing::span!(Level::INFO, "hello world span").entered();
             let _ = tracing::span!(Level::DEBUG, "debug span");

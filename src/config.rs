@@ -8,7 +8,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use opentelemetry_sdk::trace::{IdGenerator, SpanProcessor};
+use opentelemetry_sdk::{
+    metrics::reader::MetricReader,
+    trace::{IdGenerator, SpanProcessor},
+};
 use tracing::Level;
 
 use crate::ConfigureError;
@@ -199,6 +202,25 @@ impl AdvancedOptions {
     }
 }
 
+/// Configuration of metrics.
+///
+/// This only has one option for now, but it's a place to add more related options in the future.
+#[derive(Default)]
+pub struct MetricsOptions {
+    /// Sequence of metric readers to be used in addition to the default which exports metrics to Logfire's API.
+    pub(crate) additional_readers: Vec<BoxedMetricReader>,
+}
+
+impl MetricsOptions {
+    /// Add a metric reader to the list of additional readers.
+    #[must_use]
+    pub fn with_additional_reader<T: MetricReader>(mut self, reader: T) -> Self {
+        self.additional_readers
+            .push(BoxedMetricReader::new(Box::new(reader)));
+        self
+    }
+}
+
 /// Wrapper around a `SpanProcessor` to use in `additional_span_processors`.
 #[derive(Debug)]
 pub(crate) struct BoxedSpanProcessor(Box<dyn SpanProcessor>);
@@ -248,6 +270,44 @@ impl IdGenerator for BoxedIdGenerator {
 
     fn new_span_id(&self) -> opentelemetry::trace::SpanId {
         self.0.new_span_id()
+    }
+}
+
+/// Wrapper around a `MetricReader` to use in `additional_readers`.
+#[derive(Debug)]
+pub(crate) struct BoxedMetricReader(Box<dyn MetricReader>);
+
+impl BoxedMetricReader {
+    pub fn new(reader: Box<dyn MetricReader>) -> Self {
+        BoxedMetricReader(reader)
+    }
+}
+
+impl MetricReader for BoxedMetricReader {
+    fn register_pipeline(&self, pipeline: std::sync::Weak<opentelemetry_sdk::metrics::Pipeline>) {
+        self.0.register_pipeline(pipeline);
+    }
+
+    fn collect(
+        &self,
+        rm: &mut opentelemetry_sdk::metrics::data::ResourceMetrics,
+    ) -> opentelemetry_sdk::metrics::MetricResult<()> {
+        self.0.collect(rm)
+    }
+
+    fn force_flush(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.0.force_flush()
+    }
+
+    fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.0.shutdown()
+    }
+
+    fn temporality(
+        &self,
+        kind: opentelemetry_sdk::metrics::InstrumentKind,
+    ) -> opentelemetry_sdk::metrics::Temporality {
+        self.0.temporality(kind)
     }
 }
 
