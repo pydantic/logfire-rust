@@ -1,6 +1,7 @@
 #![allow(dead_code)] // used by lib and test suites individually
 
 use std::{
+    borrow::Cow,
     collections::{HashMap, hash_map::Entry},
     future::Future,
     pin::Pin,
@@ -8,7 +9,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
-    time::SystemTime,
+    time::{self, SystemTime},
 };
 
 use async_trait::async_trait;
@@ -25,6 +26,7 @@ use opentelemetry_sdk::{
     },
     trace::{IdGenerator, SpanData, SpanExporter},
 };
+use regex::{Captures, Regex};
 
 #[derive(Debug)]
 pub struct DeterministicIdGenerator {
@@ -207,4 +209,15 @@ impl TimestampRemapper {
             }
         }
     }
+}
+
+pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
+    // Replace all timestamps in output to make them deterministic
+    let mut timestamp = chrono::DateTime::UNIX_EPOCH;
+    let re = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z").unwrap();
+    re.replace_all(output, |_: &Captures<'_>| {
+        let replaced = timestamp.to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
+        timestamp += time::Duration::from_micros(1);
+        replaced
+    })
 }

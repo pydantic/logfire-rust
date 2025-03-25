@@ -102,6 +102,7 @@ use std::panic::PanicHookInfo;
 use std::sync::{Arc, Once};
 use std::{backtrace::Backtrace, env::VarError, str::FromStr, sync::OnceLock, time::Duration};
 
+use bridges::tracing::LogfireTracingPendingSpanNotSentLayer;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::trace::{
@@ -532,6 +533,7 @@ impl LogfireConfigBuilder {
 
         let subscriber = tracing_subscriber::registry()
             .with(filter)
+            .with(LogfireTracingPendingSpanNotSentLayer)
             .with(
                 tracing_opentelemetry::layer()
                     .with_error_records_to_exceptions(true)
