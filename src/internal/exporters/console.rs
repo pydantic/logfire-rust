@@ -195,8 +195,7 @@ impl ConsoleWriter {
 
         let mut visitor = FieldsVisitor {
             message: None,
-            // TODO: support formatting the fields? Maybe according to `ConsoleOptions`.
-            // fields: Vec::new(),
+            fields: Vec::new(),
         };
 
         event.record(&mut visitor);
@@ -219,6 +218,15 @@ impl ConsoleWriter {
 
         write!(w, " {}", BOLD.paint(msg))?;
 
+        if !visitor.fields.is_empty() {
+            for (idx, (key, value)) in visitor.fields.iter().enumerate() {
+                write!(w, " {}={value}", ITALIC.paint(*key))?;
+                if idx < visitor.fields.len() - 1 {
+                    write!(w, ",")?;
+                }
+            }
+        }
+
         writeln!(w)
     }
 }
@@ -226,7 +234,7 @@ impl ConsoleWriter {
 /// Internal helper to `visit` a `tracing::Event` and collect relevant fields.
 struct FieldsVisitor {
     message: Option<String>,
-    // fields: Vec<(&'static str, String)>,
+    fields: Vec<(&'static str, String)>,
 }
 
 impl Visit for FieldsVisitor {
@@ -234,7 +242,7 @@ impl Visit for FieldsVisitor {
         if field.name() == "message" {
             self.message = Some(value.to_string());
         } else {
-            // self.fields.push((field.name(), value.to_string()));
+            self.fields.push((field.name(), value.to_string()));
         }
     }
 
@@ -242,7 +250,7 @@ impl Visit for FieldsVisitor {
         if field.name() == "message" {
             self.message = Some(format!("{value:?}"));
         } else {
-            // self.fields.push((field.name(), format!("{value:?}")));
+            self.fields.push((field.name(), format!("{value:?}")));
         }
     }
 }
@@ -308,7 +316,7 @@ mod tests {
         [2m1970-01-01T00:00:03.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:05.000000Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:07.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:295:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:08.000000Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:303:17, [3mbacktrace[0m=disabled backtrace
         "#);
     }
 }
