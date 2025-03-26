@@ -33,6 +33,7 @@ thiserror = "2"
 serde = { version = "1", features = ["derive"], optional = true }
 nu-ansi-term = "0.50.1"
 chrono = "0.4.39"
+regex = "1.11.1"
 
 [dev-dependencies]
 async-trait = "0.1.88"
