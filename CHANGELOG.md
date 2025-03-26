@@ -1,3 +1,11 @@
+## [v0.4.0] (2025-03-26)
+
+* remove debug print, and add clippy lint to prevent future regressions by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/32
+* support `dotted.attribute` syntax in the macros by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/34
+* add `with_console_options` config, deprecate `console_mode` by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/33
+* rename `with_metrics_options` to `with_metrics` by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/35
+* add support for inferring token from region by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/36
+
 ## [v0.3.1] (2025-03-25)
 
 * fix double-print to console of tracing events outside spans by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/30
@@ -25,3 +33,4 @@ Initial release.
 [v0.2.0]: https://github.com/pydantic/logfire-rust/compare/v0.1.0..v0.2.0
 [v0.3.0]: https://github.com/pydantic/logfire-rust/compare/v0.2.0..v0.3.0
 [v0.3.1]: https://github.com/pydantic/logfire-rust/compare/v0.3.0..v0.3.1
+[v0.4.0]: https://github.com/pydantic/logfire-rust/compare/v0.3.1..v0.4.0
