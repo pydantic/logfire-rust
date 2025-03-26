@@ -40,8 +40,6 @@ Here's a simple manual tracing (aka logging) example:
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let shutdown_handler = logfire::configure()
         .install_panic_handler()
-        .send_to_logfire(true)
-        .console_mode(logfire::ConsoleMode::Fallback)
         .finish()?;
 
     logfire::info!("Hello, {name}!", name = "world");

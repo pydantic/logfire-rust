@@ -347,15 +347,12 @@ mod tests {
     fn test_print_to_console() {
         let output = Arc::new(Mutex::new(Vec::new()));
 
-        let console_options = ConsoleOptions {
-            target: Target::Pipe(output.clone()),
-            ..ConsoleOptions::default()
-        };
+        let console_options = ConsoleOptions::default().with_target(Target::Pipe(output.clone()));
 
         let handler = crate::configure()
             .local()
             .send_to_logfire(false)
-            .console_options(console_options)
+            .with_console(Some(console_options))
             .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
@@ -387,7 +384,7 @@ mod tests {
         [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:373:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:370:17, [3mbacktrace[0m=disabled backtrace
         "#);
     }
 }

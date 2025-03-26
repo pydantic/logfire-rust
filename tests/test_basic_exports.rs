@@ -1032,7 +1032,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        647,
+                        666,
                     ),
                 },
                 KeyValue {

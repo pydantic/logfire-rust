@@ -12,7 +12,6 @@ use opentelemetry_sdk::{
     metrics::reader::MetricReader,
     trace::{IdGenerator, SpanProcessor},
 };
-use tracing::Level;
 
 use crate::ConfigureError;
 
@@ -65,41 +64,52 @@ impl From<bool> for SendToLogfire {
 }
 
 /// Options for controlling console output.
-#[expect(clippy::struct_excessive_bools)] // Config options, bools make sense here.
 #[derive(Debug, Clone)]
 pub struct ConsoleOptions {
-    /// Whether to show colors in the console.
-    pub colors: ConsoleColors,
-    /// How spans are shown in the console.
-    pub span_style: SpanStyle,
-    /// Whether to include timestamps in the console output.
-    pub include_timestamps: bool,
-    /// Whether to include tags in the console output.
-    pub include_tags: bool,
-    /// Whether to show verbose output.
-    ///
-    /// It includes the filename, log level, and line number.
-    pub verbose: bool,
-    /// The minimum log level to show in the console.
-    pub min_log_level: Level,
-    /// Whether to print the URL of the Logfire project after initialization.
-    pub show_project_link: bool,
     /// Where to send output
-    pub target: Target,
+    pub(crate) target: Target,
+    // TODO: support the below configuration options (inherited from Python SDK)
+
+    // /// Whether to show colors in the console.
+    // colors: ConsoleColors,
+    // /// How spans are shown in the console.
+    // span_style: SpanStyle,
+    // /// Whether to include timestamps in the console output.
+    // include_timestamps: bool,
+    // /// Whether to include tags in the console output.
+    // include_tags: bool,
+    // /// Whether to show verbose output.
+    // ///
+    // /// It includes the filename, log level, and line number.
+    // verbose: bool,
+    // /// The minimum log level to show in the console.
+    // min_log_level: Level,
+    // /// Whether to print the URL of the Logfire project after initialization.
+    // show_project_link: bool,
 }
 
+#[expect(clippy::derivable_impls)] // When the other options are implemented, we will need this.
 impl Default for ConsoleOptions {
     fn default() -> Self {
         ConsoleOptions {
-            colors: ConsoleColors::default(),
-            span_style: SpanStyle::default(),
-            include_timestamps: true,
-            include_tags: true,
-            verbose: false,
-            min_log_level: Level::INFO,
-            show_project_link: true,
+            // colors: ConsoleColors::default(),
+            // span_style: SpanStyle::default(),
+            // include_timestamps: true,
+            // include_tags: true,
+            // verbose: false,
+            // min_log_level: Level::INFO,
+            // show_project_link: true,
             target: Target::default(),
         }
+    }
+}
+
+impl ConsoleOptions {
+    /// Set the target for console output.
+    #[must_use]
+    pub fn with_target(mut self, target: Target) -> Self {
+        self.target = target;
+        self
     }
 }
 
