@@ -421,7 +421,6 @@ impl LogfireConfigBuilder {
             ]);
             opentelemetry::global::set_text_map_propagator(propagator);
 
-            println!("setting meter provider");
             opentelemetry::global::set_meter_provider(meter_provider.clone());
         }
 
