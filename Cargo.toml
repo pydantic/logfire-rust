@@ -54,6 +54,8 @@ export-http-json = ["opentelemetry-otlp/http-json", "opentelemetry-otlp/reqwest-
 missing_docs = "warn"
 
 [lints.clippy]
+print_stdout = "deny"
+print_stderr = "deny"
 dbg_macro = "deny"
 unwrap_used = "deny"
 # in general we lint against the pedantic group, but we will whitelist
