@@ -13,32 +13,32 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 // Re-export macros marked with `#[macro_export]` from this module, because `#[macro_export]` places
 // them at the crate root.
-pub use crate::__tracing_span as tracing_span;
+pub use crate::{__log as log, __tracing_span as tracing_span};
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __tracing_span {
-    (parent: $parent:expr, $level:expr, $format:expr, $($($arg:ident = $value:expr),+)?) => {{
+    (parent: $parent:expr, $level:expr, $format:expr, $($($path:ident).+ = $value:expr),*) => {{
         // bind args early to avoid multiple evaluation
-        $($(let $arg = $value;)*)?
+        $crate::__bind_single_ident_args!($($($path).+ = $value),*);
         tracing::span!(
             parent: $parent,
             $level,
             $format,
-            $($($arg = $arg,)*)?
+            $($($path).+ = $crate::__evaluate_arg!($($path).+ = $value),)*
             logfire.msg = format_args!($format),
-            logfire.json_schema = $crate::__json_schema!($($($arg),+)?),
+            logfire.json_schema = $crate::__json_schema!($($($path).+),*),
         )
     }};
-    ($level:expr, $format:expr, $($($arg:ident = $value:expr),+)?) => {{
+    ($level:expr, $format:expr, $($($path:ident).+ = $value:expr),*) => {{
         // bind args early to avoid multiple evaluation
-        $($(let $arg = $value;)*)?
+        $crate::__bind_single_ident_args!($($($path).+ = $value),*);
         tracing::span!(
             $level,
             $format,
-            $($($arg = $arg,)*)?
+            $($($path).+ = $crate::__evaluate_arg!($($path).+ = $value),)*
             logfire.msg = format_args!($format),
-            logfire.json_schema = $crate::__json_schema!($($($arg),+)?),
+            logfire.json_schema = $crate::__json_schema!($($($path).+),*),
         )
     }};
 }
@@ -212,12 +212,12 @@ pub fn export_log_span(
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __json_schema {
-    ($($($args:ident),+)?) => {
+    ($($($($path:ident).+),+)?) => {
         concat!("{\
             \"type\":\"object\",\
             \"properties\":{\
         ",
-            $($crate::__schema_args!($($args),*),)?
+            $($crate::__schema_args!($($($path).+),*),)?
         "\
             }\
         }")
@@ -227,13 +227,90 @@ macro_rules! __json_schema {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __schema_args {
-    ($arg:ident, $($args:ident),+) => {
+    ($($path:ident).+, $($($rest:ident).+),+) => {
         // this is done recursively to avoid a trailing comma in JSON :/
-        concat!($crate::__schema_args!($arg), ",", $crate::__schema_args!($($args),*))
+        concat!($crate::__schema_args!($($path).+), ",", $crate::__schema_args!($($($rest).+),*))
     };
-    ($arg:ident) => {
+    ($($path:ident).+) => {
         // TODO proper type analysis for the args
-        concat!("\"", stringify!($arg), "\":{}")
+        concat!("\"", stringify!($($path).+), "\":{}")
     };
     () => {};
+}
+
+/// Expands to `let $arg = $value` only for single ident args
+///
+/// Valid variable names in Rust can only have a single ident (and this is also true)
+/// of format syntax. We need to bind arguments which can go in the format string
+/// early to avoid multiple evaluation of the expressions.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __bind_single_ident_args {
+    // single-ident arg: bind it
+    ($arg:ident = $value:expr $(, $($rest_arg:ident).+ = $rest_value:expr)*) => {
+        let $arg = $value;
+        $crate::__bind_single_ident_args!($($($rest_arg).+ = $rest_value),*)
+    };
+    // multi-ident arg: skip it
+    ($($path:ident).+ = $value:expr $(, $($rest_arg:ident).+ = $rest_value:expr)*) => {
+        $crate::__bind_single_ident_args!($($($rest_arg).+ = $rest_value),*)
+    };
+    // base case: stop recursion
+    () => { };
+}
+
+/// Macro to evaluate the argument provided.
+///
+/// If the argument was single-ident, it was already evaluated so we should use the arg ident
+/// directly. If it was multi-ident, we should evaluate it now.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __evaluate_arg {
+    // single ident arg should already have been bound
+    ($arg:ident = $value:expr) => {
+        $arg
+    };
+    // multi-ident arg should be evaluated now
+    ($($path:ident).+ = $value:expr) => {
+        $value
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __log {
+    (parent: $parent:expr, $level:expr, $format:expr, $($($path:ident).+ = $value:expr),*) => {
+        if tracing::span_enabled!($level) {
+            // bind single ident args early to allow them in the format string
+            // without multiple evaluation
+            $crate::__bind_single_ident_args!($($($path).+ = $value),*);
+            $crate::__macros_impl::export_log_span(
+                $format,
+                $parent,
+                format!($format),
+                $level,
+                $crate::__json_schema!($($($path).+),*),
+                file!(),
+                line!(),
+                module_path!(),
+                [
+                    $({
+                        let arg_value = $crate::__evaluate_arg!($($path).+ = $value);
+                        $crate::__macros_impl::LogfireValue::new(
+                            stringify!($($path).+),
+                            $crate::__macros_impl::converter(&arg_value).convert_value(arg_value)
+                        )
+                    }),*
+                ]
+            );
+        }
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_schema_args() {
+        assert_eq!(r#""arg1.a":{},"arg2.b":{}"#, __schema_args!(arg1.a, arg2.b));
+    }
 }
