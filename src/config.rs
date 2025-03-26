@@ -12,6 +12,7 @@ use opentelemetry_sdk::{
     metrics::reader::MetricReader,
     trace::{IdGenerator, SpanProcessor},
 };
+use regex::Regex;
 
 use crate::ConfigureError;
 
@@ -168,9 +169,10 @@ impl std::fmt::Debug for Target {
 }
 
 /// Options primarily used for testing by Logfire developers.
+#[derive(Default)]
 pub struct AdvancedOptions {
     /// Root URL for the Logfire API.
-    pub(crate) base_url: String,
+    pub(crate) base_url: Option<String>,
     /// Generator for trace and span IDs.
     pub(crate) id_generator: Option<BoxedIdGenerator>,
     /// Resource to override default resource detection.
@@ -186,21 +188,11 @@ pub struct AdvancedOptions {
     // pub log_record_processors: Vec<Box<dyn LogRecordProcessor>>,
 }
 
-impl Default for AdvancedOptions {
-    fn default() -> Self {
-        AdvancedOptions {
-            base_url: "https://logfire-api.pydantic.dev".to_string(),
-            id_generator: None,
-            resource: None,
-        }
-    }
-}
-
 impl AdvancedOptions {
     /// Set the base URL for the Logfire API.
     #[must_use]
     pub fn with_base_url<T: AsRef<str>>(mut self, base_url: T) -> Self {
-        self.base_url = base_url.as_ref().into();
+        self.base_url = Some(base_url.as_ref().into());
         self
     }
 
@@ -219,6 +211,41 @@ impl AdvancedOptions {
     pub fn with_resource(mut self, resource: opentelemetry_sdk::Resource) -> Self {
         self.resource = Some(resource);
         self
+    }
+}
+
+struct RegionData {
+    base_url: &'static str,
+    #[expect(dead_code)] // not used for the moment
+    gcp_region: &'static str,
+}
+
+const US_REGION: RegionData = RegionData {
+    base_url: "https://logfire-us.pydantic.dev",
+    gcp_region: "us-east4",
+};
+
+const EU_REGION: RegionData = RegionData {
+    base_url: "https://logfire-eu.pydantic.dev",
+    gcp_region: "europe-west4",
+};
+
+/// Get the base API URL from the token's region.
+pub(crate) fn get_base_url_from_token(token: &str) -> &'static str {
+    let pydantic_logfire_token_pattern = Regex::new(
+        r"^(?P<safe_part>pylf_v(?P<version>[0-9]+)_(?P<region>[a-z]+)_)(?P<token>[a-zA-Z0-9]+)$",
+    )
+    .expect("token regex is known to be valid");
+
+    #[expect(clippy::wildcard_in_or_patterns, reason = "being explicit about us")]
+    match pydantic_logfire_token_pattern
+        .captures(token)
+        .and_then(|captures| captures.name("region"))
+        .map(|region| region.as_str())
+    {
+        Some("eu") => EU_REGION.base_url,
+        // fallback to US region if the token / region is not recognized
+        Some("us") | _ => US_REGION.base_url,
     }
 }
 

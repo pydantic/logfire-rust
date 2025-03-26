@@ -103,6 +103,7 @@ use std::sync::{Arc, Once};
 use std::{backtrace::Backtrace, env::VarError, sync::OnceLock, time::Duration};
 
 use bridges::tracing::LogfireTracingPendingSpanNotSentLayer;
+use config::get_base_url_from_token;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::trace::{
@@ -501,17 +502,29 @@ impl LogfireConfigBuilder {
 
         let mut http_headers: Option<HashMap<String, String>> = None;
 
-        if send_to_logfire {
+        let logfire_base_url = if send_to_logfire {
             let Some(token) = token else {
                 return Err(ConfigureError::TokenRequired);
             };
+
             http_headers
                 .get_or_insert_default()
                 .insert("Authorization".to_string(), format!("Bearer {token}"));
 
+            Some(
+                advanced_options
+                    .base_url
+                    .as_deref()
+                    .unwrap_or_else(|| get_base_url_from_token(&token)),
+            )
+        } else {
+            None
+        };
+
+        if let Some(logfire_base_url) = logfire_base_url {
             tracer_provider_builder = tracer_provider_builder.with_span_processor(
                 BatchSpanProcessor::builder(exporters::span_exporter(
-                    &advanced_options.base_url,
+                    logfire_base_url,
                     http_headers.clone(),
                 )?)
                 .with_batch_config(
@@ -570,14 +583,16 @@ impl LogfireConfigBuilder {
 
         let mut meter_provider_builder = SdkMeterProvider::builder();
 
-        if send_to_logfire && self.enable_metrics {
-            let metric_reader = PeriodicReader::builder(exporters::metric_exporter(
-                &advanced_options.base_url,
-                http_headers,
-            )?)
-            .build();
+        if let Some(logfire_base_url) = logfire_base_url {
+            if self.enable_metrics {
+                let metric_reader = PeriodicReader::builder(exporters::metric_exporter(
+                    logfire_base_url,
+                    http_headers,
+                )?)
+                .build();
 
-            meter_provider_builder = meter_provider_builder.with_reader(metric_reader);
+                meter_provider_builder = meter_provider_builder.with_reader(metric_reader);
+            }
         };
 
         if let Some(metrics) = self.metrics.filter(|_| self.enable_metrics) {
