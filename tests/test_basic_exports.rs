@@ -49,10 +49,10 @@ fn test_basic_span() {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         tracing::subscriber::with_default(guard.subscriber(), || {
             let root = span!("root span").entered();
-            let _ = span!("hello world span").entered();
+            let _ = span!("hello world span", attr = "x", dotted.attr = "y").entered();
             let _ = span!(level: Level::DEBUG, "debug span");
             let _ = span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
-            info!("hello world log");
+            info!("hello world log", attr = "x", dotted.attr = "y");
             panic!("oh no!");
         });
     }))
@@ -259,6 +259,26 @@ fn test_basic_span() {
                 },
                 KeyValue {
                     key: Static(
+                        "attr",
+                    ),
+                    value: String(
+                        Owned(
+                            "x",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "dotted.attr",
+                    ),
+                    value: String(
+                        Owned(
+                            "y",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
                         "logfire.msg",
                     ),
                     value: String(
@@ -273,7 +293,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Owned(
-                            "{\"type\":\"object\",\"properties\":{}}",
+                            "{\"type\":\"object\",\"properties\":{\"attr\":{},\"dotted.attr\":{}}}",
                         ),
                     ),
                 },
@@ -395,6 +415,26 @@ fn test_basic_span() {
                 },
                 KeyValue {
                     key: Static(
+                        "attr",
+                    ),
+                    value: String(
+                        Owned(
+                            "x",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "dotted.attr",
+                    ),
+                    value: String(
+                        Owned(
+                            "y",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
                         "logfire.msg",
                     ),
                     value: String(
@@ -409,7 +449,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Owned(
-                            "{\"type\":\"object\",\"properties\":{}}",
+                            "{\"type\":\"object\",\"properties\":{\"attr\":{},\"dotted.attr\":{}}}",
                         ),
                     ),
                 },
@@ -775,6 +815,26 @@ fn test_basic_span() {
             attributes: [
                 KeyValue {
                     key: Static(
+                        "attr",
+                    ),
+                    value: String(
+                        Static(
+                            "x",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "dotted.attr",
+                    ),
+                    value: String(
+                        Static(
+                            "y",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
                         "logfire.msg",
                     ),
                     value: String(
@@ -807,7 +867,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "{\"type\":\"object\",\"properties\":{}}",
+                            "{\"type\":\"object\",\"properties\":{\"attr\":{},\"dotted.attr\":{}}}",
                         ),
                     ),
                 },
