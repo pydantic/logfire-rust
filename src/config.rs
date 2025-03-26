@@ -64,7 +64,6 @@ impl From<bool> for SendToLogfire {
 }
 
 /// Options for controlling console output.
-#[expect(clippy::struct_excessive_bools)] // Config options, bools make sense here.
 #[derive(Debug, Clone)]
 pub struct ConsoleOptions {
     /// Where to send output
@@ -89,6 +88,7 @@ pub struct ConsoleOptions {
     // show_project_link: bool,
 }
 
+#[expect(clippy::derivable_impls)] // When the other options are implemented, we will need this.
 impl Default for ConsoleOptions {
     fn default() -> Self {
         ConsoleOptions {

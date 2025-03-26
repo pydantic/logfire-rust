@@ -203,6 +203,7 @@ pub enum ConsoleMode {
 }
 
 #[expect(deprecated)]
+#[expect(clippy::derivable_impls)] // default impl was generating deprecation use error?!
 impl Default for ConsoleMode {
     fn default() -> Self {
         ConsoleMode::Fallback
