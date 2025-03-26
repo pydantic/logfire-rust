@@ -191,17 +191,25 @@ pub enum ConfigureError {
 }
 
 /// Whether to print to the console.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+#[deprecated(since = "0.4.0", note = "use `ConsoleOptions` instead")]
 pub enum ConsoleMode {
     /// Write to console if no logfire token
-    #[default]
     Fallback,
     /// Force write to console
     Force,
 }
 
+#[expect(deprecated)]
+impl Default for ConsoleMode {
+    fn default() -> Self {
+        ConsoleMode::Fallback
+    }
+}
+
+#[expect(deprecated)]
 impl FromStr for ConsoleMode {
     type Err = String;
 
@@ -241,7 +249,9 @@ pub fn configure() -> LogfireConfigBuilder {
         local: false,
         send_to_logfire: None,
         token: None,
-        console_options: None,
+        console_options: Some(ConsoleOptions::default()),
+        #[expect(deprecated)]
+        console_mode: ConsoleMode::Force,
         additional_span_processors: Vec::new(),
         advanced: None,
         metrics: None,
@@ -260,6 +270,10 @@ pub struct LogfireConfigBuilder {
     // service_version: Option<String>,
     // environment: Option<String>,
     console_options: Option<ConsoleOptions>,
+    /// Deprecated setting, `Force` implies use `console_options`, `Fallback` will filter
+    /// them out if `send_to_logfire` is false.
+    #[expect(deprecated)]
+    console_mode: ConsoleMode,
 
     // config_dir: Option<PathBuf>,
     // data_dir: Option<Path>,
@@ -323,6 +337,8 @@ impl LogfireConfigBuilder {
 
     /// Whether to log to the console.
     #[must_use]
+    #[deprecated(note = "use `console_options()` instead")]
+    #[expect(deprecated)]
     pub fn console_mode(mut self, console_mode: ConsoleMode) -> Self {
         // FIXME: remove this API and make it match Python, see `console_options()` below
         match console_mode {
@@ -334,10 +350,12 @@ impl LogfireConfigBuilder {
         self
     }
 
-    /// Set the options for logging to console.
-    #[cfg(test)] // FIXME: not all options exposed actually work yet, so not public
-    pub fn console_options(mut self, console_options: ConsoleOptions) -> Self {
-        self.console_options = Some(console_options);
+    /// Sets console options. Set to `None` to disable console logging.
+    ///
+    /// If not set, will use `ConsoleOptions::default()`.
+    #[must_use]
+    pub fn with_console(mut self, console_options: Option<ConsoleOptions>) -> Self {
+        self.console_options = console_options;
         self
     }
 
@@ -495,15 +513,15 @@ impl LogfireConfigBuilder {
             );
         }
 
-        // TODO make this behaviour closer to Python
-        let mut console_options = self.console_options;
-        if console_options.is_none() && !send_to_logfire {
-            // FIXME: in Python the console and logfire settings are independent, we should not have
-            // "fallback" like this.
-            console_options = Some(ConsoleOptions::default());
-        }
-
-        let console_writer = console_options.map(ConsoleWriter::new).map(Arc::new);
+        let console_writer = self
+            .console_options
+            // NB deprecated behaviour: if set to fallback and sending to logfire, disable console
+            .filter(
+                #[expect(deprecated)]
+                |_| !(self.console_mode == ConsoleMode::Fallback && send_to_logfire),
+            )
+            .map(ConsoleWriter::new)
+            .map(Arc::new);
 
         if let Some(console_writer) = console_writer.clone() {
             tracer_provider_builder = tracer_provider_builder.with_span_processor(

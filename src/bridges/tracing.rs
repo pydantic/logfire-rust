@@ -1383,7 +1383,7 @@ mod tests {
         let handler = crate::configure()
             .local()
             .send_to_logfire(false)
-            .console_options(console_options.clone())
+            .with_console(Some(console_options.clone()))
             .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()

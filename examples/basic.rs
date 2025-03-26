@@ -12,10 +12,7 @@ static BASIC_COUNTER: LazyLock<Counter<u64>> = LazyLock::new(|| {
 });
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let shutdown_handler = logfire::configure()
-        .install_panic_handler()
-        .console_mode(logfire::ConsoleMode::Fallback)
-        .finish()?;
+    let shutdown_handler = logfire::configure().install_panic_handler().finish()?;
 
     logfire::info!("Hello, world!");
 
