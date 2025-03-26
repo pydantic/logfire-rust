@@ -1032,7 +1032,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        666,
+                        675,
                     ),
                 },
                 KeyValue {
@@ -1295,7 +1295,9 @@ async fn test_basic_metrics() {
 
     let handler = logfire::configure()
         .send_to_logfire(false)
-        .with_metrics_options(MetricsOptions::default().with_additional_reader(reader.clone()))
+        .with_metrics(Some(
+            MetricsOptions::default().with_additional_reader(reader.clone()),
+        ))
         .with_advanced_options(
             AdvancedOptions::default()
                 .with_resource(Resource::builder_empty().with_service_name("test").build()),
