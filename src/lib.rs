@@ -100,7 +100,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::panic::PanicHookInfo;
 use std::sync::{Arc, Once};
-use std::{backtrace::Backtrace, env::VarError, str::FromStr, sync::OnceLock, time::Duration};
+use std::{backtrace::Backtrace, env::VarError, sync::OnceLock, time::Duration};
 
 use bridges::tracing::LogfireTracingPendingSpanNotSentLayer;
 use opentelemetry::trace::TracerProvider;
@@ -190,38 +190,38 @@ pub enum ConfigureError {
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
-/// Whether to print to the console.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
-#[deprecated(since = "0.4.0", note = "use `ConsoleOptions` instead")]
-pub enum ConsoleMode {
-    /// Write to console if no logfire token
-    Fallback,
-    /// Force write to console
-    Force,
-}
-
 #[expect(deprecated)]
-#[expect(clippy::derivable_impls)] // default impl was generating deprecation use error?!
-impl Default for ConsoleMode {
-    fn default() -> Self {
-        ConsoleMode::Fallback
+mod deprecated {
+    use std::str::FromStr;
+
+    /// Whether to print to the console.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+    #[deprecated(since = "0.4.0", note = "use `ConsoleOptions` instead")]
+    pub enum ConsoleMode {
+        /// Write to console if no logfire token
+        #[default]
+        Fallback,
+        /// Force write to console
+        Force,
     }
-}
 
-#[expect(deprecated)]
-impl FromStr for ConsoleMode {
-    type Err = String;
+    impl FromStr for ConsoleMode {
+        type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "fallback" => Ok(ConsoleMode::Fallback),
-            "force" => Ok(ConsoleMode::Force),
-            _ => Err(format!("invalid console mode: {s}")),
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            match s {
+                "fallback" => Ok(ConsoleMode::Fallback),
+                "force" => Ok(ConsoleMode::Force),
+                _ => Err(format!("invalid console mode: {s}")),
+            }
         }
     }
 }
+
+#[expect(deprecated)]
+use deprecated::ConsoleMode;
 
 /// Main entry point to configure logfire.
 ///
