@@ -255,7 +255,7 @@ pub fn configure() -> LogfireConfigBuilder {
         console_mode: ConsoleMode::Force,
         additional_span_processors: Vec::new(),
         advanced: None,
-        metrics: None,
+        metrics: Some(MetricsOptions::default()),
         enable_metrics: true,
         install_panic_handler: false,
         default_level_filter: None,
@@ -338,7 +338,7 @@ impl LogfireConfigBuilder {
 
     /// Whether to log to the console.
     #[must_use]
-    #[deprecated(note = "use `console_options()` instead")]
+    #[deprecated(since = "0.4.0", note = "use `with_console()` instead")]
     #[expect(deprecated)]
     pub fn console_mode(mut self, console_mode: ConsoleMode) -> Self {
         // FIXME: remove this API and make it match Python, see `console_options()` below
@@ -392,16 +392,25 @@ impl LogfireConfigBuilder {
     }
 
     /// Configure [metrics options](crate::config::MetricsOptions).
+    ///
+    /// Set to `None` to disable metrics.
     #[must_use]
+    pub fn with_metrics(mut self, metrics: Option<MetricsOptions>) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    /// Configure [metrics options](crate::config::MetricsOptions).
+    #[must_use]
+    #[deprecated(since = "0.4.0", note = "use `with_metrics` instead")]
     pub fn with_metrics_options(mut self, metrics: MetricsOptions) -> Self {
         self.metrics = Some(metrics);
         self
     }
 
     /// Whether to enable metrics.
-    ///
-    /// If set to false, this will override [`with_metrics_options`][Self::with_metrics_options].
     #[must_use]
+    #[deprecated(since = "0.4.0", note = "use `with_metrics(None)` to disable metrics")]
     pub fn enable_metrics(mut self, enable: bool) -> Self {
         self.enable_metrics = enable;
         self
