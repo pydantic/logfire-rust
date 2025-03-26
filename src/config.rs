@@ -63,24 +63,6 @@ impl From<bool> for SendToLogfire {
     }
 }
 
-/// Enum to represent different states of configuration settings.
-pub enum ConfigSetting<T> {
-    /// The setting is enabled
-    Enabled(T),
-    /// The setting is disabled
-    Disabled,
-}
-
-impl<T: Default> From<bool> for ConfigSetting<T> {
-    fn from(b: bool) -> Self {
-        if b {
-            ConfigSetting::Enabled(T::default())
-        } else {
-            ConfigSetting::Disabled
-        }
-    }
-}
-
 /// Options for controlling console output.
 #[expect(clippy::struct_excessive_bools)] // Config options, bools make sense here.
 #[derive(Debug, Clone)]
