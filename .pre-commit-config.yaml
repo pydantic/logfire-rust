@@ -24,9 +24,9 @@ repos:
     types: [rust]
     language: system
     pass_filenames: false
-  - id: test
-    name: Test
-    entry: cargo test --all-features
+  - id: docs
+    name: Check docs
+    entry: env RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
     types: [rust]
     language: system
     pass_filenames: false
