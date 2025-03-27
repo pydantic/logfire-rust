@@ -200,6 +200,8 @@ macro_rules! debug {
 /// // or
 /// logfire::info!("Log with x = {x}, y = {y}", y = "hello", foo.bar = 42);
 /// ```
+///
+/// [attributes]: https://opentelemetry.io/docs/concepts/signals/traces/#attributes
 #[macro_export]
 macro_rules! log {
     (parent: $parent:expr, $level:expr, $format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {

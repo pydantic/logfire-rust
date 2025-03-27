@@ -27,7 +27,7 @@ macro_rules! feature_required {
     }};
 }
 
-/// Build a [`SpanExporter`][opentelemetry_sdk::trace::SpanExporter] for passing to
+/// Build a [`SpanExporter`] for passing to
 /// [`with_additional_span_processor()`][crate::LogfireConfigBuilder::with_additional_span_processor].
 ///
 /// This uses `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` environment
@@ -98,7 +98,7 @@ pub fn span_exporter(
     Ok(RemovePendingSpansExporter::new(span_exporter))
 }
 
-/// Build a [`PushMetricExporter`][opentelemetry_sdk::metrics::exporter::PushMetricExporter] for passing to
+/// Build a [`PushMetricExporter`] for passing to
 /// [`with_metrics_options()`][crate::LogfireConfigBuilder::with_metrics_options].
 ///
 /// This uses `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` environment
