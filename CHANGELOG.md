@@ -1,3 +1,7 @@
+## [v0.5.0] (2025-04-02)
+
+* update to opentelemetry 0.29 by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/40
+
 ## [v0.4.0] (2025-03-26)
 
 * remove debug print, and add clippy lint to prevent future regressions by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/32
@@ -34,3 +38,4 @@ Initial release.
 [v0.3.0]: https://github.com/pydantic/logfire-rust/compare/v0.2.0..v0.3.0
 [v0.3.1]: https://github.com/pydantic/logfire-rust/compare/v0.3.0..v0.3.1
 [v0.4.0]: https://github.com/pydantic/logfire-rust/compare/v0.3.1..v0.4.0
+[v0.5.0]: https://github.com/pydantic/logfire-rust/compare/v0.4.0..v0.5.0
