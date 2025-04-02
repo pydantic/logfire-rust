@@ -5,7 +5,6 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use futures_util::future::BoxFuture;
 use nu_ansi_term::{Color, Style};
 use opentelemetry::Value;
 use opentelemetry_sdk::trace::SpanData;
@@ -35,14 +34,14 @@ impl SimpleConsoleSpanExporter {
 }
 
 impl opentelemetry_sdk::trace::SpanExporter for SimpleConsoleSpanExporter {
-    fn export(
-        &mut self,
+    async fn export(
+        &self,
         batch: Vec<opentelemetry_sdk::trace::SpanData>,
-    ) -> BoxFuture<'static, opentelemetry_sdk::error::OTelSdkResult> {
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
         if !self.stopped {
             self.writer.write_batch(&batch);
         }
-        Box::pin(std::future::ready(Ok(())))
+        Ok(())
     }
 
     fn shutdown(&mut self) -> opentelemetry_sdk::error::OTelSdkResult {
@@ -384,7 +383,7 @@ mod tests {
         [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:370:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:369:17, [3mbacktrace[0m=disabled backtrace
         "#);
     }
 }

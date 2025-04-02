@@ -294,19 +294,20 @@ mod tests {
     fn test_tracing_bridge() {
         let exporter = InMemorySpanExporterBuilder::new().build();
 
-        let handler = crate::configure()
-            .local()
-            .send_to_logfire(false)
-            .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
-                DeterministicExporter::new(exporter.clone(), file!(), line!()),
-            )))
-            .install_panic_handler()
-            .with_default_level_filter(LevelFilter::TRACE)
-            .with_advanced_options(
-                AdvancedOptions::default().with_id_generator(DeterministicIdGenerator::new()),
-            )
-            .finish()
-            .unwrap();
+        let handler =
+            crate::configure()
+                .local()
+                .send_to_logfire(false)
+                .with_additional_span_processor(SimpleSpanProcessor::new(
+                    DeterministicExporter::new(exporter.clone(), file!(), line!()),
+                ))
+                .install_panic_handler()
+                .with_default_level_filter(LevelFilter::TRACE)
+                .with_advanced_options(
+                    AdvancedOptions::default().with_id_generator(DeterministicIdGenerator::new()),
+                )
+                .finish()
+                .unwrap();
 
         let guard = set_local_logfire(handler);
 
@@ -340,7 +341,7 @@ mod tests {
                 },
                 parent_span_id: 0000000000000000,
                 span_kind: Internal,
-                name: "event src/bridges/tracing.rs:314",
+                name: "event src/bridges/tracing.rs:315",
                 start_time: SystemTime {
                     tv_sec: 0,
                     tv_nsec: 0,
@@ -1280,7 +1281,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     value: I64(
-                                        322,
+                                        323,
                                     ),
                                 },
                             ],
@@ -1346,7 +1347,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     value: I64(
-                                        323,
+                                        324,
                                     ),
                                 },
                             ],
