@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use futures_util::future::BoxFuture;
 use opentelemetry_sdk::{
     error::OTelSdkResult,
     trace::{SpanData, SpanExporter},
@@ -18,7 +17,7 @@ impl<Inner> RemovePendingSpansExporter<Inner> {
 }
 
 impl<Inner: SpanExporter> SpanExporter for RemovePendingSpansExporter<Inner> {
-    fn export(&mut self, mut spans: Vec<SpanData>) -> BoxFuture<'static, OTelSdkResult> {
+    async fn export(&self, mut spans: Vec<SpanData>) -> OTelSdkResult {
         let mut spans_by_id = HashMap::new();
 
         spans = spans
@@ -44,7 +43,7 @@ impl<Inner: SpanExporter> SpanExporter for RemovePendingSpansExporter<Inner> {
             .collect();
 
         spans.extend(spans_by_id.into_values());
-        self.0.export(spans)
+        self.0.export(spans).await
     }
 
     fn shutdown(&mut self) -> OTelSdkResult {

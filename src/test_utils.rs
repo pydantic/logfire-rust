@@ -4,7 +4,6 @@ use std::{
     borrow::Cow,
     collections::{HashMap, hash_map::Entry},
     future::Future,
-    pin::Pin,
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -72,10 +71,7 @@ impl<Inner> DeterministicExporter<Inner> {
 }
 
 impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
-    fn export(
-        &mut self,
-        mut batch: Vec<SpanData>,
-    ) -> Pin<Box<dyn Future<Output = OTelSdkResult> + Send>> {
+    fn export(&self, mut batch: Vec<SpanData>) -> impl Future<Output = OTelSdkResult> + Send {
         for span in &mut batch {
             // By remapping timestamps to deterministic values, we should find that
             // - pending spans have the same start time as their real span
@@ -133,30 +129,32 @@ impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
 
 #[async_trait]
 impl<Inner: PushMetricExporter> PushMetricExporter for DeterministicExporter<Inner> {
-    async fn export(&self, metrics: &mut ResourceMetrics) -> OTelSdkResult {
-        let timestamp_remap = self.timestamp_remap.clone();
-        for scope in &mut metrics.scope_metrics {
-            for metric in &mut scope.metrics {
-                if let Some(sum) = (*metric.data).as_mut().downcast_mut::<Sum<u64>>() {
-                    sum.start_time = timestamp_remap
-                        .lock()
-                        .unwrap()
-                        .remap_timestamp(sum.start_time);
-                    sum.time = timestamp_remap.lock().unwrap().remap_timestamp(sum.time);
+    fn export(&self, metrics: &mut ResourceMetrics) -> impl Future<Output = OTelSdkResult> {
+        async move {
+            let timestamp_remap = self.timestamp_remap.clone();
+            for scope in &mut metrics.scope_metrics {
+                for metric in &mut scope.metrics {
+                    if let Some(sum) = (*metric.data).as_mut().downcast_mut::<Sum<u64>>() {
+                        sum.start_time = timestamp_remap
+                            .lock()
+                            .unwrap()
+                            .remap_timestamp(sum.start_time);
+                        sum.time = timestamp_remap.lock().unwrap().remap_timestamp(sum.time);
 
-                    for data_point in &mut sum.data_points {
-                        data_point
-                            .attributes
-                            .sort_by_cached_key(|kv| kv.key.to_string());
+                        for data_point in &mut sum.data_points {
+                            data_point
+                                .attributes
+                                .sort_by_cached_key(|kv| kv.key.to_string());
+                        }
                     }
                 }
             }
+            self.exporter.export(metrics).await
         }
-        self.exporter.export(metrics).await
     }
 
-    async fn force_flush(&self) -> OTelSdkResult {
-        self.exporter.force_flush().await
+    fn force_flush(&self) -> OTelSdkResult {
+        self.exporter.force_flush()
     }
 
     fn shutdown(&self) -> OTelSdkResult {
@@ -179,7 +177,7 @@ impl<Inner> DeterministicExporter<Inner> {
         }
     }
 
-    fn remap_timestamp(&mut self, from: SystemTime) -> SystemTime {
+    fn remap_timestamp(&self, from: SystemTime) -> SystemTime {
         self.timestamp_remap.lock().unwrap().remap_timestamp(from)
     }
 }

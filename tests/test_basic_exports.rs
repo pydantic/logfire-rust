@@ -6,10 +6,8 @@ use insta::assert_debug_snapshot;
 use opentelemetry_sdk::{
     Resource,
     metrics::{
-        InMemoryMetricExporterBuilder, ManualReader,
-        data::ResourceMetrics,
-        exporter::{self},
-        reader::MetricReader,
+        InMemoryMetricExporterBuilder, ManualReader, data::ResourceMetrics,
+        exporter::PushMetricExporter, reader::MetricReader,
     },
     trace::{InMemorySpanExporterBuilder, SimpleSpanProcessor},
 };
@@ -33,8 +31,10 @@ fn test_basic_span() {
     let handler = logfire::configure()
         .local()
         .send_to_logfire(false)
-        .with_additional_span_processor(SimpleSpanProcessor::new(Box::new(
-            DeterministicExporter::new(exporter.clone(), file!(), line!()),
+        .with_additional_span_processor(SimpleSpanProcessor::new(DeterministicExporter::new(
+            exporter.clone(),
+            file!(),
+            line!(),
         )))
         .install_panic_handler()
         .with_default_level_filter(LevelFilter::TRACE)
@@ -1032,7 +1032,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        690,
+                        694,
                     ),
                 },
                 KeyValue {
@@ -1239,7 +1239,7 @@ impl SharedManualReader {
         }
     }
 
-    async fn export(&self, exporter: &mut dyn exporter::PushMetricExporter) {
+    async fn export<E: PushMetricExporter>(&self, exporter: &E) {
         let mut metrics = ResourceMetrics {
             resource: Resource::builder_empty().build(),
             scope_metrics: Vec::new(),

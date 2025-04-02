@@ -158,7 +158,11 @@ pub enum ConfigureError {
 
     /// Error configuring the OpenTelemetry tracer.
     #[error("Error configuring the OpenTelemetry tracer: {0}")]
-    Trace(#[from] opentelemetry::trace::TraceError),
+    Trace(#[from] opentelemetry_sdk::trace::TraceError),
+
+    /// OpenTelemetry exporter failed to build
+    #[error("Error building the OpenTelemetry exporter: {0}")]
+    ExporterBuildError(#[from] opentelemetry_otlp::ExporterBuildError),
 
     /// Error installing the OpenTelemetry tracer.
     #[error("Error configuring the OpenTelemetry tracer: {0}")]
@@ -548,7 +552,7 @@ impl LogfireConfigBuilder {
 
         if let Some(console_writer) = console_writer.clone() {
             tracer_provider_builder = tracer_provider_builder.with_span_processor(
-                SimpleSpanProcessor::new(Box::new(SimpleConsoleSpanExporter::new(console_writer))),
+                SimpleSpanProcessor::new(SimpleConsoleSpanExporter::new(console_writer)),
             );
         }
 
