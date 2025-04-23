@@ -80,7 +80,7 @@ impl ConsoleWriter {
         self.with_writer(|w| {
             let mut buffer = BufWriter::new(w);
             for span in batch {
-                let _ = Self::span_to_writer(span, &mut buffer);
+                let _ = Self::span_to_writer(self, span, &mut buffer);
             }
         });
     }
@@ -88,14 +88,14 @@ impl ConsoleWriter {
     pub fn write_tracing_event(&self, event: &tracing::Event<'_>) {
         self.with_writer(|w| {
             let mut buffer = BufWriter::new(w);
-            let _ = Self::event_to_writer(event, &mut buffer);
+            let _ = Self::event_to_writer(self, event, &mut buffer);
         });
     }
 
     pub fn write_tracing_opentelemetry_data(&self, data: &OtelData) {
         self.with_writer(|w| {
             let mut buffer = BufWriter::new(w);
-            let _ = Self::otel_data_to_writer(data, &mut buffer);
+            let _ = Self::otel_data_to_writer(self, data, &mut buffer);
         });
     }
 
@@ -107,13 +107,12 @@ impl ConsoleWriter {
         }
     }
 
-    fn span_to_writer<W: io::Write>(span: &SpanData, w: &mut W) -> io::Result<()> {
+    fn span_to_writer<W: io::Write>(&self, span: &SpanData, w: &mut W) -> io::Result<()> {
         // only print for pending span and logs
         if span.get_span_type().is_none_or(|ty| ty == "span") {
             return Ok(());
         }
 
-        let timestamp: DateTime<Utc> = span.start_time.into();
         let mut msg = None;
         let mut level = None;
         let mut target = None;
@@ -152,11 +151,15 @@ impl ConsoleWriter {
             msg = Some(span.name.clone());
         }
 
-        write!(
-            w,
-            "{}",
-            DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-        )?;
+        if self.options.include_timestamps {
+            let timestamp: DateTime<Utc> = span.start_time.into();
+            write!(
+                w,
+                "{}",
+                DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+            )?;
+        }
+
         if let Some(level) = level {
             level_int_to_text(level, w)?;
         }
@@ -183,8 +186,11 @@ impl ConsoleWriter {
         writeln!(w)
     }
 
-    fn event_to_writer<W: io::Write>(event: &tracing::Event<'_>, w: &mut W) -> io::Result<()> {
-        let timestamp: DateTime<Utc> = Utc::now();
+    fn event_to_writer<W: io::Write>(
+        &self,
+        event: &tracing::Event<'_>,
+        w: &mut W,
+    ) -> io::Result<()> {
         let level = level_to_level_number(*event.metadata().level());
         let target = event.metadata().module_path();
 
@@ -199,11 +205,14 @@ impl ConsoleWriter {
             .message
             .unwrap_or_else(|| event.metadata().name().to_string());
 
-        write!(
-            w,
-            "{}",
-            DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-        )?;
+        if self.options.include_timestamps {
+            let timestamp: DateTime<Utc> = Utc::now();
+            write!(
+                w,
+                "{}",
+                DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+            )?;
+        }
 
         level_int_to_text(level, w)?;
 
@@ -226,15 +235,10 @@ impl ConsoleWriter {
     }
 
     fn otel_data_to_writer<W: io::Write>(
+        &self,
         data: &tracing_opentelemetry::OtelData,
         w: &mut W,
     ) -> io::Result<()> {
-        let timestamp: DateTime<Utc> = data
-            .builder
-            .start_time
-            .unwrap_or_else(SystemTime::now)
-            .into();
-
         let mut msg = None;
         let mut level = None;
         let mut target = None;
@@ -273,11 +277,19 @@ impl ConsoleWriter {
             msg = Some(data.builder.name.clone());
         }
 
-        write!(
-            w,
-            "{}",
-            DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-        )?;
+        if self.options.include_timestamps {
+            let timestamp: DateTime<Utc> = data
+                .builder
+                .start_time
+                .unwrap_or_else(SystemTime::now)
+                .into();
+            write!(
+                w,
+                "{}",
+                DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+            )?;
+        }
+
         if let Some(level) = level {
             level_int_to_text(level, w)?;
         }
@@ -377,13 +389,60 @@ mod tests {
         let output = std::str::from_utf8(&output).unwrap();
         let output = remap_timestamps_in_console_output(output);
 
-        assert_snapshot!(output, @r#"
+        assert_snapshot!(output, @r"
         [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
         [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
         [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:369:17, [3mbacktrace[0m=disabled backtrace
-        "#);
+        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:381:17, [3mbacktrace[0m=disabled backtrace
+        ");
+    }
+
+    #[test]
+    fn test_print_to_console_include_timestamps_false() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+
+        let console_options = ConsoleOptions::default()
+            .with_target(Target::Pipe(output.clone()))
+            .with_include_timestamps(false);
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = set_local_logfire(handler);
+
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            tracing::subscriber::with_default(guard.subscriber().clone(), || {
+                let root = crate::span!("root span").entered();
+                let _ = crate::span!("hello world span").entered();
+                let _ = crate::span!(level: Level::DEBUG, "debug span");
+                let _ = crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
+                crate::info!("hello world log");
+                panic!("oh no!");
+            });
+        }))
+        .unwrap_err();
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+        let output = remap_timestamps_in_console_output(output);
+
+        assert_snapshot!(output, @r"
+        [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
+        [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
+        [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
+        [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
+        [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
+        [31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:428:17, [3mbacktrace[0m=disabled backtrace
+        ");
     }
 }
