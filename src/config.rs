@@ -89,7 +89,6 @@ pub struct ConsoleOptions {
     // show_project_link: bool,
 }
 
-#[expect(clippy::derivable_impls)] // When the other options are implemented, we will need this.
 impl Default for ConsoleOptions {
     fn default() -> Self {
         ConsoleOptions {

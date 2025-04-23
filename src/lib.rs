@@ -498,7 +498,7 @@ impl LogfireConfigBuilder {
         } else {
             tracer_provider_builder =
                 tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
-        };
+        }
 
         if let Some(resource) = advanced_options.resource.clone() {
             tracer_provider_builder = tracer_provider_builder.with_resource(resource);
@@ -597,7 +597,7 @@ impl LogfireConfigBuilder {
 
                 meter_provider_builder = meter_provider_builder.with_reader(metric_reader);
             }
-        };
+        }
 
         if let Some(metrics) = self.metrics.filter(|_| self.enable_metrics) {
             for reader in metrics.additional_readers {
