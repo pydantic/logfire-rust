@@ -1378,7 +1378,7 @@ mod tests {
 
         let console_options = ConsoleOptions {
             target: Target::Pipe(output.clone()),
-            ..ConsoleOptions::default()
+            ..ConsoleOptions::default().with_min_log_level(Level::TRACE)
         };
 
         let handler = crate::configure()
