@@ -69,14 +69,14 @@ impl From<bool> for SendToLogfire {
 pub struct ConsoleOptions {
     /// Where to send output
     pub(crate) target: Target,
+    /// Whether to include timestamps in the console output.
+    pub include_timestamps: bool,
     // TODO: support the below configuration options (inherited from Python SDK)
 
     // /// Whether to show colors in the console.
     // colors: ConsoleColors,
     // /// How spans are shown in the console.
     // span_style: SpanStyle,
-    // /// Whether to include timestamps in the console output.
-    // include_timestamps: bool,
     // /// Whether to include tags in the console output.
     // include_tags: bool,
     // /// Whether to show verbose output.
@@ -89,18 +89,17 @@ pub struct ConsoleOptions {
     // show_project_link: bool,
 }
 
-#[expect(clippy::derivable_impls)] // When the other options are implemented, we will need this.
 impl Default for ConsoleOptions {
     fn default() -> Self {
         ConsoleOptions {
             // colors: ConsoleColors::default(),
             // span_style: SpanStyle::default(),
-            // include_timestamps: true,
             // include_tags: true,
             // verbose: false,
             // min_log_level: Level::INFO,
             // show_project_link: true,
             target: Target::default(),
+            include_timestamps: true,
         }
     }
 }
@@ -110,6 +109,15 @@ impl ConsoleOptions {
     #[must_use]
     pub fn with_target(mut self, target: Target) -> Self {
         self.target = target;
+        self
+    }
+}
+
+impl ConsoleOptions {
+    /// Set whether to include timestamps in the console output.
+    #[must_use]
+    pub fn with_include_timestamps(mut self, include: bool) -> Self {
+        self.include_timestamps = include;
         self
     }
 }
@@ -366,5 +374,13 @@ mod tests {
     fn test_send_to_logfire_from_bool() {
         assert_eq!(SendToLogfire::from(true), SendToLogfire::Yes);
         assert_eq!(SendToLogfire::from(false), SendToLogfire::No);
+    }
+
+    #[test]
+    fn test_console_options_with_timestamps() {
+        let options = super::ConsoleOptions::default().with_include_timestamps(false);
+        assert!(!options.include_timestamps);
+        let options = super::ConsoleOptions::default().with_include_timestamps(true);
+        assert!(options.include_timestamps);
     }
 }
