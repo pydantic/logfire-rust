@@ -88,7 +88,7 @@ impl ConsoleWriter {
     pub fn write_tracing_event(&self, event: &tracing::Event<'_>) {
         self.with_writer(|w| {
             let mut buffer = BufWriter::new(w);
-            let _ = Self::event_to_writer(self, event, &mut buffer);
+            let _ = self.event_to_writer(event, &mut buffer);
         });
     }
 
