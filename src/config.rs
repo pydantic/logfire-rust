@@ -15,6 +15,7 @@ use opentelemetry_sdk::{
 use regex::Regex;
 
 use crate::ConfigureError;
+use tracing::Level;
 
 /// Whether to send logs to Logfire.
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,6 +72,8 @@ pub struct ConsoleOptions {
     pub(crate) target: Target,
     /// Whether to include timestamps in the console output.
     pub include_timestamps: bool,
+    /// The minimum log level to show in the console.
+    pub min_log_level: Level,
     // TODO: support the below configuration options (inherited from Python SDK)
 
     // /// Whether to show colors in the console.
@@ -83,8 +86,6 @@ pub struct ConsoleOptions {
     // ///
     // /// It includes the filename, log level, and line number.
     // verbose: bool,
-    // /// The minimum log level to show in the console.
-    // min_log_level: Level,
     // /// Whether to print the URL of the Logfire project after initialization.
     // show_project_link: bool,
 }
@@ -96,7 +97,7 @@ impl Default for ConsoleOptions {
             // span_style: SpanStyle::default(),
             // include_tags: true,
             // verbose: false,
-            // min_log_level: Level::INFO,
+            min_log_level: Level::INFO,
             // show_project_link: true,
             target: Target::default(),
             include_timestamps: true,
@@ -118,6 +119,13 @@ impl ConsoleOptions {
     #[must_use]
     pub fn with_include_timestamps(mut self, include: bool) -> Self {
         self.include_timestamps = include;
+        self
+    }
+
+    /// Set the minimum log level to show in the console.
+    #[must_use]
+    pub fn with_min_log_level(mut self, min_log_level: Level) -> Self {
+        self.min_log_level = min_log_level;
         self
     }
 }
@@ -382,5 +390,14 @@ mod tests {
         assert!(!options.include_timestamps);
         let options = super::ConsoleOptions::default().with_include_timestamps(true);
         assert!(options.include_timestamps);
+    }
+
+    #[test]
+    fn test_console_option_with_min_log_level() {
+        let console_options = super::ConsoleOptions::default();
+        assert_eq!(console_options.min_log_level, tracing::Level::INFO);
+        let console_options =
+            super::ConsoleOptions::default().with_min_log_level(tracing::Level::DEBUG);
+        assert_eq!(console_options.min_log_level, tracing::Level::DEBUG);
     }
 }

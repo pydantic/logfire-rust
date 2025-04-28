@@ -125,8 +125,11 @@ impl ConsoleWriter {
                     msg = Some(kv.value.as_str());
                 }
                 "logfire.level_num" => {
-                    if let Value::I64(val) = kv.value {
-                        level = Some(val);
+                    if let Value::I64(level_num) = kv.value {
+                        if level_num < level_to_level_number(self.options.min_log_level) {
+                            return Ok(());
+                        }
+                        level = Some(level_num);
                     }
                 }
                 "code.namespace" => target = Some(kv.value.as_str()),
@@ -192,6 +195,10 @@ impl ConsoleWriter {
         w: &mut W,
     ) -> io::Result<()> {
         let level = level_to_level_number(*event.metadata().level());
+        // Filter out event below the minimum log level
+        if level < level_to_level_number(self.options.min_log_level) {
+            return Ok(());
+        }
         let target = event.metadata().module_path();
 
         let mut visitor = FieldsVisitor {
@@ -251,8 +258,11 @@ impl ConsoleWriter {
                     msg = Some(kv.value.as_str());
                 }
                 "logfire.level_num" => {
-                    if let Value::I64(val) = kv.value {
-                        level = Some(val);
+                    if let Value::I64(level_num) = kv.value {
+                        if level_num < level_to_level_number(self.options.min_log_level) {
+                            return Ok(());
+                        }
+                        level = Some(level_num);
                     }
                 }
                 "code.namespace" => target = Some(kv.value.as_str()),
@@ -358,7 +368,9 @@ mod tests {
     fn test_print_to_console() {
         let output = Arc::new(Mutex::new(Vec::new()));
 
-        let console_options = ConsoleOptions::default().with_target(Target::Pipe(output.clone()));
+        let console_options = ConsoleOptions::default()
+            .with_target(Target::Pipe(output.clone()))
+            .with_min_log_level(Level::TRACE);
 
         let handler = crate::configure()
             .local()
@@ -395,7 +407,7 @@ mod tests {
         [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:381:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:393:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 
@@ -405,7 +417,8 @@ mod tests {
 
         let console_options = ConsoleOptions::default()
             .with_target(Target::Pipe(output.clone()))
-            .with_include_timestamps(false);
+            .with_include_timestamps(false)
+            .with_min_log_level(Level::TRACE);
 
         let handler = crate::configure()
             .local()
@@ -442,7 +455,52 @@ mod tests {
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:428:17, [3mbacktrace[0m=disabled backtrace
+        [31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:441:17, [3mbacktrace[0m=disabled backtrace
+        ");
+    }
+
+    #[test]
+    fn test_print_to_console_with_min_log_level() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+
+        let console_options = ConsoleOptions::default()
+            .with_target(Target::Pipe(output.clone()))
+            .with_min_log_level(Level::INFO);
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = set_local_logfire(handler);
+
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            tracing::subscriber::with_default(guard.subscriber().clone(), || {
+                let root = crate::span!("root span").entered();
+                let _ = crate::span!("hello world span").entered();
+                let _ = crate::span!(level: Level::DEBUG, "debug span");
+                let _ = crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
+                crate::info!("hello world log");
+                panic!("oh no!");
+            });
+        }))
+        .unwrap_err();
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+        let output = remap_timestamps_in_console_output(output);
+
+        assert_snapshot!(output, @r"
+        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
+        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
+        [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
+        [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:488:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 }
