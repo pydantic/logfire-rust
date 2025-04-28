@@ -95,7 +95,7 @@ impl ConsoleWriter {
     pub fn write_tracing_opentelemetry_data(&self, data: &OtelData) {
         self.with_writer(|w| {
             let mut buffer = BufWriter::new(w);
-            let _ = Self::otel_data_to_writer(self, data, &mut buffer);
+            let _ = self.otel_data_to_writer(data, &mut buffer);
         });
     }
 
