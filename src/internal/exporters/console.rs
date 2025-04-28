@@ -80,7 +80,7 @@ impl ConsoleWriter {
         self.with_writer(|w| {
             let mut buffer = BufWriter::new(w);
             for span in batch {
-                let _ = Self::span_to_writer(self, span, &mut buffer);
+                let _ = self.span_to_writer(span, &mut buffer);
             }
         });
     }
