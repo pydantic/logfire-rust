@@ -198,6 +198,12 @@ fn emit_event_as_log_span(
     };
 
     event.record(&mut visitor);
+    
+    let current_thread = std::thread::current();
+    let thread_id_kv = KeyValue::new("thread.id", format!("{:?}", current_thread.id()));
+    let thread_name_kv = current_thread
+        .name()
+        .map(|name| KeyValue::new("thread.name", name.to_owned()));
 
     let attributes: Vec<_> = visitor
         .fields
@@ -234,9 +240,9 @@ fn emit_event_as_log_span(
                 .module_path()
                 .map(|module_path| KeyValue::new("code.namespace", module_path)),
         )
+        .chain(std::iter::once(thread_id_kv))
+        .chain(thread_name_kv.into_iter())
         .collect();
-
-    // FIXME add thread.id, thread.name
 
     let ts = SystemTime::now();
 
