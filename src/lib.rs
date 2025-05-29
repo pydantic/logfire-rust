@@ -106,9 +106,7 @@ use bridges::tracing::LogfireTracingPendingSpanNotSentLayer;
 use config::get_base_url_from_token;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
-use opentelemetry_sdk::trace::{
-    BatchConfigBuilder, BatchSpanProcessor, SimpleSpanProcessor, SpanProcessor,
-};
+use opentelemetry_sdk::trace::{BatchConfigBuilder, BatchSpanProcessor, SpanProcessor};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use thiserror::Error;
 use tracing::Subscriber;
@@ -551,9 +549,15 @@ impl LogfireConfigBuilder {
             .map(Arc::new);
 
         if let Some(console_writer) = console_writer.clone() {
-            tracer_provider_builder = tracer_provider_builder.with_span_processor(
-                SimpleSpanProcessor::new(SimpleConsoleSpanExporter::new(console_writer)),
-            );
+            // Use BatchSpanProcessor instead of SimpleSpanProcessor to avoid deadlocks.
+            // BatchSpanProcessor uses a dedicated background thread, making it safer in async environments.
+            tracer_provider_builder =
+                tracer_provider_builder.with_span_processor(BatchSpanProcessor::new(
+                    SimpleConsoleSpanExporter::new(console_writer),
+                    BatchConfigBuilder::default()
+                        .with_scheduled_delay(Duration::ZERO)
+                        .build(),
+                ));
         }
 
         for span_processor in self.additional_span_processors {
