@@ -400,4 +400,19 @@ mod tests {
             super::ConsoleOptions::default().with_min_log_level(tracing::Level::DEBUG);
         assert_eq!(console_options.min_log_level, tracing::Level::DEBUG);
     }
+
+    #[tokio::test]
+    async fn test_console_with_tokio_sleep() {
+        // token is invalid, so exports will fail, but it was a necessary part of reproducing the issue
+        let shutdown_handler = crate::configure()
+            .local()
+            .with_token("abc123")
+            .install_panic_handler()
+            .finish()
+            .unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        shutdown_handler.shutdown().ok();
+    }
 }
