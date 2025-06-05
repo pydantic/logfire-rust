@@ -11,18 +11,14 @@ use std::{
     time::{self, SystemTime},
 };
 
-use async_trait::async_trait;
 use opentelemetry::{
-    Value,
+    InstrumentationScope, Value,
     trace::{SpanId, TraceId},
 };
 use opentelemetry_sdk::{
+    Resource,
     error::OTelSdkResult,
-    metrics::{
-        Temporality,
-        data::{ResourceMetrics, Sum},
-        exporter::PushMetricExporter,
-    },
+    metrics::data::{AggregatedMetrics, MetricData, ResourceMetrics},
     trace::{IdGenerator, SpanData, SpanExporter},
 };
 use regex::{Captures, Regex};
@@ -127,45 +123,6 @@ impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
     }
 }
 
-#[async_trait]
-impl<Inner: PushMetricExporter> PushMetricExporter for DeterministicExporter<Inner> {
-    fn export(&self, metrics: &mut ResourceMetrics) -> impl Future<Output = OTelSdkResult> {
-        async move {
-            let timestamp_remap = self.timestamp_remap.clone();
-            for scope in &mut metrics.scope_metrics {
-                for metric in &mut scope.metrics {
-                    if let Some(sum) = (*metric.data).as_mut().downcast_mut::<Sum<u64>>() {
-                        sum.start_time = timestamp_remap
-                            .lock()
-                            .unwrap()
-                            .remap_timestamp(sum.start_time);
-                        sum.time = timestamp_remap.lock().unwrap().remap_timestamp(sum.time);
-
-                        for data_point in &mut sum.data_points {
-                            data_point
-                                .attributes
-                                .sort_by_cached_key(|kv| kv.key.to_string());
-                        }
-                    }
-                }
-            }
-            self.exporter.export(metrics).await
-        }
-    }
-
-    fn force_flush(&self) -> OTelSdkResult {
-        self.exporter.force_flush()
-    }
-
-    fn shutdown(&self) -> OTelSdkResult {
-        self.exporter.shutdown()
-    }
-
-    fn temporality(&self) -> Temporality {
-        self.exporter.temporality()
-    }
-}
-
 impl<Inner> DeterministicExporter<Inner> {
     /// Create deterministic exporter, feeding it current file and line.
     pub fn new(exporter: Inner, file: &'static str, line_offset: u32) -> Self {
@@ -218,4 +175,48 @@ pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
         timestamp += time::Duration::from_micros(1);
         replaced
     })
+}
+
+pub fn make_deterministic_resource_metrics(
+    metrics: Vec<ResourceMetrics>,
+) -> Vec<DeterministicResourceMetrics> {
+    metrics
+        .into_iter()
+        .map(|metric| DeterministicResourceMetrics {
+            resource: metric.resource().clone(),
+            scope_metrics: metric
+                .scope_metrics()
+                .map(|scope_metric| DeterministicScopeMetrics {
+                    scope: scope_metric.scope().clone(),
+                    sum_metrics: scope_metric
+                        .metrics()
+                        .filter_map(|metric| {
+                            if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
+                                Some(sum.data_points().map(|dp| dp.value()).collect())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// A reproduction of the `ScopeMetrics` type from the otel sdk, narrowed to u64 sum metrics
+///
+/// This exists because the otel SDK (as of version 0.30) exposes no way to create a `ScopeMetrics`
+/// outside of the library.
+#[derive(Debug)]
+pub struct DeterministicScopeMetrics {
+    scope: InstrumentationScope,
+    sum_metrics: Vec<Vec<u64>>,
+}
+
+/// Deterministic resource metrics
+#[derive(Debug)]
+pub struct DeterministicResourceMetrics {
+    resource: Resource,
+    scope_metrics: Vec<DeterministicScopeMetrics>,
 }

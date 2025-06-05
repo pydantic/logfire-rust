@@ -21,7 +21,9 @@ use logfire::{
 #[path = "../src/test_utils.rs"]
 mod test_utils;
 
-use test_utils::{DeterministicExporter, DeterministicIdGenerator};
+use test_utils::{
+    DeterministicExporter, DeterministicIdGenerator, make_deterministic_resource_metrics,
+};
 
 #[expect(clippy::too_many_lines)]
 #[test]
@@ -965,7 +967,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Owned(
-                            "tests/test_basic_exports.rs:56:13",
+                            "tests/test_basic_exports.rs:58:13",
                         ),
                     ),
                 },
@@ -1032,7 +1034,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        694,
+                        690,
                     ),
                 },
                 KeyValue {
@@ -1240,13 +1242,8 @@ impl SharedManualReader {
     }
 
     async fn export<E: PushMetricExporter>(&self, exporter: &E) {
-        let mut metrics = ResourceMetrics {
-            resource: Resource::builder_empty().build(),
-            scope_metrics: Vec::new(),
-        };
-        dbg!(&metrics);
+        let mut metrics = ResourceMetrics::default();
         self.reader.collect(&mut metrics).unwrap();
-        dbg!(&metrics);
         exporter.export(&mut metrics).await.unwrap();
     }
 }
@@ -1259,7 +1256,7 @@ impl MetricReader for SharedManualReader {
     fn collect(
         &self,
         rm: &mut opentelemetry_sdk::metrics::data::ResourceMetrics,
-    ) -> opentelemetry_sdk::metrics::MetricResult<()> {
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
         self.reader.collect(rm)
     }
 
@@ -1269,6 +1266,13 @@ impl MetricReader for SharedManualReader {
 
     fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
         self.reader.shutdown()
+    }
+
+    fn shutdown_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.reader.shutdown_with_timeout(timeout)
     }
 
     fn temporality(
@@ -1281,11 +1285,7 @@ impl MetricReader for SharedManualReader {
 
 #[tokio::test]
 async fn test_basic_metrics() {
-    let mut exporter = DeterministicExporter::new(
-        InMemoryMetricExporterBuilder::new().build(),
-        file!(),
-        line!(),
-    );
+    let mut exporter = InMemoryMetricExporterBuilder::new().build();
 
     let reader = SharedManualReader::new(
         ManualReader::builder()
@@ -1323,11 +1323,13 @@ async fn test_basic_metrics() {
 
     handler.shutdown().unwrap();
 
-    let metrics = exporter.inner().get_finished_metrics().unwrap();
+    let metrics = exporter.get_finished_metrics().unwrap();
+
+    let metrics = make_deterministic_resource_metrics(metrics);
 
     assert_debug_snapshot!(metrics, @r#"
     [
-        ResourceMetrics {
+        DeterministicResourceMetrics {
             resource: Resource {
                 inner: ResourceInner {
                     attrs: {
@@ -1343,43 +1345,22 @@ async fn test_basic_metrics() {
                 },
             },
             scope_metrics: [
-                ScopeMetrics {
+                DeterministicScopeMetrics {
                     scope: InstrumentationScope {
                         name: "logfire",
                         version: None,
                         schema_url: None,
                         attributes: [],
                     },
-                    metrics: [
-                        Metric {
-                            name: "basic_counter",
-                            description: "",
-                            unit: "",
-                            data: Sum {
-                                data_points: [
-                                    SumDataPoint {
-                                        attributes: [],
-                                        value: 1,
-                                        exemplars: [],
-                                    },
-                                ],
-                                start_time: SystemTime {
-                                    tv_sec: 0,
-                                    tv_nsec: 0,
-                                },
-                                time: SystemTime {
-                                    tv_sec: 1,
-                                    tv_nsec: 0,
-                                },
-                                temporality: Delta,
-                                is_monotonic: true,
-                            },
-                        },
+                    sum_metrics: [
+                        [
+                            1,
+                        ],
                     ],
                 },
             ],
         },
-        ResourceMetrics {
+        DeterministicResourceMetrics {
             resource: Resource {
                 inner: ResourceInner {
                     attrs: {
@@ -1395,38 +1376,17 @@ async fn test_basic_metrics() {
                 },
             },
             scope_metrics: [
-                ScopeMetrics {
+                DeterministicScopeMetrics {
                     scope: InstrumentationScope {
                         name: "logfire",
                         version: None,
                         schema_url: None,
                         attributes: [],
                     },
-                    metrics: [
-                        Metric {
-                            name: "basic_counter",
-                            description: "",
-                            unit: "",
-                            data: Sum {
-                                data_points: [
-                                    SumDataPoint {
-                                        attributes: [],
-                                        value: 2,
-                                        exemplars: [],
-                                    },
-                                ],
-                                start_time: SystemTime {
-                                    tv_sec: 1,
-                                    tv_nsec: 0,
-                                },
-                                time: SystemTime {
-                                    tv_sec: 2,
-                                    tv_nsec: 0,
-                                },
-                                temporality: Delta,
-                                is_monotonic: true,
-                            },
-                        },
+                    sum_metrics: [
+                        [
+                            2,
+                        ],
                     ],
                 },
             ],
