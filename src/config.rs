@@ -311,6 +311,13 @@ impl SpanProcessor for BoxedSpanProcessor {
         self.0.shutdown()
     }
 
+    fn shutdown_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.0.shutdown_with_timeout(timeout)
+    }
+
     fn set_resource(&mut self, resource: &opentelemetry_sdk::Resource) {
         self.0.set_resource(resource);
     }
@@ -354,7 +361,7 @@ impl MetricReader for BoxedMetricReader {
     fn collect(
         &self,
         rm: &mut opentelemetry_sdk::metrics::data::ResourceMetrics,
-    ) -> opentelemetry_sdk::metrics::MetricResult<()> {
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
         self.0.collect(rm)
     }
 
@@ -364,6 +371,13 @@ impl MetricReader for BoxedMetricReader {
 
     fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
         self.0.shutdown()
+    }
+
+    fn shutdown_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.0.shutdown_with_timeout(timeout)
     }
 
     fn temporality(
