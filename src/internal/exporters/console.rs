@@ -8,7 +8,6 @@ use chrono::{DateTime, Utc};
 use nu_ansi_term::{Color, Style};
 use opentelemetry::Value;
 use opentelemetry_sdk::trace::SpanData;
-use tracing::field::Visit;
 use tracing_opentelemetry::OtelData;
 
 use crate::{
@@ -82,13 +81,6 @@ impl ConsoleWriter {
             for span in batch {
                 let _ = self.span_to_writer(span, &mut buffer);
             }
-        });
-    }
-
-    pub fn write_tracing_event(&self, event: &tracing::Event<'_>) {
-        self.with_writer(|w| {
-            let mut buffer = BufWriter::new(w);
-            let _ = self.event_to_writer(event, &mut buffer);
         });
     }
 
@@ -189,58 +181,6 @@ impl ConsoleWriter {
         writeln!(w)
     }
 
-    fn event_to_writer<W: io::Write>(
-        &self,
-        event: &tracing::Event<'_>,
-        w: &mut W,
-    ) -> io::Result<()> {
-        let level = level_to_level_number(*event.metadata().level());
-        // Filter out event below the minimum log level
-        if level < level_to_level_number(self.options.min_log_level) {
-            return Ok(());
-        }
-        let target = event.metadata().module_path();
-
-        let mut visitor = FieldsVisitor {
-            message: None,
-            fields: Vec::new(),
-        };
-
-        event.record(&mut visitor);
-
-        let msg = visitor
-            .message
-            .unwrap_or_else(|| event.metadata().name().to_string());
-
-        if self.options.include_timestamps {
-            let timestamp: DateTime<Utc> = Utc::now();
-            write!(
-                w,
-                "{}",
-                DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-            )?;
-        }
-
-        level_int_to_text(level, w)?;
-
-        if let Some(target) = target {
-            write!(w, " {}", DIMMED_AND_ITALIC.paint(target))?;
-        }
-
-        write!(w, " {}", BOLD.paint(msg))?;
-
-        if !visitor.fields.is_empty() {
-            for (idx, (key, value)) in visitor.fields.iter().enumerate() {
-                write!(w, " {}={value}", ITALIC.paint(*key))?;
-                if idx < visitor.fields.len() - 1 {
-                    write!(w, ",")?;
-                }
-            }
-        }
-
-        writeln!(w)
-    }
-
     fn otel_data_to_writer<W: io::Write>(
         &self,
         data: &tracing_opentelemetry::OtelData,
@@ -327,30 +267,6 @@ impl ConsoleWriter {
     }
 }
 
-/// Internal helper to `visit` a `tracing::Event` and collect relevant fields.
-struct FieldsVisitor {
-    message: Option<String>,
-    fields: Vec<(&'static str, String)>,
-}
-
-impl Visit for FieldsVisitor {
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        if field.name() == "message" {
-            self.message = Some(value.to_string());
-        } else {
-            self.fields.push((field.name(), value.to_string()));
-        }
-    }
-
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "message" {
-            self.message = Some(format!("{value:?}"));
-        } else {
-            self.fields.push((field.name(), format!("{value:?}")));
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
@@ -407,7 +323,7 @@ mod tests {
         [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:393:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:309:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 
@@ -455,7 +371,7 @@ mod tests {
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:441:17, [3mbacktrace[0m=disabled backtrace
+        [31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:357:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 
@@ -500,7 +416,7 @@ mod tests {
         [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
         [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
         [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:488:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:404:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 }
