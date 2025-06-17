@@ -220,3 +220,22 @@ pub struct DeterministicResourceMetrics {
     resource: Resource,
     scope_metrics: Vec<DeterministicScopeMetrics>,
 }
+
+/// Find a span by name in a slice of SpanData.
+pub fn find_span<'a>(
+    spans: &'a [opentelemetry_sdk::trace::SpanData],
+    name: &str,
+) -> &'a opentelemetry_sdk::trace::SpanData {
+    spans.iter().find(|s| s.name == name).expect("span present")
+}
+
+/// Find an attribute by key in a span's attributes, panicking if not found.
+pub fn find_attr<'a>(
+    span: &'a opentelemetry_sdk::trace::SpanData,
+    key: &str,
+) -> &'a opentelemetry::KeyValue {
+    span.attributes
+        .iter()
+        .find(|kv| kv.key.as_str() == key)
+        .unwrap_or_else(|| panic!("attribute '{}' not found in span '{}'", key, span.name))
+}

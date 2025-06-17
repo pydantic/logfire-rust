@@ -18,25 +18,25 @@ pub use crate::{__log as log, __tracing_span as tracing_span};
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __tracing_span {
-    (parent: $parent:expr, $level:expr, $format:expr, $($($path:ident).+ = $value:expr),*) => {{
+    (parent: $parent:expr, $level:expr, $format:expr, $($($path:ident).+ $(= $value:expr)?),*) => {{
         // bind args early to avoid multiple evaluation
-        $crate::__bind_single_ident_args!($($($path).+ = $value),*);
+        $crate::__bind_single_ident_args!($($($path).+ $(= $value)?),*);
         tracing::span!(
             parent: $parent,
             $level,
             $format,
-            $($($path).+ = $crate::__evaluate_arg!($($path).+ = $value),)*
+            $($($path).+ = $crate::__evaluate_arg!($($path).+ $(= $value)?),)*
             logfire.msg = format_args!($format),
             logfire.json_schema = $crate::__json_schema!($($($path).+),*),
         )
     }};
-    ($level:expr, $format:expr, $($($path:ident).+ = $value:expr),*) => {{
+    ($level:expr, $format:expr, $($($path:ident).+ $(= $value:expr)?),*) => {{
         // bind args early to avoid multiple evaluation
-        $crate::__bind_single_ident_args!($($($path).+ = $value),*);
+        $crate::__bind_single_ident_args!($($($path).+ $(= $value)?),*);
         tracing::span!(
             $level,
             $format,
-            $($($path).+ = $crate::__evaluate_arg!($($path).+ = $value),)*
+            $($($path).+ = $crate::__evaluate_arg!($($path).+ $(= $value)?),)*
             logfire.msg = format_args!($format),
             logfire.json_schema = $crate::__json_schema!($($($path).+),*),
         )
@@ -246,14 +246,19 @@ macro_rules! __schema_args {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __bind_single_ident_args {
-    // single-ident arg: bind it
+    // single-ident arg with value: bind it
     ($arg:ident = $value:expr $(, $($rest_arg:ident).+ = $rest_value:expr)*) => {
         let $arg = $value;
         $crate::__bind_single_ident_args!($($($rest_arg).+ = $rest_value),*)
     };
+    // single-ident arg without value: bind it
+    ($arg:ident $(, $($rest_arg:ident).+ $(= $rest_value:expr)?)*) => {
+        let $arg = $arg;
+        $crate::__bind_single_ident_args!($($($rest_arg).+ $(= $rest_value)?),*)
+    };
     // multi-ident arg: skip it
-    ($($path:ident).+ = $value:expr $(, $($rest_arg:ident).+ = $rest_value:expr)*) => {
-        $crate::__bind_single_ident_args!($($($rest_arg).+ = $rest_value),*)
+    ($($path:ident).+ $(= $value:expr)? $(, $($rest_arg:ident).+ $(= $rest_value:expr)?)*) => {
+        $crate::__bind_single_ident_args!($($($rest_arg).+ $(= $rest_value)?),*)
     };
     // base case: stop recursion
     () => { };
@@ -267,23 +272,27 @@ macro_rules! __bind_single_ident_args {
 #[doc(hidden)]
 macro_rules! __evaluate_arg {
     // single ident arg should already have been bound
-    ($arg:ident = $value:expr) => {
+    ($arg:ident $(= $value:expr)?) => {
         $arg
     };
-    // multi-ident arg should be evaluated now
+    // multi-ident arg with value: be evaluated now
     ($($path:ident).+ = $value:expr) => {
         $value
+    };
+    // multi-ident arg evaluated from path
+    ($($path:ident).+) => {
+        $($path).+
     };
 }
 
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __log {
-    (parent: $parent:expr, $level:expr, $format:expr, $($($path:ident).+ = $value:expr),*) => {
+    (parent: $parent:expr, $level:expr, $format:expr, $($($path:ident).+ $(= $value:expr)?),*) => {
         if tracing::span_enabled!($level) {
             // bind single ident args early to allow them in the format string
             // without multiple evaluation
-            $crate::__bind_single_ident_args!($($($path).+ = $value),*);
+            $crate::__bind_single_ident_args!($($($path).+ $(= $value)?),*);
             $crate::__macros_impl::export_log_span(
                 $format,
                 $parent,
@@ -295,7 +304,7 @@ macro_rules! __log {
                 module_path!(),
                 [
                     $({
-                        let arg_value = $crate::__evaluate_arg!($($path).+ = $value);
+                        let arg_value = $crate::__evaluate_arg!($($path).+ $(= $value)?);
                         $crate::__macros_impl::LogfireValue::new(
                             stringify!($($path).+),
                             $crate::__macros_impl::converter(&arg_value).convert_value(arg_value)

@@ -61,22 +61,41 @@ pub mod __macros_impl;
 /// // Attributes can either be a single name or a dotted.name
 /// // `dotted.name` is not available in the format string.
 /// let span = logfire::span!("Span with x = {x}, y = {y}", y = "hello", foo.bar = 42);
+///
+/// // If just an identifier is used without `= value`, it will be captured as an attribute
+/// let foo = "bar";
+/// let span = logfire::span!("Span with foo = {foo}", foo);
+///
+/// // This identifier shorthand also works for struct fields
+/// #[derive(Debug)]
+/// struct User {
+///    email: &'static str,
+///    name: &'static str,
+/// }
+///
+/// let user = User {
+///    email: "user@example.com",
+///    name: "John Doe",
+/// };
+///
+/// // NB the dotted name is not available in the format string
+/// let span = logfire::span!("Span user info", user.email, user.name);
 /// ```
 ///
 /// [attributes]: https://opentelemetry.io/docs/concepts/signals/traces/#attributes
 #[macro_export]
 macro_rules! span {
-    (parent: $parent:expr, level: $level:expr, $format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::__macros_impl::tracing_span!(parent: $parent, $level, $format, $($($path).+ = $value),*)
+    (parent: $parent:expr, level: $level:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::__macros_impl::tracing_span!(parent: $parent, $level, $format, $($($path).+ $(= $value)?),*)
     };
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::__macros_impl::tracing_span!(parent: $parent, tracing::Level::INFO, $format, $($($path).+ = $value),*)
+    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::__macros_impl::tracing_span!(parent: $parent, tracing::Level::INFO, $format, $($($path).+ $(= $value)?),*)
     };
-    (level: $level:expr, $format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::__macros_impl::tracing_span!($level, $format, $($($path).+ = $value),*)
+    (level: $level:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::__macros_impl::tracing_span!($level, $format, $($($path).+ $(= $value)?),*)
     };
-    ($format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::__macros_impl::tracing_span!(tracing::Level::INFO, $format, $($($path).+ = $value),*)
+    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::__macros_impl::tracing_span!(tracing::Level::INFO, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -85,11 +104,11 @@ macro_rules! span {
 /// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! error {
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::log!(parent: $parent, tracing::Level::ERROR, $format, $($($path).+ = $value),*)
+    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(parent: $parent, tracing::Level::ERROR, $format, $($($path).+ $(= $value)?),*)
     };
-    ($format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::log!(tracing::Level::ERROR, $format, $($($path).+ = $value),*)
+    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(tracing::Level::ERROR, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -98,11 +117,11 @@ macro_rules! error {
 /// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! warn {
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::log!(parent: $parent, tracing::Level::WARN, $format, $($($path).+ = $value),*)
+    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(parent: $parent, tracing::Level::WARN, $format, $($($path).+ $(= $value)?),*)
     };
-    ($format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::log!(tracing::Level::WARN, $format, $($($path).+ = $value),*)
+    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(tracing::Level::WARN, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -111,11 +130,11 @@ macro_rules! warn {
 /// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! info {
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::log!(parent: $parent, tracing::Level::INFO, $format, $($($path).+ = $value),*)
+    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(parent: $parent, tracing::Level::INFO, $format, $($($path).+ $(= $value)?),*)
     };
-    ($format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::log!(tracing::Level::INFO, $format, $($($path).+ = $value),*)
+    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(tracing::Level::INFO, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -124,11 +143,11 @@ macro_rules! info {
 /// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! debug {
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::log!(parent: $parent, tracing::Level::DEBUG, $format, $($($path).+ = $value),*)
+    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(parent: $parent, tracing::Level::DEBUG, $format, $($($path).+ $(= $value)?),*)
     };
-    ($format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::log!(tracing::Level::DEBUG, $format, $($($path).+ = $value),*)
+    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(tracing::Level::DEBUG, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -199,15 +218,38 @@ macro_rules! debug {
 /// logfire::log!(Level::INFO, "Log with x = {x}, y = {y}", y = "hello", foo.bar = 42);
 /// // or
 /// logfire::info!("Log with x = {x}, y = {y}", y = "hello", foo.bar = 42);
+///
+/// // If just an identifier is used without `= value`, it will be captured as an attribute
+/// let foo = "bar";
+/// logfire::log!(Level::INFO, "Log with foo = {foo}", foo);
+/// // or
+/// logfire::info!("Log with foo = {foo}", foo);
+///
+/// // This identifier shorthand also works for struct fields
+/// #[derive(Debug)]
+/// struct User {
+///    email: &'static str,
+///    name: &'static str,
+/// }
+///
+/// let user = User {
+///    email: "user@example.com",
+///    name: "John Doe",
+/// };
+///
+/// // NB the dotted name is not available in the format string
+/// logfire::log!(Level::INFO, "Log user info", user.email, user.name);
+/// // or
+/// logfire::info!("Log user info", user.email, user.name);
 /// ```
 ///
 /// [attributes]: https://opentelemetry.io/docs/concepts/signals/traces/#attributes
 #[macro_export]
 macro_rules! log {
-    (parent: $parent:expr, $level:expr, $format:expr $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::__macros_impl::log!(parent: $parent, $level, $format, $($($path).+ = $value),*)
+    (parent: $parent:expr, $level:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::__macros_impl::log!(parent: $parent, $level, $format, $($($path).+ $(= $value)?),*)
     };
-    ($level:expr, $format:expr  $(, $($path:ident).+ = $value:expr)* $(,)?) => {
-        $crate::__macros_impl::log!(parent: &tracing::Span::current(), $level, $format, $($($path).+ = $value),*)
+    ($level:expr, $format:expr  $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::__macros_impl::log!(parent: &tracing::Span::current(), $level, $format, $($($path).+ $(= $value)?),*)
     };
 }
