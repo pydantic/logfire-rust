@@ -113,7 +113,7 @@ use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use thiserror::Error;
 use tracing::Subscriber;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::layer::{Layer, SubscriberExt};
 
 use crate::bridges::tracing::LogfireTracingLayer;
 use crate::config::{
@@ -577,7 +577,10 @@ impl LogfireConfigBuilder {
             .with(
                 tracing_opentelemetry::layer()
                     .with_error_records_to_exceptions(true)
-                    .with_tracer(tracer.clone()),
+                    .with_tracer(tracer.clone())
+                    .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
+                        !metadata.is_event()
+                    })),
             )
             .with(LogfireTracingLayer(tracer.clone()));
 

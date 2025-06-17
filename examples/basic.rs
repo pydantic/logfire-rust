@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_console(None)
         .finish()?;
 
-    logfire::info!("Hello, world!");
+    tracing::info!("Hello, world!");
 
     {
         let _span = logfire::span!("Asking the user their {question}", question = "age").entered();
