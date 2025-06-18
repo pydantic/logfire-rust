@@ -37,6 +37,7 @@ regex = "1.11.1"
 
 [dev-dependencies]
 async-trait = "0.1.88"
+futures = { version = "0.3.31", features = ["futures-executor"] }
 insta = "1.42.1"
 opentelemetry_sdk = { version = "0.30", default-features = false, features = ["testing"] }
 regex = "1.11.1"
