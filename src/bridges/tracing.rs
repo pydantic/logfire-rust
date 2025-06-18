@@ -161,6 +161,8 @@ where
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
             try_with_logfire_tracer(|tracer| {
                 if let Some(writer) = &tracer.console_writer {
+                    // FIXME: need to send this to the console writer background task, otherwise
+                    // order is broken
                     writer.write_tracing_opentelemetry_data(otel_data);
                 }
             });
