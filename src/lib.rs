@@ -106,20 +106,19 @@ use bridges::tracing::LogfireTracingPendingSpanNotSentLayer;
 use config::get_base_url_from_token;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
-use opentelemetry_sdk::trace::{
-    BatchConfigBuilder, BatchSpanProcessor, SimpleSpanProcessor, SpanProcessor,
-};
+use opentelemetry_sdk::trace::{BatchConfigBuilder, BatchSpanProcessor, SpanProcessor};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use thiserror::Error;
 use tracing::Subscriber;
 use tracing::level_filters::LevelFilter;
+use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::{Layer, SubscriberExt};
 
 use crate::bridges::tracing::LogfireTracingLayer;
 use crate::config::{
     AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
 };
-use crate::internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanExporter};
+use crate::internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanProcessor};
 
 mod bridges;
 pub mod config;
@@ -547,9 +546,8 @@ impl LogfireConfigBuilder {
             .map(Arc::new);
 
         if let Some(console_writer) = console_writer.clone() {
-            tracer_provider_builder = tracer_provider_builder.with_span_processor(
-                SimpleSpanProcessor::new(SimpleConsoleSpanExporter::new(console_writer)),
-            );
+            tracer_provider_builder = tracer_provider_builder
+                .with_span_processor(SimpleConsoleSpanProcessor::new(console_writer));
         }
 
         for span_processor in self.additional_span_processors {
@@ -766,8 +764,9 @@ fn try_with_logfire_tracer<R>(f: impl FnOnce(&LogfireTracer) -> R) -> Option<R> 
 #[doc(hidden)]
 pub struct LocalLogfireGuard {
     prior: Option<LogfireTracer>,
+    #[expect(dead_code, reason = "tracing RAII guard")]
+    tracing_guard: DefaultGuard,
     /// Shutdown handler
-    #[allow(dead_code)]
     shutdown_handler: ShutdownHandler,
 }
 
@@ -801,11 +800,14 @@ pub fn set_local_logfire(shutdown_handler: ShutdownHandler) -> LocalLogfireGuard
     let prior = LOCAL_TRACER
         .with_borrow_mut(|local_logfire| local_logfire.replace(shutdown_handler.tracer.clone()));
 
+    let tracing_guard = tracing::subscriber::set_default(shutdown_handler.subscriber.clone());
+
     // TODO: logs??
     // TODO: metrics??
 
     LocalLogfireGuard {
         prior,
+        tracing_guard,
         shutdown_handler,
     }
 }
