@@ -8,6 +8,8 @@
 //! - Track metrics for request counts
 //!
 //! Run with: `cargo run --example actix-web`
+//! Make sure to set a write token as an environment variable (`LOGFIRE_TOKEN`)
+//! <https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens>/
 
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::{

@@ -8,6 +8,8 @@
 //! - Track metrics for request counts
 //!
 //! Run with: `cargo run --example axum`
+//! Make sure to set a write token as an environment variable (`LOGFIRE_TOKEN`)
+//! <https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens>/
 
 use axum::{
     Json, Router,
@@ -78,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn create_app() -> Router {
     Router::new()
         .route("/", get(root))
-        .route("/users/:id", get(get_user))
+        .route("/users/{id}", get(get_user))
         .route("/users", post(create_user))
         .route("/health", get(health_check))
         // Add tracing middleware for automatic request tracing
