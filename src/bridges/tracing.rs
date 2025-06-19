@@ -11,7 +11,14 @@ use tracing_subscriber::{Layer, registry::LookupSpan};
 
 use crate::{LogfireTracer, try_with_logfire_tracer};
 
-pub(crate) struct LogfireTracingLayer(pub(crate) opentelemetry_sdk::trace::Tracer);
+pub(crate) struct LogfireTracingLayer(LogfireTracer);
+
+impl LogfireTracingLayer {
+    /// Create a new `LogfireTracingLayer` with the given tracer.
+    pub fn new(tracer: LogfireTracer) -> Self {
+        LogfireTracingLayer(tracer)
+    }
+}
 
 impl<S> Layer<S> for LogfireTracingLayer
 where
@@ -58,7 +65,7 @@ where
         // Guaranteed to be on first entering of the span
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
             // Emit a pending span, if this span will be sampled.
-            let context = self.0.sampled_context(otel_data);
+            let context = self.0.inner.sampled_context(otel_data);
             let sampling_result = otel_data
                 .builder
                 .sampling_result
@@ -110,14 +117,15 @@ where
                     ));
                 }
 
-                pending_span_builder.span_id = Some(self.0.new_span_id());
+                pending_span_builder.span_id = Some(self.0.inner.new_span_id());
 
                 let start_time = pending_span_builder
                     .start_time
                     .expect("otel SDK sets start time");
 
                 // emit pending span
-                let mut pending_span = pending_span_builder.start_with_context(&self.0, &context);
+                let mut pending_span =
+                    pending_span_builder.start_with_context(&self.0.inner, &context);
                 pending_span.end_with_timestamp(start_time);
             }
         }
@@ -131,10 +139,8 @@ where
         event: &tracing::Event<'_>,
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
-        try_with_logfire_tracer(|tracer| {
-            // All events are emitted as log spans
-            emit_event_as_log_span(tracer, event, &tracing::Span::current());
-        });
+        // All events are emitted as log spans
+        emit_event_as_log_span(&self.0, event, &tracing::Span::current());
     }
 }
 
@@ -161,6 +167,9 @@ where
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
             try_with_logfire_tracer(|tracer| {
                 if let Some(writer) = &tracer.console_writer {
+                    todo!(
+                        "inline the tracing opentelemetry layer inside the logfire one, so it can be a single layer to export"
+                    );
                     writer.write_tracing_opentelemetry_data(otel_data);
                 }
             });

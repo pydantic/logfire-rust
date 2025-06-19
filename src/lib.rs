@@ -571,18 +571,24 @@ impl LogfireConfigBuilder {
             .with_default_directive(default_level_filter.into())
             .from_env()?; // but allow the user to override this with `RUST_LOG`
 
+        let tracer = LogfireTracer {
+            inner: tracer,
+            handle_panics: self.install_panic_handler,
+            console_writer,
+        };
+
         let subscriber = tracing_subscriber::registry()
             .with(filter)
             .with(LogfireTracingPendingSpanNotSentLayer)
             .with(
                 tracing_opentelemetry::layer()
                     .with_error_records_to_exceptions(true)
-                    .with_tracer(tracer.clone())
+                    .with_tracer(tracer.inner.clone())
                     .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
                         !metadata.is_event()
                     })),
             )
-            .with(LogfireTracingLayer(tracer.clone()));
+            .with(LogfireTracingLayer::new(tracer.clone()));
 
         let mut meter_provider_builder = SdkMeterProvider::builder();
 
@@ -616,11 +622,7 @@ impl LogfireConfigBuilder {
 
         Ok(LogfireParts {
             local: self.local,
-            tracer: LogfireTracer {
-                inner: tracer,
-                handle_panics: self.install_panic_handler,
-                console_writer,
-            },
+            tracer,
             subscriber: Arc::new(subscriber),
             tracer_provider,
             meter_provider,
