@@ -1,4 +1,4 @@
-use std::time::SystemTime;
+use std::{any::TypeId, time::SystemTime};
 
 use opentelemetry::{
     KeyValue,
@@ -9,11 +9,35 @@ use tracing::{Subscriber, field::Visit};
 use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData, PreSampledTracer};
 use tracing_subscriber::{Layer, registry::LookupSpan};
 
-use crate::{LogfireTracer, try_with_logfire_tracer};
+use crate::LogfireTracer;
 
-pub(crate) struct LogfireTracingLayer(pub(crate) opentelemetry_sdk::trace::Tracer);
+/// A `tracing` layer that bridges `tracing` spans to OpenTelemetry spans using the Logfire tracer.
+///
+/// This layer is a wrapper around `tracing_opentelemetry::OpenTelemetryLayer` that adds additional
+/// Logfire-specific metadata.
+///
+/// See [`ShutdownHandler::tracing_layer`][crate::ShutdownHandler::tracing_layer] for how to use
+/// this layer.
+pub struct LogfireTracingLayer<S> {
+    tracer: LogfireTracer,
+    otel_layer: tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
+}
 
-impl<S> Layer<S> for LogfireTracingLayer
+impl<S> LogfireTracingLayer<S>
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
+    /// Create a new `LogfireTracingLayer` with the given tracer.
+    pub(crate) fn new(tracer: LogfireTracer) -> Self {
+        let otel_layer = tracing_opentelemetry::layer()
+            .with_error_records_to_exceptions(true)
+            .with_tracer(tracer.inner.clone());
+
+        LogfireTracingLayer { tracer, otel_layer }
+    }
+}
+
+impl<S> Layer<S> for LogfireTracingLayer<S>
 where
     S: Subscriber + for<'span> LookupSpan<'span>,
 {
@@ -23,6 +47,10 @@ where
         id: &tracing::span::Id,
         ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
+        // Delegate to OpenTelemetry layer first
+        self.otel_layer.on_new_span(attrs, id, ctx.clone());
+
+        // Add Logfire-specific attributes
         let span = ctx.span(id).expect("span not found");
         let mut extensions = span.extensions_mut();
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
@@ -46,6 +74,9 @@ where
     ///
     /// e.g. <https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/blob/5830c9113b0d42b72167567bf8e5f4c6b20933c8/axum-tracing-opentelemetry/src/middleware/trace_extractor.rs#L132>
     fn on_enter(&self, id: &tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        // Delegate to OpenTelemetry layer first
+        self.otel_layer.on_enter(id, ctx.clone());
+
         let span = ctx.span(id).expect("span not found");
         let mut extensions = span.extensions_mut();
 
@@ -58,7 +89,7 @@ where
         // Guaranteed to be on first entering of the span
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
             // Emit a pending span, if this span will be sampled.
-            let context = self.0.sampled_context(otel_data);
+            let context = self.tracer.inner.sampled_context(otel_data);
             let sampling_result = otel_data
                 .builder
                 .sampling_result
@@ -110,14 +141,15 @@ where
                     ));
                 }
 
-                pending_span_builder.span_id = Some(self.0.new_span_id());
+                pending_span_builder.span_id = Some(self.tracer.inner.new_span_id());
 
                 let start_time = pending_span_builder
                     .start_time
                     .expect("otel SDK sets start time");
 
                 // emit pending span
-                let mut pending_span = pending_span_builder.start_with_context(&self.0, &context);
+                let mut pending_span =
+                    pending_span_builder.start_with_context(&self.tracer.inner, &context);
                 pending_span.end_with_timestamp(start_time);
             }
         }
@@ -131,39 +163,59 @@ where
         event: &tracing::Event<'_>,
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
-        try_with_logfire_tracer(|tracer| {
-            // All events are emitted as log spans
-            emit_event_as_log_span(tracer, event, &tracing::Span::current());
-        });
+        // Don't delegate events to OpenTelemetry layer, we emit them as log spans instead.
+        // FIXME: can we get current span from `ctx`?
+        emit_event_as_log_span(&self.tracer, event, &tracing::Span::current());
     }
-}
 
-/// Helper to print spans when dropped; if it was never entered then the pending span
-/// is never sent (the console writer uses pending spans).
-///
-/// This needs to be a separate layer so that it can access the `OtelData` before the
-/// `tracing_opentelemetry` layer removes it.
-pub struct LogfireTracingPendingSpanNotSentLayer;
+    fn on_exit(&self, id: &tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        self.otel_layer.on_exit(id, ctx);
+    }
 
-impl<S> Layer<S> for LogfireTracingPendingSpanNotSentLayer
-where
-    S: Subscriber + for<'span> LookupSpan<'span>,
-{
     fn on_close(&self, id: tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
         let span = ctx.span(&id).expect("span not found");
-        let mut extensions = span.extensions_mut();
+        let extensions = span.extensions();
 
-        if extensions.get_mut::<LogfirePendingSpanSent>().is_some() {
-            return;
-        }
-
-        // Guaranteed to be on first entering of the span
-        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
-            try_with_logfire_tracer(|tracer| {
-                if let Some(writer) = &tracer.console_writer {
+        // We write pending spans to the console; if the pending span was never created then
+        // we have to manually write it now.
+        if extensions.get::<LogfirePendingSpanSent>().is_none() {
+            if let Some(otel_data) = extensions.get::<OtelData>() {
+                if let Some(writer) = &self.tracer.console_writer {
                     writer.write_tracing_opentelemetry_data(otel_data);
                 }
-            });
+            }
+        }
+
+        // Delegate to OpenTelemetry layer after handling pending span (it will remove the
+        // `OtelData` so cannot do before).
+        drop(extensions);
+        drop(span);
+        self.otel_layer.on_close(id, ctx);
+    }
+
+    fn on_follows_from(
+        &self,
+        span: &tracing::span::Id,
+        follows: &tracing::span::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        self.otel_layer.on_follows_from(span, follows, ctx);
+    }
+
+    fn on_record(
+        &self,
+        span: &tracing::span::Id,
+        values: &tracing::span::Record<'_>,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        self.otel_layer.on_record(span, values, ctx);
+    }
+
+    unsafe fn downcast_raw(&self, id: TypeId) -> Option<*const ()> {
+        if id == TypeId::of::<Self>() {
+            Some(std::ptr::from_ref(self).cast())
+        } else {
+            unsafe { self.otel_layer.downcast_raw(id) }
         }
     }
 }
