@@ -1,6 +1,6 @@
 [package]
 name = "logfire"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 license = "MIT"
 rust-version = "1.85"
@@ -47,7 +47,7 @@ ulid = "1.2.0"
 # Dependencies for examples
 axum = { version = "0.8", features = ["macros"] }
 axum-tracing-opentelemetry = { version = "0.29", features = ["tracing_level_info"] }
-axum-otel-metrics = "0.11.0"
+axum-otel-metrics = "0.12.0"
 actix-web = "4.0"
 opentelemetry-instrumentation-actix-web = { version = "0.22", features = ["metrics"] }
 serde = { version = "1.0", features = ["derive"] }
