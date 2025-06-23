@@ -88,70 +88,7 @@ where
 
         // Guaranteed to be on first entering of the span
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
-            // Emit a pending span, if this span will be sampled.
-            let context = self.tracer.inner.sampled_context(otel_data);
-            let sampling_result = otel_data
-                .builder
-                .sampling_result
-                .as_ref()
-                .expect("we just asked for sampling to happen");
-
-            // Deliberately match on all cases here so that if the enum changes in the future,
-            // we can update this code to match the possible decisions.
-            let should_emit_pending = match &sampling_result.decision {
-                SamplingDecision::Drop | SamplingDecision::RecordOnly => false,
-                SamplingDecision::RecordAndSample => true,
-            };
-
-            if should_emit_pending {
-                let mut pending_span_builder = otel_data.builder.clone();
-
-                // Pending span is sent as a child of the actual span with kind pending_span.
-                // - The parent id is the actual span we want.
-                // - The pending_parent_id is the parent of the pending span.
-
-                let span_id = otel_data.builder.span_id.expect("otel SDK sets span ID");
-                pending_span_builder.span_id = Some(span_id);
-
-                let attributes = pending_span_builder
-                    .attributes
-                    .get_or_insert_with(Default::default);
-
-                // update type of the pending span export
-                if let Some(attr) = attributes
-                    .iter_mut()
-                    .find(|kv| kv.key.as_str() == "logfire.span_type")
-                {
-                    attr.value = "pending_span".into();
-                } else {
-                    attributes.push(opentelemetry::KeyValue::new(
-                        "logfire.span_type",
-                        "pending_span",
-                    ));
-                }
-
-                // record the real parent ID
-                let parent_span = otel_data.parent_cx.span();
-                let parent_span_context = parent_span.span_context();
-
-                if parent_span_context.is_valid() {
-                    attributes.push(opentelemetry::KeyValue::new(
-                        "logfire.pending_parent_id",
-                        parent_span_context.span_id().to_string(),
-                    ));
-                }
-
-                pending_span_builder.span_id = Some(self.tracer.inner.new_span_id());
-
-                let start_time = pending_span_builder
-                    .start_time
-                    .expect("otel SDK sets start time");
-
-                // emit pending span
-                let mut pending_span =
-                    pending_span_builder.start_with_context(&self.tracer.inner, &context);
-                pending_span.end_with_timestamp(start_time);
-            }
+            emit_pending_span(&self.tracer, otel_data);
         }
     }
 
@@ -174,15 +111,15 @@ where
 
     fn on_close(&self, id: tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
         let span = ctx.span(&id).expect("span not found");
-        let extensions = span.extensions();
+        let mut extensions = span.extensions_mut();
 
         // We write pending spans to the console; if the pending span was never created then
         // we have to manually write it now.
-        if extensions.get::<LogfirePendingSpanSent>().is_none() {
-            if let Some(otel_data) = extensions.get::<OtelData>() {
-                if let Some(writer) = &self.tracer.console_writer {
-                    writer.write_tracing_opentelemetry_data(otel_data);
-                }
+        if extensions.get_mut::<LogfirePendingSpanSent>().is_none() {
+            if let Some(otel_data) = extensions.get_mut::<OtelData>() {
+                // emit pending span now just before it is closed, assume the processor will
+                // deduplicate as needed
+                emit_pending_span(&self.tracer, otel_data);
             }
         }
 
@@ -222,6 +159,74 @@ where
 
 /// Dummy struct to mark that we've already entered this span.
 struct LogfirePendingSpanSent;
+
+/// Samples and emits a pending span if the span is sampled.
+fn emit_pending_span(tracer: &LogfireTracer, otel_data: &mut tracing_opentelemetry::OtelData) {
+    let context = tracer.inner.sampled_context(otel_data);
+    let sampling_result = otel_data
+        .builder
+        .sampling_result
+        .as_ref()
+        .expect("we just asked for sampling to happen");
+
+    // Deliberately match on all cases here so that if the enum changes in the future,
+    // we can update this code to match the possible decisions.
+    let span_is_sampled = match &sampling_result.decision {
+        SamplingDecision::Drop | SamplingDecision::RecordOnly => false,
+        SamplingDecision::RecordAndSample => true,
+    };
+
+    if !span_is_sampled {
+        return;
+    }
+
+    let mut pending_span_builder = otel_data.builder.clone();
+
+    // Pending span is sent as a child of the actual span with kind pending_span.
+    // - The parent id is the actual span we want.
+    // - The pending_parent_id is the parent of the pending span.
+
+    let span_id = otel_data.builder.span_id.expect("otel SDK sets span ID");
+    pending_span_builder.span_id = Some(span_id);
+
+    let attributes = pending_span_builder
+        .attributes
+        .get_or_insert_with(Default::default);
+
+    // update type of the pending span export
+    if let Some(attr) = attributes
+        .iter_mut()
+        .find(|kv| kv.key.as_str() == "logfire.span_type")
+    {
+        attr.value = "pending_span".into();
+    } else {
+        attributes.push(opentelemetry::KeyValue::new(
+            "logfire.span_type",
+            "pending_span",
+        ));
+    }
+
+    // record the real parent ID
+    let parent_span = otel_data.parent_cx.span();
+    let parent_span_context = parent_span.span_context();
+
+    if parent_span_context.is_valid() {
+        attributes.push(opentelemetry::KeyValue::new(
+            "logfire.pending_parent_id",
+            parent_span_context.span_id().to_string(),
+        ));
+    }
+
+    pending_span_builder.span_id = Some(tracer.inner.new_span_id());
+
+    let start_time = pending_span_builder
+        .start_time
+        .expect("otel SDK sets start time");
+
+    // emit pending span
+    let mut pending_span = pending_span_builder.start_with_context(&tracer.inner, &context);
+    pending_span.end_with_timestamp(start_time);
+}
 
 pub(crate) fn level_to_level_number(level: tracing::Level) -> i64 {
     // These numbers were chosen to match the values emitted by the Python logfire SDK.
@@ -928,6 +933,122 @@ mod tests {
             SpanData {
                 span_context: SpanContext {
                     trace_id: 000000000000000000000000000000f2,
+                    span_id: 00000000000000f7,
+                    trace_flags: TraceFlags(
+                        1,
+                    ),
+                    is_remote: false,
+                    trace_state: TraceState(
+                        None,
+                    ),
+                },
+                parent_span_id: 00000000000000f6,
+                span_kind: Internal,
+                name: "debug span",
+                start_time: SystemTime {
+                    tv_sec: 5,
+                    tv_nsec: 0,
+                },
+                end_time: SystemTime {
+                    tv_sec: 5,
+                    tv_nsec: 0,
+                },
+                attributes: [
+                    KeyValue {
+                        key: Static(
+                            "code.filepath",
+                        ),
+                        value: String(
+                            Static(
+                                "src/bridges/tracing.rs",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "code.namespace",
+                        ),
+                        value: String(
+                            Static(
+                                "logfire::bridges::tracing::tests",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "code.lineno",
+                        ),
+                        value: I64(
+                            18,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "thread.id",
+                        ),
+                        value: I64(
+                            0,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "thread.name",
+                        ),
+                        value: String(
+                            Owned(
+                                "bridges::tracing::tests::test_tracing_bridge",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.level_num",
+                        ),
+                        value: I64(
+                            5,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.span_type",
+                        ),
+                        value: String(
+                            Static(
+                                "pending_span",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.pending_parent_id",
+                        ),
+                        value: String(
+                            Owned(
+                                "00000000000000f2",
+                            ),
+                        ),
+                    },
+                ],
+                dropped_attributes_count: 0,
+                events: SpanEvents {
+                    events: [],
+                    dropped_count: 0,
+                },
+                links: SpanLinks {
+                    links: [],
+                    dropped_count: 0,
+                },
+                status: Unset,
+                instrumentation_scope: InstrumentationScope {
+                    name: "logfire",
+                    version: None,
+                    schema_url: None,
+                    attributes: [],
+                },
+            },
+            SpanData {
+                span_context: SpanContext {
+                    trace_id: 000000000000000000000000000000f2,
                     span_id: 00000000000000f6,
                     trace_flags: TraceFlags(
                         1,
@@ -1050,7 +1171,123 @@ mod tests {
             SpanData {
                 span_context: SpanContext {
                     trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000f7,
+                    span_id: 00000000000000f9,
+                    trace_flags: TraceFlags(
+                        1,
+                    ),
+                    is_remote: false,
+                    trace_state: TraceState(
+                        None,
+                    ),
+                },
+                parent_span_id: 00000000000000f8,
+                span_kind: Internal,
+                name: "debug span with explicit parent",
+                start_time: SystemTime {
+                    tv_sec: 7,
+                    tv_nsec: 0,
+                },
+                end_time: SystemTime {
+                    tv_sec: 7,
+                    tv_nsec: 0,
+                },
+                attributes: [
+                    KeyValue {
+                        key: Static(
+                            "code.filepath",
+                        ),
+                        value: String(
+                            Static(
+                                "src/bridges/tracing.rs",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "code.namespace",
+                        ),
+                        value: String(
+                            Static(
+                                "logfire::bridges::tracing::tests",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "code.lineno",
+                        ),
+                        value: I64(
+                            19,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "thread.id",
+                        ),
+                        value: I64(
+                            0,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "thread.name",
+                        ),
+                        value: String(
+                            Owned(
+                                "bridges::tracing::tests::test_tracing_bridge",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.level_num",
+                        ),
+                        value: I64(
+                            5,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.span_type",
+                        ),
+                        value: String(
+                            Static(
+                                "pending_span",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.pending_parent_id",
+                        ),
+                        value: String(
+                            Owned(
+                                "00000000000000f2",
+                            ),
+                        ),
+                    },
+                ],
+                dropped_attributes_count: 0,
+                events: SpanEvents {
+                    events: [],
+                    dropped_count: 0,
+                },
+                links: SpanLinks {
+                    links: [],
+                    dropped_count: 0,
+                },
+                status: Unset,
+                instrumentation_scope: InstrumentationScope {
+                    name: "logfire",
+                    version: None,
+                    schema_url: None,
+                    attributes: [],
+                },
+            },
+            SpanData {
+                span_context: SpanContext {
+                    trace_id: 000000000000000000000000000000f2,
+                    span_id: 00000000000000f8,
                     trace_flags: TraceFlags(
                         1,
                     ),
@@ -1172,7 +1409,7 @@ mod tests {
             SpanData {
                 span_context: SpanContext {
                     trace_id: 000000000000000000000000000000f3,
-                    span_id: 00000000000000f8,
+                    span_id: 00000000000000fa,
                     trace_flags: TraceFlags(
                         1,
                     ),
@@ -1270,7 +1507,7 @@ mod tests {
             SpanData {
                 span_context: SpanContext {
                     trace_id: 000000000000000000000000000000f4,
-                    span_id: 00000000000000f9,
+                    span_id: 00000000000000fb,
                     trace_flags: TraceFlags(
                         1,
                     ),
