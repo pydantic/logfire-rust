@@ -1,14 +1,12 @@
 use std::{
     io::{self, BufWriter, Write},
-    sync::{Arc, LazyLock},
-    time::SystemTime,
+    sync::{Arc, LazyLock, Mutex, mpsc},
 };
 
 use chrono::{DateTime, Utc};
 use nu_ansi_term::{Color, Style};
 use opentelemetry::Value;
 use opentelemetry_sdk::trace::SpanData;
-use tracing_opentelemetry::OtelData;
 
 use crate::{
     bridges::tracing::level_to_level_number,
@@ -16,35 +14,54 @@ use crate::{
     internal::{constants::ATTRIBUTES_SPAN_TYPE_KEY, span_data_ext::SpanDataExt},
 };
 
-/// Simple span exporter which attempts to match the "simple" Python logfire console exporter.
+/// Simple span processor which attempts to match the "simple" Python logfire console exporter.
 #[derive(Debug)]
-pub struct SimpleConsoleSpanExporter {
-    stopped: bool,
-    writer: Arc<ConsoleWriter>,
+pub struct SimpleConsoleSpanProcessor {
+    tx: Mutex<Option<mpsc::Sender<SpanData>>>,
+    thread_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
-impl SimpleConsoleSpanExporter {
+impl SimpleConsoleSpanProcessor {
     pub fn new(writer: Arc<ConsoleWriter>) -> Self {
+        let (tx, rx) = mpsc::channel();
+
+        // Spawn a thread to handle the received spans
+        let thread_handle = std::thread::spawn(move || {
+            while let Ok(span) = rx.recv() {
+                writer.write_batch(&[span]);
+            }
+        });
+
         Self {
-            writer,
-            stopped: false,
+            tx: Mutex::new(Some(tx)),
+            thread_handle: Mutex::new(Some(thread_handle)),
         }
     }
 }
 
-impl opentelemetry_sdk::trace::SpanExporter for SimpleConsoleSpanExporter {
-    async fn export(
-        &self,
-        batch: Vec<opentelemetry_sdk::trace::SpanData>,
-    ) -> opentelemetry_sdk::error::OTelSdkResult {
-        if !self.stopped {
-            self.writer.write_batch(&batch);
+impl opentelemetry_sdk::trace::SpanProcessor for SimpleConsoleSpanProcessor {
+    fn on_start(&self, _span: &mut opentelemetry_sdk::trace::Span, _cx: &opentelemetry::Context) {}
+
+    fn on_end(&self, span: opentelemetry_sdk::trace::SpanData) {
+        if let Some(tx) = self.tx.lock().expect("no poisoning").as_mut() {
+            tx.send(span)
+                .expect("failed to send span to console writer");
         }
+    }
+
+    fn force_flush(&self) -> opentelemetry_sdk::error::OTelSdkResult {
         Ok(())
     }
 
-    fn shutdown(&mut self) -> opentelemetry_sdk::error::OTelSdkResult {
-        self.stopped = true;
+    fn shutdown_with_timeout(
+        &self,
+        _timeout: std::time::Duration,
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
+        // FIXME should timeout here?
+        *self.tx.lock().expect("no poisoning") = None;
+        if let Some(thread_handle) = self.thread_handle.lock().expect("no poisoning").take() {
+            thread_handle.join().expect("failed to join thread");
+        }
         Ok(())
     }
 }
@@ -81,13 +98,6 @@ impl ConsoleWriter {
             for span in batch {
                 let _ = self.span_to_writer(span, &mut buffer);
             }
-        });
-    }
-
-    pub fn write_tracing_opentelemetry_data(&self, data: &OtelData) {
-        self.with_writer(|w| {
-            let mut buffer = BufWriter::new(w);
-            let _ = self.otel_data_to_writer(data, &mut buffer);
         });
     }
 
@@ -180,91 +190,6 @@ impl ConsoleWriter {
 
         writeln!(w)
     }
-
-    fn otel_data_to_writer<W: io::Write>(
-        &self,
-        data: &tracing_opentelemetry::OtelData,
-        w: &mut W,
-    ) -> io::Result<()> {
-        let mut msg = None;
-        let mut level = None;
-        let mut target = None;
-
-        let mut fields = Vec::new();
-
-        for kv in data.builder.attributes.iter().flatten() {
-            match kv.key.as_str() {
-                "logfire.msg" => {
-                    msg = Some(kv.value.as_str());
-                }
-                "logfire.level_num" => {
-                    if let Value::I64(level_num) = kv.value {
-                        if level_num < level_to_level_number(self.options.min_log_level) {
-                            return Ok(());
-                        }
-                        level = Some(level_num);
-                    }
-                }
-                "code.namespace" => target = Some(kv.value.as_str()),
-                // Filter out known values
-                ATTRIBUTES_SPAN_TYPE_KEY
-                | "logfire.json_schema"
-                | "logfire.pending_parent_id"
-                | "code.filepath"
-                | "code.lineno"
-                | "thread.id"
-                | "thread.name"
-                | "logfire.null_args"
-                | "busy_ns"
-                | "idle_ns" => (),
-                _ => {
-                    fields.push(kv);
-                }
-            }
-        }
-
-        if msg.is_none() {
-            msg = Some(data.builder.name.clone());
-        }
-
-        if self.options.include_timestamps {
-            let timestamp: DateTime<Utc> = data
-                .builder
-                .start_time
-                .unwrap_or_else(SystemTime::now)
-                .into();
-            write!(
-                w,
-                "{}",
-                DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-            )?;
-        }
-
-        if let Some(level) = level {
-            level_int_to_text(level, w)?;
-        }
-
-        if let Some(target) = target {
-            write!(w, " {}", DIMMED_AND_ITALIC.paint(target))?;
-        }
-
-        if let Some(msg) = msg {
-            write!(w, " {}", BOLD.paint(msg))?;
-        }
-
-        if !fields.is_empty() {
-            for (idx, kv) in fields.iter().enumerate() {
-                let key = kv.key.as_str();
-                let value = kv.value.as_str();
-                write!(w, " {}={value}", ITALIC.paint(key))?;
-                if idx < fields.len() - 1 {
-                    write!(w, ",")?;
-                }
-            }
-        }
-
-        writeln!(w)
-    }
 }
 
 #[cfg(test)]
@@ -323,7 +248,7 @@ mod tests {
         [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:309:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:234:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 
@@ -371,7 +296,7 @@ mod tests {
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:357:17, [3mbacktrace[0m=disabled backtrace
+        [31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:282:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 
@@ -416,7 +341,34 @@ mod tests {
         [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
         [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
         [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:404:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:329:17, [3mbacktrace[0m=disabled backtrace
         ");
+    }
+
+    /// Regression test for https://github.com/pydantic/logfire-rust/issues/46
+    #[test]
+    fn test_console_deadlock() {
+        let shutdown_handler = crate::configure()
+            .send_to_logfire(false)
+            .local()
+            .install_panic_handler()
+            .finish()
+            .unwrap();
+
+        let guard = set_local_logfire(shutdown_handler.clone());
+
+        // Why did this deadlock?
+        //
+        // - calling `crate::info!` would use `SimpleSpanProcessor` to record the span
+        // - `SimpleSpanProcessor` had a mutex, which it locked, and then used `block_on` internally to call the exporter
+        // - `block_on` would panic, which caused another span to be emitted
+        // - this then deadlocked inside `SimpleSpanProcessor` because it was already holding the mutex
+        futures::executor::block_on(async {
+            crate::info!("Testing console output with tokio sleep");
+        });
+
+        drop(guard);
+
+        shutdown_handler.shutdown().ok();
     }
 }
