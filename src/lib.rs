@@ -572,7 +572,6 @@ impl LogfireConfigBuilder {
         let tracer = LogfireTracer {
             inner: tracer,
             handle_panics: self.install_panic_handler,
-            console_writer,
         };
 
         let subscriber = tracing_subscriber::registry()
@@ -752,7 +751,6 @@ fn get_optional_env(
 struct LogfireTracer {
     inner: Tracer,
     handle_panics: bool,
-    console_writer: Option<Arc<ConsoleWriter>>,
 }
 
 // Global tracer configured in `logfire::configure()`

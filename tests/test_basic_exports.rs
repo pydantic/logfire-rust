@@ -510,6 +510,142 @@ fn test_basic_span() {
         SpanData {
             span_context: SpanContext {
                 trace_id: 000000000000000000000000000000f0,
+                span_id: 00000000000000f5,
+                trace_flags: TraceFlags(
+                    1,
+                ),
+                is_remote: false,
+                trace_state: TraceState(
+                    None,
+                ),
+            },
+            parent_span_id: 00000000000000f4,
+            span_kind: Internal,
+            name: "debug span",
+            start_time: SystemTime {
+                tv_sec: 3,
+                tv_nsec: 0,
+            },
+            end_time: SystemTime {
+                tv_sec: 3,
+                tv_nsec: 0,
+            },
+            attributes: [
+                KeyValue {
+                    key: Static(
+                        "code.filepath",
+                    ),
+                    value: String(
+                        Static(
+                            "tests/test_basic_exports.rs",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "code.namespace",
+                    ),
+                    value: String(
+                        Static(
+                            "test_basic_exports",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "code.lineno",
+                    ),
+                    value: I64(
+                        16,
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "thread.id",
+                    ),
+                    value: I64(
+                        0,
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "thread.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test_basic_span",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.msg",
+                    ),
+                    value: String(
+                        Owned(
+                            "debug span",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.json_schema",
+                    ),
+                    value: String(
+                        Owned(
+                            "{\"type\":\"object\",\"properties\":{}}",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.level_num",
+                    ),
+                    value: I64(
+                        5,
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.span_type",
+                    ),
+                    value: String(
+                        Static(
+                            "pending_span",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.pending_parent_id",
+                    ),
+                    value: String(
+                        Owned(
+                            "00000000000000f0",
+                        ),
+                    ),
+                },
+            ],
+            dropped_attributes_count: 0,
+            events: SpanEvents {
+                events: [],
+                dropped_count: 0,
+            },
+            links: SpanLinks {
+                links: [],
+                dropped_count: 0,
+            },
+            status: Unset,
+            instrumentation_scope: InstrumentationScope {
+                name: "logfire",
+                version: None,
+                schema_url: None,
+                attributes: [],
+            },
+        },
+        SpanData {
+            span_context: SpanContext {
+                trace_id: 000000000000000000000000000000f0,
                 span_id: 00000000000000f4,
                 trace_flags: TraceFlags(
                     1,
@@ -652,7 +788,143 @@ fn test_basic_span() {
         SpanData {
             span_context: SpanContext {
                 trace_id: 000000000000000000000000000000f0,
-                span_id: 00000000000000f5,
+                span_id: 00000000000000f7,
+                trace_flags: TraceFlags(
+                    1,
+                ),
+                is_remote: false,
+                trace_state: TraceState(
+                    None,
+                ),
+            },
+            parent_span_id: 00000000000000f6,
+            span_kind: Internal,
+            name: "debug span with explicit parent",
+            start_time: SystemTime {
+                tv_sec: 5,
+                tv_nsec: 0,
+            },
+            end_time: SystemTime {
+                tv_sec: 5,
+                tv_nsec: 0,
+            },
+            attributes: [
+                KeyValue {
+                    key: Static(
+                        "code.filepath",
+                    ),
+                    value: String(
+                        Static(
+                            "tests/test_basic_exports.rs",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "code.namespace",
+                    ),
+                    value: String(
+                        Static(
+                            "test_basic_exports",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "code.lineno",
+                    ),
+                    value: I64(
+                        17,
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "thread.id",
+                    ),
+                    value: I64(
+                        0,
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "thread.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test_basic_span",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.msg",
+                    ),
+                    value: String(
+                        Owned(
+                            "debug span with explicit parent",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.json_schema",
+                    ),
+                    value: String(
+                        Owned(
+                            "{\"type\":\"object\",\"properties\":{}}",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.level_num",
+                    ),
+                    value: I64(
+                        5,
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.span_type",
+                    ),
+                    value: String(
+                        Static(
+                            "pending_span",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "logfire.pending_parent_id",
+                    ),
+                    value: String(
+                        Owned(
+                            "00000000000000f0",
+                        ),
+                    ),
+                },
+            ],
+            dropped_attributes_count: 0,
+            events: SpanEvents {
+                events: [],
+                dropped_count: 0,
+            },
+            links: SpanLinks {
+                links: [],
+                dropped_count: 0,
+            },
+            status: Unset,
+            instrumentation_scope: InstrumentationScope {
+                name: "logfire",
+                version: None,
+                schema_url: None,
+                attributes: [],
+            },
+        },
+        SpanData {
+            span_context: SpanContext {
+                trace_id: 000000000000000000000000000000f0,
+                span_id: 00000000000000f6,
                 trace_flags: TraceFlags(
                     1,
                 ),
@@ -794,7 +1066,7 @@ fn test_basic_span() {
         SpanData {
             span_context: SpanContext {
                 trace_id: 000000000000000000000000000000f0,
-                span_id: 00000000000000f6,
+                span_id: 00000000000000f8,
                 trace_flags: TraceFlags(
                     1,
                 ),
@@ -940,7 +1212,7 @@ fn test_basic_span() {
         SpanData {
             span_context: SpanContext {
                 trace_id: 000000000000000000000000000000f0,
-                span_id: 00000000000000f7,
+                span_id: 00000000000000f9,
                 trace_flags: TraceFlags(
                     1,
                 ),
@@ -1034,7 +1306,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        714,
+                        713,
                     ),
                 },
                 KeyValue {

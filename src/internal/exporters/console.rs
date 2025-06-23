@@ -1,14 +1,12 @@
 use std::{
     io::{self, BufWriter, Write},
     sync::{Arc, LazyLock, Mutex, mpsc},
-    time::SystemTime,
 };
 
 use chrono::{DateTime, Utc};
 use nu_ansi_term::{Color, Style};
 use opentelemetry::Value;
 use opentelemetry_sdk::trace::SpanData;
-use tracing_opentelemetry::OtelData;
 
 use crate::{
     bridges::tracing::level_to_level_number,
@@ -103,13 +101,6 @@ impl ConsoleWriter {
         });
     }
 
-    pub fn write_tracing_opentelemetry_data(&self, data: &OtelData) {
-        self.with_writer(|w| {
-            let mut buffer = BufWriter::new(w);
-            let _ = self.otel_data_to_writer(data, &mut buffer);
-        });
-    }
-
     fn with_writer<R>(&self, f: impl FnOnce(&mut dyn Write) -> R) -> R {
         match &self.options.target {
             Target::Stdout => f(&mut io::stdout()),
@@ -167,91 +158,6 @@ impl ConsoleWriter {
 
         if self.options.include_timestamps {
             let timestamp: DateTime<Utc> = span.start_time.into();
-            write!(
-                w,
-                "{}",
-                DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-            )?;
-        }
-
-        if let Some(level) = level {
-            level_int_to_text(level, w)?;
-        }
-
-        if let Some(target) = target {
-            write!(w, " {}", DIMMED_AND_ITALIC.paint(target))?;
-        }
-
-        if let Some(msg) = msg {
-            write!(w, " {}", BOLD.paint(msg))?;
-        }
-
-        if !fields.is_empty() {
-            for (idx, kv) in fields.iter().enumerate() {
-                let key = kv.key.as_str();
-                let value = kv.value.as_str();
-                write!(w, " {}={value}", ITALIC.paint(key))?;
-                if idx < fields.len() - 1 {
-                    write!(w, ",")?;
-                }
-            }
-        }
-
-        writeln!(w)
-    }
-
-    fn otel_data_to_writer<W: io::Write>(
-        &self,
-        data: &tracing_opentelemetry::OtelData,
-        w: &mut W,
-    ) -> io::Result<()> {
-        let mut msg = None;
-        let mut level = None;
-        let mut target = None;
-
-        let mut fields = Vec::new();
-
-        for kv in data.builder.attributes.iter().flatten() {
-            match kv.key.as_str() {
-                "logfire.msg" => {
-                    msg = Some(kv.value.as_str());
-                }
-                "logfire.level_num" => {
-                    if let Value::I64(level_num) = kv.value {
-                        if level_num < level_to_level_number(self.options.min_log_level) {
-                            return Ok(());
-                        }
-                        level = Some(level_num);
-                    }
-                }
-                "code.namespace" => target = Some(kv.value.as_str()),
-                // Filter out known values
-                ATTRIBUTES_SPAN_TYPE_KEY
-                | "logfire.json_schema"
-                | "logfire.pending_parent_id"
-                | "code.filepath"
-                | "code.lineno"
-                | "thread.id"
-                | "thread.name"
-                | "logfire.null_args"
-                | "busy_ns"
-                | "idle_ns" => (),
-                _ => {
-                    fields.push(kv);
-                }
-            }
-        }
-
-        if msg.is_none() {
-            msg = Some(data.builder.name.clone());
-        }
-
-        if self.options.include_timestamps {
-            let timestamp: DateTime<Utc> = data
-                .builder
-                .start_time
-                .unwrap_or_else(SystemTime::now)
-                .into();
             write!(
                 w,
                 "{}",
@@ -342,7 +248,7 @@ mod tests {
         [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:328:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:234:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 
@@ -390,7 +296,7 @@ mod tests {
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:357:17, [3mbacktrace[0m=disabled backtrace
+        [31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:282:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 
@@ -435,7 +341,7 @@ mod tests {
         [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
         [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
         [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:423:17, [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [2;3mlogfire[0m [1mpanic: oh no![0m [3mlocation[0m=src/internal/exporters/console.rs:329:17, [3mbacktrace[0m=disabled backtrace
         ");
     }
 
