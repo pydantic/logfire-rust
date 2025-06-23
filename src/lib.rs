@@ -102,7 +102,6 @@ use std::panic::PanicHookInfo;
 use std::sync::{Arc, Once};
 use std::{backtrace::Backtrace, env::VarError, sync::OnceLock, time::Duration};
 
-use bridges::tracing::LogfireTracingPendingSpanNotSentLayer;
 use config::get_base_url_from_token;
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
@@ -112,7 +111,8 @@ use thiserror::Error;
 use tracing::Subscriber;
 use tracing::level_filters::LevelFilter;
 use tracing::subscriber::DefaultGuard;
-use tracing_subscriber::layer::{Layer, SubscriberExt};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::registry::LookupSpan;
 
 use crate::bridges::tracing::LogfireTracingLayer;
 use crate::config::{
@@ -569,18 +569,15 @@ impl LogfireConfigBuilder {
             .with_default_directive(default_level_filter.into())
             .from_env()?; // but allow the user to override this with `RUST_LOG`
 
+        let tracer = LogfireTracer {
+            inner: tracer,
+            handle_panics: self.install_panic_handler,
+            console_writer,
+        };
+
         let subscriber = tracing_subscriber::registry()
             .with(filter)
-            .with(LogfireTracingPendingSpanNotSentLayer)
-            .with(
-                tracing_opentelemetry::layer()
-                    .with_error_records_to_exceptions(true)
-                    .with_tracer(tracer.clone())
-                    .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
-                        !metadata.is_event()
-                    })),
-            )
-            .with(LogfireTracingLayer(tracer.clone()));
+            .with(LogfireTracingLayer::new(tracer.clone()));
 
         let mut meter_provider_builder = SdkMeterProvider::builder();
 
@@ -614,11 +611,7 @@ impl LogfireConfigBuilder {
 
         Ok(LogfireParts {
             local: self.local,
-            tracer: LogfireTracer {
-                inner: tracer,
-                handle_panics: self.install_panic_handler,
-                console_writer,
-            },
+            tracer,
             subscriber: Arc::new(subscriber),
             tracer_provider,
             meter_provider,
@@ -658,6 +651,36 @@ impl ShutdownHandler {
             .shutdown()
             .map_err(|e| ConfigureError::Other(e.into()))?;
         Ok(())
+    }
+
+    /// Get a tracing layer which can be used to embed this `Logfire` instance into a `tracing_subscriber::Registry`.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use tracing_subscriber::{Registry, layer::SubscriberExt};
+    ///
+    /// let shutdown_handler = logfire::configure()
+    ///    .local()  // use local mode to avoid setting global state
+    ///    .finish()
+    ///    .expect("Failed to configure logfire");
+    ///
+    /// let subscriber = tracing_subscriber::registry()
+    ///    .with(shutdown_handler.tracing_layer());
+    ///
+    /// tracing::subscriber::set_global_default(subscriber)
+    ///    .expect("Failed to set global subscriber");
+    ///
+    /// logfire::info!("Hello world");
+    ///
+    /// shutdown_handler.shutdown().expect("Failed to shutdown logfire");
+    /// ```
+    #[must_use]
+    pub fn tracing_layer<S>(&self) -> LogfireTracingLayer<S>
+    where
+        S: Subscriber + for<'span> LookupSpan<'span>,
+    {
+        LogfireTracingLayer::new(self.tracer.clone())
     }
 }
 
