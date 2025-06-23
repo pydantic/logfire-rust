@@ -99,7 +99,7 @@ pub fn span_exporter(
 }
 
 /// Build a [`PushMetricExporter`] for passing to
-/// [`with_metrics_options()`][crate::LogfireConfigBuilder::with_metrics_options].
+/// [`with_metrics()`][crate::LogfireConfigBuilder::with_metrics].
 ///
 /// This uses `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` environment
 /// variables to determine the protocol to use (or otherwise defaults to [`Protocol::HttpBinary`]).

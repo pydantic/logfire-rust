@@ -191,39 +191,6 @@ pub enum ConfigureError {
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
-#[expect(deprecated)]
-mod deprecated {
-    use std::str::FromStr;
-
-    /// Whether to print to the console.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-    #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
-    #[deprecated(since = "0.4.0", note = "use `ConsoleOptions` instead")]
-    pub enum ConsoleMode {
-        /// Write to console if no logfire token
-        #[default]
-        Fallback,
-        /// Force write to console
-        Force,
-    }
-
-    impl FromStr for ConsoleMode {
-        type Err = String;
-
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
-            match s {
-                "fallback" => Ok(ConsoleMode::Fallback),
-                "force" => Ok(ConsoleMode::Force),
-                _ => Err(format!("invalid console mode: {s}")),
-            }
-        }
-    }
-}
-
-#[expect(deprecated)]
-use deprecated::ConsoleMode;
-
 /// Main entry point to configure logfire.
 ///
 /// This should be called once at the start of the program.
@@ -252,8 +219,6 @@ pub fn configure() -> LogfireConfigBuilder {
         send_to_logfire: None,
         token: None,
         console_options: Some(ConsoleOptions::default()),
-        #[expect(deprecated)]
-        console_mode: ConsoleMode::Force,
         additional_span_processors: Vec::new(),
         advanced: None,
         metrics: Some(MetricsOptions::default()),
@@ -272,10 +237,6 @@ pub struct LogfireConfigBuilder {
     // service_version: Option<String>,
     // environment: Option<String>,
     console_options: Option<ConsoleOptions>,
-    /// Deprecated setting, `Force` implies use `console_options`, `Fallback` will filter
-    /// them out if `send_to_logfire` is false.
-    #[expect(deprecated)]
-    console_mode: ConsoleMode,
 
     // config_dir: Option<PathBuf>,
     // data_dir: Option<Path>,
@@ -337,21 +298,6 @@ impl LogfireConfigBuilder {
         self
     }
 
-    /// Whether to log to the console.
-    #[must_use]
-    #[deprecated(since = "0.4.0", note = "use `with_console()` instead")]
-    #[expect(deprecated)]
-    pub fn console_mode(mut self, console_mode: ConsoleMode) -> Self {
-        // FIXME: remove this API and make it match Python, see `console_options()` below
-        match console_mode {
-            ConsoleMode::Fallback => {
-                self.console_options = None;
-            }
-            ConsoleMode::Force => self.console_options = Some(ConsoleOptions::default()),
-        }
-        self
-    }
-
     /// Sets console options. Set to `None` to disable console logging.
     ///
     /// If not set, will use `ConsoleOptions::default()`.
@@ -398,22 +344,6 @@ impl LogfireConfigBuilder {
     #[must_use]
     pub fn with_metrics(mut self, metrics: Option<MetricsOptions>) -> Self {
         self.metrics = metrics;
-        self
-    }
-
-    /// Configure [metrics options](crate::config::MetricsOptions).
-    #[must_use]
-    #[deprecated(since = "0.4.0", note = "use `with_metrics` instead")]
-    pub fn with_metrics_options(mut self, metrics: MetricsOptions) -> Self {
-        self.metrics = Some(metrics);
-        self
-    }
-
-    /// Whether to enable metrics.
-    #[must_use]
-    #[deprecated(since = "0.4.0", note = "use `with_metrics(None)` to disable metrics")]
-    pub fn enable_metrics(mut self, enable: bool) -> Self {
-        self.enable_metrics = enable;
         self
     }
 
@@ -538,13 +468,7 @@ impl LogfireConfigBuilder {
 
         let console_writer = self
             .console_options
-            // NB deprecated behaviour: if set to fallback and sending to logfire, disable console
-            .filter(
-                #[expect(deprecated)]
-                |_| !(self.console_mode == ConsoleMode::Fallback && send_to_logfire),
-            )
-            .map(ConsoleWriter::new)
-            .map(Arc::new);
+            .map(|o| Arc::new(ConsoleWriter::new(o)));
 
         if let Some(console_writer) = console_writer.clone() {
             tracer_provider_builder = tracer_provider_builder.with_span_processor(
