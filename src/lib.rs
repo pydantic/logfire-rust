@@ -90,6 +90,93 @@
 //! The metrics helpers exported by this SDK, such as [`logfire::u64_counter()`][u64_counter], are
 //! very thin wrappers around the `opentelemetry` SDK.
 //!
+//! #### Available metric types
+//! The SDK supports all `opentelemetry` metric types:  
+//!
+//! ##### Counters
+//!
+//! Monotonically increasing values (e.g., request counts, error counts):
+//!
+//! ```rust
+//! use std::sync::LazyLock;
+//! use opentelemetry::metrics::Counter;
+//!
+//! // For counting discrete events
+//! static HTTP_REQUESTS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+//!     logfire::u64_counter("http_requests_total")
+//!         .with_description("Total HTTP requests")
+//!         .with_unit("{request}")
+//!         .build()
+//! });
+//!
+//! // For floating-point measurements
+//! static DATA_PROCESSED: LazyLock<Counter<f64>> = LazyLock::new(|| {
+//!     logfire::f64_counter("processed_bytes")
+//!         .with_description("Total bytes processed")
+//! });
+//! ```
+//!
+//! ##### Gauges
+//!
+//! Current state values that can go up or down:
+//! ```rust
+//! use std::sync::LazyLock;
+//! use opentelemetry::metrics::Gauge;
+//!
+//! static ACTIVE_CONNECTIONS: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+//!     logfire::u64_gauge("active_connections")
+//!         .with_description("Number of active connections")
+//!         .with_unit("{connection}")
+//!         .build()
+//! });
+//!
+//! static CPU_USAGE: LazyLock<Gauge<f64>> = LazyLock::new(|| {
+//!     logfire::f64_gauge("cpu_usage_percent")
+//!         .with_description("CPU usage percentage")
+//!         .with_unit("%")
+//!         .build()
+//! });
+//! ```
+//!
+//!
+//! ##### Histograms
+//!
+//! Distribution of values (e.g., request durations, response sizes):
+//!
+//! ```rust
+//! use std::sync::LazyLock;
+//! use opentelemetry::metrics::Histogram;
+//!
+//! static REQUEST_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+//!     logfire::f64_histogram("http_request_duration")
+//!         .with_description("HTTP request duration")
+//!         .with_unit("s")
+//!         .build()
+//! });
+//!
+//! static RESPONSE_SIZE: LazyLock<Histogram<u64>> = LazyLock::new(|| {
+//!     logfire::u64_histogram("http_response_size")
+//!         .with_description("HTTP response size")
+//!         .with_unit("By")
+//!         .build()
+//! });
+//! ```
+//!
+//!
+//! ##### Up/Down Counters
+//! Values that can increase or decrease:
+//!
+//! ```rust
+//! use std::sync::LazyLock;
+//! use opentelemetry::metrics::UpDownCounter;
+//!
+//! static QUEUE_SIZE: LazyLock<UpDownCounter<i64>> = LazyLock::new(|| {
+//!     logfire::i64_up_down_counter("queue_size")
+//!         .with_description("Current queue size")
+//!         .with_unit("{item}")
+//!         .build()
+//! });
+//! ```
 //! ### With `log`
 //!
 //! This SDK configures the global `log` state to use an exporter which forwards logs to opentelemetry.
