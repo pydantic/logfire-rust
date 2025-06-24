@@ -91,7 +91,7 @@
 //! very thin wrappers around the `opentelemetry` SDK.
 //!
 //! #### Available metric types
-//! The SDK supports all `opentelemetry` metric types:  
+//! The SDK supports all `opentelemetry` metric types:
 //!
 //! ##### Counters
 //!
