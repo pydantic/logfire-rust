@@ -1,35 +1,57 @@
 //! A basic example of using Logfire to instrument Rust code.
 
+use std::fs;
 use std::sync::LazyLock;
 
 use opentelemetry::{KeyValue, metrics::Counter};
 
-static BASIC_COUNTER: LazyLock<Counter<u64>> = LazyLock::new(|| {
-    logfire::u64_counter("basic_counter")
+static FILES_COUNTER: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    logfire::u64_counter("FILES_COUNTER")
         .with_description("Just an example")
         .with_unit("s")
         .build()
 });
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let shutdown_handler = logfire::configure()
-        .install_panic_handler()
-        .with_console(None)
-        .finish()?;
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-    tracing::info!("Hello, world!");
+fn main() -> Result<()> {
+    let shutdown_handler = logfire::configure().install_panic_handler().finish()?;
 
-    {
-        let _span = logfire::span!("Asking the user their {question}", question = "age").entered();
+    let mut total_size = 0u64;
 
-        println!("When were you born [YYYY-mm-dd]?");
-        let mut dob = String::new();
-        std::io::stdin().read_line(&mut dob)?;
+    let cwd = std::env::current_dir()?;
 
-        logfire::debug!("dob={dob}", dob = dob.trim().to_owned());
-    }
+    logfire::span!("counting size of {cwd}", cwd = cwd.display().to_string()).in_scope(|| {
+        let entries = fs::read_dir(&cwd)?;
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
 
-    BASIC_COUNTER.add(1, &[KeyValue::new("process", "abc123")]);
+            let _span = logfire::span!(
+                "reading {path}",
+                path = path
+                    .strip_prefix(&cwd)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string()
+            )
+            .entered();
+
+            FILES_COUNTER.add(1, &[KeyValue::new("process", "abc123")]);
+
+            let metadata = entry.metadata()?;
+            if metadata.is_file() {
+                total_size += metadata.len();
+            }
+        }
+        Result::Ok(())
+    })?;
+
+    logfire::info!(
+        "total size of {cwd} is {size} bytes",
+        cwd = cwd.display().to_string(),
+        size = total_size as i64
+    );
 
     shutdown_handler.shutdown()?;
     Ok(())
