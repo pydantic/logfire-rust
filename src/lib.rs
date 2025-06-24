@@ -1,11 +1,6 @@
-#![doc(html_favicon_url = "https://pydantic.dev/favicon/favicon.ico")]
-#![doc(
-    html_logo_url = "https://raw.githubusercontent.com/pydantic/logfire-rust/refs/heads/main/assets/logo-white.svg"
-)]
-
 //! # Rust SDK for Pydantic Logfire
 //!
-//! This SDK provides a first-class experience instrumenting Rust code for the Pydantic Logfire platform.
+//! This goal of this SDK is to provide a first-class experience instrumenting Rust code for the Pydantic Logfire platform.
 //!
 //! The most important API is [`logfire::configure()`][configure], which is used to set up
 //! integrations with `tracing` and `log`, as well as exporters for `opentelemetry`. Code
@@ -20,68 +15,185 @@
 //! See also:
 //!  - The [integrations](#integrations) section below for more information on the relationship of
 //!    this SDK to other libraries.
-//!  - The [examples][usage::examples] subchapter of this documentation.
 //!  - The [Logfire documentation](https://logfire.pydantic.dev/docs/) for more information about Logfire in general.
 //!  - The [Logfire GitHub repository](https://github.com/pydantic/logfire) for the source of the documentation, the Python SDK and an issue tracker for general questions about Logfire.
 //!
-//! # Usage
-//!
-//! See below for a quick summary of how to use this SDK. The [usage guide][usage] contains more detailed
-//! information about how to use this SDK to its full potential.
+//! > ***Initial release - feedback wanted!***
+//! >
+//! > This is an initial release of the Logfire Rust SDK. We've been using it internally to build
+//! > Logfire for some time, and it is serving us well. As we're using it ourselves in production,
+//! > we figured it's ready for everyone else also using Logfire.
+//! >
+//! > We are continually iterating to make this SDK better. We'd love your feedback on all aspects
+//! > of the SDK and are keen to make the design as idiomatic and performant as possible. There are
+//! > also many features currently supported by the Python SDK which are not yet supported by this
+//! > SDK; please open issues to help us prioritize these to close this gap. For example, we have not
+//! > yet implemented scrubbing in this Rust SDK, although we are aware it is important!
+//! >
+//! > In particular, the current coupling to `tracing` is an open design point. By building on top
+//! > of tracing we get widest compatibility and a relatively simple SDK, however to make
+//! > Logfire-specific adjustments we might prefer in future to move `tracing` to be an optional
+//! > integration.
 //!
 //! ## Getting Started
 //!
-//! To use `logfire` in your Rust project, add the following to your `Cargo.toml`:
+//! To use Logfire in your Rust project, add the following to your `Cargo.toml`:
 //!
 //! ```toml
 //! [dependencies]
 #![doc = concat!("logfire = \"", env!("CARGO_PKG_VERSION"), "\"\n")]
 //! ```
 //!
-//! Then, in your Rust code, add a call to [`logfire::configure()`][configure] at the beginning of your program:
+//! Then, in your Rust code, add a call to `logfire::configure()` at the beginning of your program:
 //!
 //! ```rust
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let shutdown_handler = logfire::configure()
-//!         .install_panic_handler()
-//! #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
-//!         .finish()?;
-//!
-//!     logfire::info!("Hello world");
-//!
-//!     shutdown_handler.shutdown()?;
-//!     Ok(())
-//! }
+#![doc = include_str!("../examples/basic.rs")]
 //! ```
 //!
 //! ## Configuration
 //!
 //! After adding basic setup as per above, the most two important environment variables are:
-//! - [`LOGFIRE_TOKEN`](https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens/) (required) - the token to send data to the Logfire platform
-//! - [`RUST_LOG`](https://docs.rs/env_logger/latest/env_logger/#filtering-results) (optional) - the level of verbosity to send to the Logfire platform. By default
-//!   data is captured at `TRACE` level so that all data is available for you to analyze in the
-//!   Logfire platform. This format should match the format used by the [`env_logger`](https://docs.rs/env_logger/) crate.
+//! - `LOGFIRE_TOKEN` - (required) the token to send data to the Logfire platform
+//! - `RUST_LOG` - (optional) the level of verbosity to send to the Logfire platform. By default
+//!   logs are captured at `TRACE` level so that all data is available for you to analyze in the
+//!   Logfire platform.
 //!
 //! All environment variables supported by the Rust Opentelemetry SDK are also supported by the
 //! Logfire SDK.
 //!
-//! # Examples
+//! ## Integrations
 //!
-//! See [examples][usage::examples] subchapter of this documentation.
+//! The following sections describe briefly the interaction which this SDK has with other libraries.
+//!
+//! ### With `tracing`
+//!
+//! This SDK is built upon `tracing` (and `tracing-opentelemtry`) for the [`span!`] macro. This means
+//! that any code instrumented with `tracing` will automatically be captured by Logfire, and also
+//! that [`span!`] produces a `tracing::Span` which is fully compatible with the `tracing` ecosystem.
+//!
+//! If you are an existing `tracing` user, it is fine to continue to use the `tracing` APIs directly
+//! and ignore [`logfire::span!`][span]. The upside of [`span!`] is that it will show the fields
+//! directly in the logfire UI.
+//!
+//! There are many great APIs in `tracing` which we do not yet provide equivalents for, such as the
+//! [`#[tracing::instrument]`][`macro@tracing::instrument`] proc macro, so even if using [`logfire::span!`][span]
+//! you will likely use `tracing` APIs directly too.
+//!
+//! ### With `opentelemetry`
+//!
+//! This SDK is built upon the `opentelemetry` Rust SDK and will configure the global `opentelemetry`
+//! state as part of a call to [`logfire::configure()`][configure].
+//!
+//! All calls to [`logfire::info!`][info] and similar macros are directly forwarded to `opentelemetry`
+//! machinery without going through `tracing`, for performance.
+//!
+//! The metrics helpers exported by this SDK, such as [`logfire::u64_counter()`][u64_counter], are
+//! very thin wrappers around the `opentelemetry` SDK.
+//!
+//! #### Available metric types
+//! The SDK supports all `opentelemetry` metric types:  
+//!
+//! ##### Counters
+//!
+//! Monotonically increasing values (e.g., request counts, error counts):
+//!
+//! ```rust
+//! use std::sync::LazyLock;
+//! use opentelemetry::metrics::Counter;
+//!
+//! // For counting discrete events
+//! static HTTP_REQUESTS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+//!     logfire::u64_counter("http_requests_total")
+//!         .with_description("Total HTTP requests")
+//!         .with_unit("{request}")
+//!         .build()
+//! });
+//!
+//! // For floating-point measurements
+//! static DATA_PROCESSED: LazyLock<Counter<f64>> = LazyLock::new(|| {
+//!     logfire::f64_counter("processed_bytes")
+//!         .with_description("Total bytes processed")
+//! });
+//! ```
+//!
+//! ##### Gauges
+//!
+//! Current state values that can go up or down:
+//! ```rust
+//! use std::sync::LazyLock;
+//! use opentelemetry::metrics::Gauge;
+//!
+//! static ACTIVE_CONNECTIONS: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+//!     logfire::u64_gauge("active_connections")
+//!         .with_description("Number of active connections")
+//!         .with_unit("{connection}")
+//!         .build()
+//! });
+//!
+//! static CPU_USAGE: LazyLock<Gauge<f64>> = LazyLock::new(|| {
+//!     logfire::f64_gauge("cpu_usage_percent")
+//!         .with_description("CPU usage percentage")
+//!         .with_unit("%")
+//!         .build()
+//! });
+//! ```
+//!
+//!
+//! ##### Histograms
+//!
+//! Distribution of values (e.g., request durations, response sizes):
+//!
+//! ```rust
+//! use std::sync::LazyLock;
+//! use opentelemetry::metrics::Histogram;
+//!
+//! static REQUEST_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+//!     logfire::f64_histogram("http_request_duration")
+//!         .with_description("HTTP request duration")
+//!         .with_unit("s")
+//!         .build()
+//! });
+//!
+//! static RESPONSE_SIZE: LazyLock<Histogram<u64>> = LazyLock::new(|| {
+//!     logfire::u64_histogram("http_response_size")
+//!         .with_description("HTTP response size")
+//!         .with_unit("By")
+//!         .build()
+//! });
+//! ```
+//!
+//!
+//! ##### Up/Down Counters
+//! Values that can increase or decrease:
+//!
+//! ```rust
+//! use std::sync::LazyLock;
+//! use opentelemetry::metrics::UpDownCounter;
+//!
+//! static QUEUE_SIZE: LazyLock<UpDownCounter<i64>> = LazyLock::new(|| {
+//!     logfire::i64_up_down_counter("queue_size")
+//!         .with_description("Current queue size")
+//!         .with_unit("{item}")
+//!         .build()
+//! });
+//! ```
+//! ### With `log`
+//!
+//! This SDK configures the global `log` state to use an exporter which forwards logs to opentelemetry.
+//!
+//! All code instrumented with `log` will therefore automatically be captured by Logfire.
 
-use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::panic::PanicHookInfo;
 use std::sync::{Arc, Once};
-use std::{backtrace::Backtrace, env::VarError, time::Duration};
+use std::{backtrace::Backtrace, env::VarError, sync::OnceLock, time::Duration};
 
 use config::get_base_url_from_token;
-use opentelemetry::logs::LoggerProvider as _;
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
-use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::trace::{BatchConfigBuilder, BatchSpanProcessor, SpanProcessor};
+use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use thiserror::Error;
 use tracing::Subscriber;
 use tracing::level_filters::LevelFilter;
@@ -89,16 +201,11 @@ use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 
-use crate::__macros_impl::LogfireValue;
+use crate::bridges::tracing::LogfireTracingLayer;
 use crate::config::{
     AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
 };
-use crate::internal::exporters::console::{ConsoleWriter, create_console_processors};
-use crate::internal::logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer};
-use crate::ulid_id_generator::UlidIdGenerator;
-
-#[cfg(any(docsrs, doctest))]
-pub mod usage;
+use crate::internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanProcessor};
 
 mod bridges;
 pub mod config;
@@ -107,9 +214,9 @@ mod macros;
 mod metrics;
 mod ulid_id_generator;
 
-pub use crate::bridges::tracing::LogfireTracingLayer;
 pub use macros::*;
 pub use metrics::*;
+use ulid_id_generator::UlidIdGenerator;
 
 mod internal;
 
@@ -340,13 +447,12 @@ impl LogfireConfigBuilder {
             subscriber,
             tracer_provider,
             meter_provider,
-            logger_provider,
             ..
         } = self.build_parts(None)?;
 
         if !local {
             tracing::subscriber::set_global_default(subscriber.clone())?;
-            let logger = bridges::log::LogfireLogger::init(tracer.clone());
+            let logger = bridges::log::LogfireLogger::init(tracer.inner.clone());
             log::set_logger(logger)?;
             log::set_max_level(logger.max_level());
 
@@ -368,7 +474,6 @@ impl LogfireConfigBuilder {
             tracer,
             subscriber,
             meter_provider,
-            logger_provider,
         })
     }
 
@@ -399,7 +504,6 @@ impl LogfireConfigBuilder {
         let advanced_options = self.advanced.unwrap_or_default();
 
         let mut tracer_provider_builder = SdkTracerProvider::builder();
-        let mut logger_provider_builder = SdkLoggerProvider::builder();
 
         if let Some(id_generator) = advanced_options.id_generator {
             tracer_provider_builder = tracer_provider_builder.with_id_generator(id_generator);
@@ -448,13 +552,13 @@ impl LogfireConfigBuilder {
             );
         }
 
-        let console_processors = self
+        let console_writer = self
             .console_options
-            .map(|o| create_console_processors(Arc::new(ConsoleWriter::new(o))));
+            .map(|o| Arc::new(ConsoleWriter::new(o)));
 
-        if let Some((span_processor, log_processor)) = console_processors {
-            tracer_provider_builder = tracer_provider_builder.with_span_processor(span_processor);
-            logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
+        if let Some(console_writer) = console_writer.clone() {
+            tracer_provider_builder = tracer_provider_builder
+                .with_span_processor(SimpleConsoleSpanProcessor::new(console_writer));
         }
 
         for span_processor in self.additional_span_processors {
@@ -476,7 +580,14 @@ impl LogfireConfigBuilder {
             .with_default_directive(default_level_filter.into())
             .from_env()?; // but allow the user to override this with `RUST_LOG`
 
-        let subscriber = tracing_subscriber::registry().with(filter);
+        let tracer = LogfireTracer {
+            inner: tracer,
+            handle_panics: self.install_panic_handler,
+        };
+
+        let subscriber = tracing_subscriber::registry()
+            .with(filter)
+            .with(LogfireTracingLayer::new(tracer.clone()));
 
         let mut meter_provider_builder = SdkMeterProvider::builder();
 
@@ -484,7 +595,7 @@ impl LogfireConfigBuilder {
             if self.enable_metrics {
                 let metric_reader = PeriodicReader::builder(exporters::metric_exporter(
                     logfire_base_url,
-                    http_headers.clone(),
+                    http_headers,
                 )?)
                 .build();
 
@@ -498,41 +609,11 @@ impl LogfireConfigBuilder {
             }
         }
 
-        if let Some(resource) = advanced_options.resource.clone() {
+        if let Some(resource) = advanced_options.resource {
             meter_provider_builder = meter_provider_builder.with_resource(resource);
         }
 
         let meter_provider = meter_provider_builder.build();
-
-        if let Some(logfire_base_url) = logfire_base_url {
-            logger_provider_builder = logger_provider_builder.with_log_processor(
-                BatchLogProcessor::builder(exporters::log_exporter(
-                    logfire_base_url,
-                    http_headers.clone(),
-                )?)
-                .build(),
-            );
-        }
-
-        for log_processor in advanced_options.log_record_processors {
-            logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
-        }
-
-        if let Some(resource) = advanced_options.resource {
-            logger_provider_builder = logger_provider_builder.with_resource(resource);
-        }
-
-        let logger_provider = logger_provider_builder.build();
-
-        let logger = Arc::new(logger_provider.logger("logfire"));
-
-        let tracer = LogfireTracer {
-            inner: tracer,
-            logger,
-            handle_panics: self.install_panic_handler,
-        };
-
-        let subscriber = subscriber.with(LogfireTracingLayer::new(tracer.clone()));
 
         if self.install_panic_handler {
             install_panic_handler();
@@ -544,7 +625,6 @@ impl LogfireConfigBuilder {
             subscriber: Arc::new(subscriber),
             tracer_provider,
             meter_provider,
-            logger_provider,
             #[cfg(test)]
             send_to_logfire,
         })
@@ -562,7 +642,6 @@ pub struct ShutdownHandler {
     tracer: LogfireTracer,
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     meter_provider: SdkMeterProvider,
-    logger_provider: SdkLoggerProvider,
 }
 
 impl ShutdownHandler {
@@ -579,9 +658,6 @@ impl ShutdownHandler {
             .shutdown()
             .map_err(|e| ConfigureError::Other(e.into()))?;
         self.meter_provider
-            .shutdown()
-            .map_err(|e| ConfigureError::Other(e.into()))?;
-        self.logger_provider
             .shutdown()
             .map_err(|e| ConfigureError::Other(e.into()))?;
         Ok(())
@@ -624,7 +700,6 @@ struct LogfireParts {
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     tracer_provider: SdkTracerProvider,
     meter_provider: SdkMeterProvider,
-    logger_provider: SdkLoggerProvider,
     #[cfg(test)]
     send_to_logfire: bool,
 }
@@ -632,7 +707,7 @@ struct LogfireParts {
 /// Install `handler` as part of a chain of panic handlers.
 fn install_panic_handler() {
     fn panic_hook(info: &PanicHookInfo) {
-        if LogfireTracer::try_with(|tracer| tracer.handle_panics) != Some(true) {
+        if try_with_logfire_tracer(|tracer| tracer.handle_panics) != Some(true) {
             // this tracer is not handling panics
             return;
         }
@@ -645,20 +720,11 @@ fn install_panic_handler() {
             ""
         };
 
-        let location = info.location();
-        crate::macros::__macros_impl::export_log(
-            "panic",
-            &tracing::Span::current(),
-            format!("panic: {message}"),
-            tracing::Level::ERROR,
-            crate::__json_schema!(backtrace),
-            location.map(|l| Cow::Owned(l.file().to_string())),
-            location.map(std::panic::Location::line),
-            None,
-            [LogfireValue::new(
-                "backtrace",
-                Some(Backtrace::capture().to_string().into()),
-            )],
+        // FIXME: code.lineno and code.filepath should probably be set here to the panic location
+        crate::error!(
+            "panic: {message}",
+            location = info.location().as_ref().map(ToString::to_string),
+            backtrace = Backtrace::capture().to_string(),
         );
     }
 
@@ -690,6 +756,38 @@ fn get_optional_env(
             )),
         }
     }
+}
+
+#[derive(Clone)]
+struct LogfireTracer {
+    inner: Tracer,
+    handle_panics: bool,
+}
+
+// Global tracer configured in `logfire::configure()`
+static GLOBAL_TRACER: OnceLock<LogfireTracer> = OnceLock::new();
+
+thread_local! {
+    static LOCAL_TRACER: RefCell<Option<LogfireTracer>> = const { RefCell::new(None) };
+}
+
+/// Internal function to execute some code with the current tracer
+fn try_with_logfire_tracer<R>(f: impl FnOnce(&LogfireTracer) -> R) -> Option<R> {
+    let mut f = Some(f);
+    if let Some(result) = LOCAL_TRACER
+        .try_with(|local_logfire| {
+            local_logfire
+                .borrow()
+                .as_ref()
+                .map(|tracer| f.take().expect("not called")(tracer))
+        })
+        .ok()
+        .flatten()
+    {
+        return Some(result);
+    }
+
+    GLOBAL_TRACER.get().map(f.expect("local tls not used"))
 }
 
 /// Helper for installing a logfire guard locally to a thread.
@@ -736,6 +834,7 @@ pub fn set_local_logfire(shutdown_handler: ShutdownHandler) -> LocalLogfireGuard
 
     let tracing_guard = tracing::subscriber::set_default(shutdown_handler.subscriber.clone());
 
+    // TODO: logs??
     // TODO: metrics??
 
     LocalLogfireGuard {
