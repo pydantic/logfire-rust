@@ -9,16 +9,14 @@
   <a href="https://logfire.pydantic.dev/docs/join-slack/"><img src="https://img.shields.io/badge/Slack-Join%20Slack-4A154B?logo=slack" alt="Join Slack" /></a>
 </p>
 
-> ***Initial release - feedback wanted!***
->
-> This is an initial release of the Logfire Rust SDK. We've been using it internally to build Logfire for some time, and it is serving us well. As we're using it ourselves in production, we figured it's ready for everyone else also using Logfire.
->
-> We are continually iterating to make this SDK better. We'd love your feedback on all aspects of the SDK and are keen to make the design as idiomatic and performant as possible. There are also many features currently supported by the Python SDK which are not yet supported by this SDK; please open issues to help us prioritize these to close this gap.
->
-> In particular, the current coupling to `tracing` is an open design point. By building on top of tracing we get widest compatibility and a relatively simple SDK, however to make Logfire-specific adjustments we might prefer in future to move `tracing` to be an optional integration.
-
 From the team behind Pydantic, **Logfire** is an observability platform built on the same belief as our
 open source library — that the most powerful tools can be easy to use.
+
+What sets Logfire apart:
+
+- **Simple and Powerful:** Logfire's dashboard is simple relative to the power it provides, ensuring your entire engineering team will actually use it.
+- **SQL:** Query your data using standard SQL — all the control and (for many) nothing new to learn. Using SQL also means you can query your data with existing BI tools and database querying libraries.
+- **OpenTelemetry:** Logfire is an opinionated wrapper around OpenTelemetry, allowing you to leverage existing tooling, infrastructure, and instrumentation for many common Python packages, and enabling support for virtually any language. We offer full support for all OpenTelemetry signals (traces, metrics and logs).
 
 This repository contains the Rust SDK for instrumenting with Logfire.
 
@@ -33,34 +31,73 @@ The Logfire server application for recording and displaying data is closed sourc
 
 First [set up a Logfire project](https://logfire.pydantic.dev/docs/#logfire) and [create a write token](https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens/). You'll need to set this token as an environment variable (`LOGFIRE_TOKEN`) to export to Logfire.
 
-Here's a simple manual tracing (aka logging) example:
+With a logfire project set up, start by adding the `logfire` crate to your `Cargo.toml`:
+
+```toml
+[dependencies]
+logfire = "0.6"
+```
+
+Then, you can use the SDK to instrument the code. Here's a simple example which counts the size of files in the current directory, creating spans for the full operation and each file read:
+
 
 ```rust
+use std::fs;
+use std::sync::LazyLock;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let shutdown_handler = logfire::configure()
-        .install_panic_handler()
-        .finish()?;
+use opentelemetry::{KeyValue, metrics::Counter};
 
-    logfire::info!("Hello, {name}!", name = "world");
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-    {
-        let _span = logfire::span!(
-            "Asking the user their {question}",
-            question = "age",
-        ).entered();
+fn main() -> Result<()> {
+    let shutdown_handler = logfire::configure().install_panic_handler().finish()?;
 
-        println!("When were you born [YYYY-mm-dd]?");
-        let mut dob = String::new();
-        std::io::stdin().read_line(&mut dob)?;
+    let mut total_size = 0u64;
 
-        logfire::debug!("dob={dob}", dob = dob.trim().to_owned());
-    }
+    let cwd = std::env::current_dir()?;
+
+    logfire::span!("counting size of {cwd}", cwd = cwd.display().to_string()).in_scope(|| {
+        let entries = fs::read_dir(&cwd)?;
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            let _span = logfire::span!(
+                "reading {path}",
+                path = path
+                    .strip_prefix(&cwd)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string()
+            )
+            .entered();
+
+            let metadata = entry.metadata()?;
+            if metadata.is_file() {
+                total_size += metadata.len();
+            }
+        }
+        Result::Ok(())
+    })?;
+
+    logfire::info!(
+        "total size of {cwd} is {size} bytes",
+        cwd = cwd.display().to_string(),
+        size = total_size as i64
+    );
 
     shutdown_handler.shutdown()?;
     Ok(())
 }
 ```
+
+(Read the [Logfire concepts documentation](https://logfire.pydantic.dev/docs/concepts/) for additional detail on spans, events, and further Logfire concepts.)
+
+See additional examples in the [examples directory](https://github.com/pydantic/logfire-rust/tree/main/examples):
+
+- [basic](https://github.com/pydantic/logfire-rust/tree/main/examples/basic.rs)
+- [axum webserver](https://github.com/pydantic/logfire-rust/tree/main/examples/axum.rs)
+- [actix webserver](https://github.com/pydantic/logfire-rust/tree/main/examples/actix-web.rs)
 
 ### Integration
 
