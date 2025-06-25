@@ -45,7 +45,7 @@ pub fn span_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl SpanExporter + use<>, ConfigureError> {
-    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")?;
+    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL", endpoint)?;
 
     let builder = opentelemetry_otlp::SpanExporter::builder();
 
@@ -63,6 +63,10 @@ pub fn span_exporter(
                     builder
                         .with_tonic()
                         .with_channel(
+                            // FIXME: .connect_lazy() requires a tokio runtime. A workaround (which
+                            // may complicate things is to create a tokio runtime in a background
+                            // thread and use that to drive the channel. This is the same as the
+                            // way that reqwest does a "blocking" client on top of the sync one.
                             tonic::transport::Channel::builder(endpoint.try_into().map_err(
                                 |e: http::uri::InvalidUri| ConfigureError::Other(e.into()),
                             )?)
@@ -116,7 +120,7 @@ pub fn metric_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl PushMetricExporter + use<>, ConfigureError> {
-    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")?;
+    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL", endpoint)?;
 
     let builder =
         MetricExporter::builder().with_temporality(opentelemetry_sdk::metrics::Temporality::Delta);
@@ -188,9 +192,6 @@ fn build_metadata_from_headers(
     Ok(tonic::metadata::MetadataMap::from_headers(header_map))
 }
 
-// current default logfire protocol is to export over HTTP in binary format
-const DEFAULT_LOGFIRE_PROTOCOL: Protocol = Protocol::HttpBinary;
-
 // standard OTLP protocol values in configuration
 const OTEL_EXPORTER_OTLP_PROTOCOL_GRPC: &str = "grpc";
 const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF: &str = "http/protobuf";
@@ -210,7 +211,12 @@ fn protocol_from_str(value: &str) -> Result<Protocol, ConfigureError> {
 
 /// Get a protocol from the environment (or default value), returning a string describing the source
 /// plus the parsed protocol.
-fn protocol_from_env(data_env_var: &str) -> Result<(String, Protocol), ConfigureError> {
+///
+/// If the env var is not set, the default protocol is inferred from the endpoint.
+fn protocol_from_env(
+    data_env_var: &str,
+    endpoint: &str,
+) -> Result<(String, Protocol), ConfigureError> {
     // try both data-specific env var and general protocol
     [data_env_var, "OTEL_EXPORTER_OTLP_PROTOCOL"]
         .into_iter()
@@ -221,12 +227,20 @@ fn protocol_from_env(data_env_var: &str) -> Result<(String, Protocol), Configure
         })
         .transpose()?
         .map_or_else(
-            || {
-                Ok((
-                    "the default logfire export protocol".to_string(),
-                    DEFAULT_LOGFIRE_PROTOCOL,
-                ))
-            },
+            || protocol_from_endpoint(endpoint),
             |(var_name, value)| Ok((format!("`{var_name}={value}`"), protocol_from_str(&value)?)),
         )
+}
+
+fn protocol_from_endpoint(endpoint: &str) -> Result<(String, Protocol), ConfigureError> {
+    let protocol = if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
+        Protocol::HttpBinary
+    } else if endpoint.starts_with("grpc://") {
+        Protocol::Grpc
+    } else {
+        return Err(ConfigureError::Other(
+            format!("unsupported scheme: {endpoint}").into(),
+        ));
+    };
+    Ok((format!("the inferred protocol from {endpoint}"), protocol))
 }
