@@ -304,7 +304,7 @@ macro_rules! __log {
             $crate::__bind_single_ident_args!($($($path).+ $(= $value)?),*);
             $crate::__macros_impl::export_log_span(
                 $format,
-                $parent,
+                &$parent,
                 format!($format),
                 $level,
                 $crate::__json_schema!($($($path).+),*),

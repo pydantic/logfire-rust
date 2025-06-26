@@ -12,14 +12,15 @@ pub mod __macros_impl;
 ///
 /// The macro accepts the following syntax:
 ///
-/// ```rust,ignore
-/// span!(
-///    parent: tracing::Span, // optional, can emit this
-///    level: tracing::Level, // optional
-///    "format string",       // required, must be a format string accepted by `format!()`
-///    attr = value,          // optional attributes, can be repeated
-///    ..                     // as many additional attr = value pairs as desired
-/// )
+/// ```rust
+/// # let value = 42;
+/// logfire::span!(
+///    parent: tracing::Span::current(), // optional, tracing::Span
+///    level: tracing::Level::INFO,      // optional, tracing::Level
+///    "format string",                  // required, must be a format string accepted by `format!()`
+///    attr = value,                     // optional, attribute key and value pair
+///    // ..                             // as many additional attr = value pairs as desired
+/// );
 /// ```
 ///
 /// ## Attributes
@@ -28,7 +29,7 @@ pub mod __macros_impl;
 ///
 /// `dotted.name = value` is also supported (and encouraged by Opentelemetry) to namespace
 /// attributes. However, dotted names are not supported in Rust format strings.
-//
+///
 /// ## Formatting
 ///
 /// The format string only accepts arguments by name. These can either be explicitly passed
@@ -157,14 +158,15 @@ macro_rules! debug {
 ///
 /// The macro accepts the following syntax:
 ///
-/// ```rust,ignore
-/// log!(
-///    parent: tracing::Span, // optional, can emit this
-///    tracing::Level,        // required, see `info!` and variants for convenience
-///    "format string",       // required, must be a format string accepted by `format!()`
-///    attr = value,          // optional attributes, can be repeated
-///    ..                     // as many additional arg = value pairs as desired
-/// )
+/// ```rust
+/// # let value = 42;
+/// logfire::log!(
+///    parent: tracing::Span::current(), // optional, tracing::Span
+///    tracing::Level::INFO,             // required, see `info!` and variants for convenience
+///    "format string",                  // required, must be a format string accepted by `format!()`
+///    attr = value,                     // optional, attribute key and value pair
+///    // ..                             // as many additional attr = value pairs as desired
+/// );
 /// ```
 ///
 /// ## Attributes
@@ -250,6 +252,6 @@ macro_rules! log {
         $crate::__macros_impl::log!(parent: $parent, $level, $format, $($($path).+ $(= $value)?),*)
     };
     ($level:expr, $format:expr  $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::__macros_impl::log!(parent: &tracing::Span::current(), $level, $format, $($($path).+ $(= $value)?),*)
+        $crate::__macros_impl::log!(parent: tracing::Span::current(), $level, $format, $($($path).+ $(= $value)?),*)
     };
 }
