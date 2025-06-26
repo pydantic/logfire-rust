@@ -3,7 +3,7 @@
 //! Note that macros exported here will end up at the crate root, they should probably all be prefixed with
 //! __ just to help avoid collisions with real APIs.
 
-use std::{marker::PhantomData, ops::Deref, time::SystemTime};
+use std::{borrow::Cow, marker::PhantomData, ops::Deref, time::SystemTime};
 
 use crate::{bridges::tracing::level_to_level_number, try_with_logfire_tracer};
 use opentelemetry::{
@@ -140,9 +140,9 @@ pub fn export_log_span(
     message: String,
     level: tracing::Level,
     schema: &'static str,
-    file: &'static str,
-    line: u32,
-    module_path: &'static str,
+    file: Option<Cow<'static, str>>,
+    line: Option<u32>,
+    module_path: Option<&'static str>,
     args: impl IntoIterator<Item = LogfireValue>,
 ) {
     thread_local! {
@@ -176,9 +176,6 @@ pub fn export_log_span(
                 KeyValue::new("logfire.level_num", level_to_level_number(level)),
                 KeyValue::new("logfire.span_type", "log"),
                 KeyValue::new("logfire.json_schema", schema),
-                KeyValue::new("code.filepath", file),
-                KeyValue::new("code.lineno", i64::from(line)),
-                KeyValue::new("code.namespace", module_path),
                 KeyValue::new("thread.id", THREAD_ID.with(|id| *id)),
             ])
             .chain(
@@ -188,6 +185,18 @@ pub fn export_log_span(
                     .map(|name| KeyValue::new("thread.name", name.to_owned())),
             )
             .collect();
+
+        if let Some(file) = file {
+            attributes.push(KeyValue::new("code.filepath", file));
+        }
+
+        if let Some(line) = line {
+            attributes.push(KeyValue::new("code.lineno", i64::from(line)));
+        }
+
+        if let Some(module_path) = module_path {
+            attributes.push(KeyValue::new("code.namespace", module_path));
+        }
 
         if !null_args.is_empty() {
             attributes.push(KeyValue::new(
@@ -299,9 +308,9 @@ macro_rules! __log {
                 format!($format),
                 $level,
                 $crate::__json_schema!($($($path).+),*),
-                file!(),
-                line!(),
-                module_path!(),
+                Some(::std::borrow::Cow::Borrowed(file!())),
+                Some(line!()),
+                Some(module_path!()),
                 [
                     $({
                         let arg_value = $crate::__evaluate_arg!($($path).+ $(= $value)?);

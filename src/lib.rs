@@ -101,6 +101,7 @@
 //!
 //! All code instrumented with `log` will therefore automatically be captured by Logfire.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::panic::PanicHookInfo;
@@ -119,6 +120,7 @@ use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 
+use crate::__macros_impl::LogfireValue;
 use crate::bridges::tracing::LogfireTracingLayer;
 use crate::config::{
     AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
@@ -638,11 +640,20 @@ fn install_panic_handler() {
             ""
         };
 
-        // FIXME: code.lineno and code.filepath should probably be set here to the panic location
-        crate::error!(
-            "panic: {message}",
-            location = info.location().as_ref().map(ToString::to_string),
-            backtrace = Backtrace::capture().to_string(),
+        let location = info.location();
+        crate::macros::__macros_impl::export_log_span(
+            "panic",
+            &tracing::Span::current(),
+            format!("panic: {message}"),
+            tracing::Level::ERROR,
+            crate::__json_schema!(backtrace),
+            location.map(|l| Cow::Owned(l.file().to_string())),
+            location.map(std::panic::Location::line),
+            None,
+            [LogfireValue::new(
+                "backtrace",
+                Some(Backtrace::capture().to_string().into()),
+            )],
         );
     }
 
