@@ -123,6 +123,22 @@ where
             }
         }
 
+        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
+            // print backtrace of spans longer than 60s for debugging
+            if let Some(start_time) = otel_data.builder.start_time {
+                if let Ok(duration) = SystemTime::now().duration_since(start_time) {
+                    #[allow(clippy::print_stderr)]
+                    if duration.as_secs() > 60 {
+                        eprintln!(
+                            "Span {name} has been running for {duration:?}, printing backtrace:",
+                            name = otel_data.builder.name,
+                        );
+                        eprintln!("{:?}", std::backtrace::Backtrace::force_capture());
+                    }
+                }
+            }
+        }
+
         // Delegate to OpenTelemetry layer after handling pending span (it will remove the
         // `OtelData` so cannot do before).
         drop(extensions);
