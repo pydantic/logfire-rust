@@ -24,66 +24,46 @@
 //!  - The [Logfire documentation](https://logfire.pydantic.dev/docs/) for more information about Logfire in general.
 //!  - The [Logfire GitHub repository](https://github.com/pydantic/logfire) for the source of the documentation, the Python SDK and an issue tracker for general questions about Logfire.
 //!
+//! # Usage
+//!
+//! See below for a quick summary of how to use this SDK. The [usage guide][usage] contains more detailed
+//! information about how to use this SDK to its full potential.
+//!
 //! ## Getting Started
 //!
-//! To use Logfire in your Rust project, add the following to your `Cargo.toml`:
+//! To use `logfire` in your Rust project, add the following to your `Cargo.toml`:
 //!
 //! ```toml
 //! [dependencies]
 #![doc = concat!("logfire = \"", env!("CARGO_PKG_VERSION"), "\"\n")]
 //! ```
 //!
-//! Then, in your Rust code, add a call to `logfire::configure()` at the beginning of your program:
+//! Then, in your Rust code, add a call to [`logfire::configure()`][configure] at the beginning of your program:
 //!
 //! ```rust
-#![doc = include_str!("../examples/basic.rs")]
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let shutdown_handler = logfire::configure()
+//!         .install_panic_handler()
+//! #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
+//!         .finish()?;
+//!
+//!     logfire::info!("Hello world");
+//!
+//!     shutdown_handler.shutdown()?;
+//!     Ok(())
+//! }
 //! ```
 //!
 //! ## Configuration
 //!
 //! After adding basic setup as per above, the most two important environment variables are:
-//! - `LOGFIRE_TOKEN` - (required) the token to send data to the Logfire platform
-//! - `RUST_LOG` - (optional) the level of verbosity to send to the Logfire platform. By default
-//!   logs are captured at `TRACE` level so that all data is available for you to analyze in the
-//!   Logfire platform.
+//! - [`LOGFIRE_TOKEN`](https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens/) (required) - the token to send data to the Logfire platform
+//! - [`RUST_LOG`](https://docs.rs/env_logger/latest/env_logger/#filtering-results) (optional) - the level of verbosity to send to the Logfire platform. By default
+//!   data is captured at `TRACE` level so that all data is available for you to analyze in the
+//!   Logfire platform. This format should match the format used by the [`env_logger`](https://docs.rs/env_logger/) crate.
 //!
 //! All environment variables supported by the Rust Opentelemetry SDK are also supported by the
 //! Logfire SDK.
-//!
-//! ## Integrations
-//!
-//! The following sections describe briefly the interaction which this SDK has with other libraries.
-//!
-//! ### With `tracing`
-//!
-//! This SDK is built upon `tracing` (and `tracing-opentelemetry`) for the [`span!`] macro. This means
-//! that any code instrumented with `tracing` will automatically be captured by Logfire, and also
-//! that [`span!`] produces a `tracing::Span` which is fully compatible with the `tracing` ecosystem.
-//!
-//! If you are an existing `tracing` user, it is fine to continue to use the `tracing` APIs directly
-//! and ignore [`logfire::span!`][span]. The upside of [`span!`] is that it will show the fields
-//! directly in the logfire UI.
-//!
-//! There are many great APIs in `tracing` which we do not yet provide equivalents for, such as the
-//! [`#[tracing::instrument]`][`macro@tracing::instrument`] proc macro, so even if using [`logfire::span!`][span]
-//! you will likely use `tracing` APIs directly too.
-//!
-//! ### With `opentelemetry`
-//!
-//! This SDK is built upon the `opentelemetry` Rust SDK and will configure the global `opentelemetry`
-//! state as part of a call to [`logfire::configure()`][configure].
-//!
-//! All calls to [`logfire::info!`][info] and similar macros are directly forwarded to `opentelemetry`
-//! machinery without going through `tracing`, for performance.
-//!
-//! The metrics helpers exported by this SDK, such as [`logfire::u64_counter()`][u64_counter], are
-//! very thin wrappers around the `opentelemetry` SDK.
-//!
-//! ### With `log`
-//!
-//! This SDK configures the global `log` state to use an exporter which forwards logs to opentelemetry.
-//!
-//! All code instrumented with `log` will therefore automatically be captured by Logfire.
 //!
 //! # Examples
 //!

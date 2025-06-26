@@ -1,4 +1,4 @@
-//! Example demonstrating Logfire integration with Actix Web framework.
+//! Example of using `logfire` to instrument an `actix-web` webserver
 //!
 //! This example shows how to:
 //! - Set up Logfire with Actix Web
