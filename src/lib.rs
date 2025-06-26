@@ -522,6 +522,11 @@ impl LogfireConfigBuilder {
     }
 }
 
+/// Set the global default tracer, from a logfire `local` instance.
+pub fn set_global_default(shutdown_handler: &ShutdownHandler) {
+    let _ = GLOBAL_TRACER.set(shutdown_handler.tracer.clone());
+}
+
 /// A handler to shutdown the Logfire configuration.
 ///
 /// Calling `.shutdown()` will flush the logfire exporters and make further
@@ -582,6 +587,12 @@ impl ShutdownHandler {
         S: Subscriber + for<'span> LookupSpan<'span>,
     {
         LogfireTracingLayer::new(self.tracer.clone())
+    }
+
+    /// Get the otel tracer for this `Logfire` instance.
+    #[must_use]
+    pub fn tracer(&self) -> &Tracer {
+        &self.tracer.inner
     }
 }
 
