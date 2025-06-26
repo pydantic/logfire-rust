@@ -1,4 +1,4 @@
-//! Example demonstrating Logfire integration with Axum web framework.
+//! Example of using `logfire` to instrument an `axum` webserver
 //!
 //! This example shows how to:
 //! - Set up Logfire with Axum

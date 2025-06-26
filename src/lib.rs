@@ -5,7 +5,7 @@
 
 //! # Rust SDK for Pydantic Logfire
 //!
-//! This goal of this SDK is to provide a first-class experience instrumenting Rust code for the Pydantic Logfire platform.
+//! This SDK provides a first-class experience instrumenting Rust code for the Pydantic Logfire platform.
 //!
 //! The most important API is [`logfire::configure()`][configure], which is used to set up
 //! integrations with `tracing` and `log`, as well as exporters for `opentelemetry`. Code
@@ -20,86 +20,54 @@
 //! See also:
 //!  - The [integrations](#integrations) section below for more information on the relationship of
 //!    this SDK to other libraries.
+//!  - The [examples][usage::examples] subchapter of this documentation.
 //!  - The [Logfire documentation](https://logfire.pydantic.dev/docs/) for more information about Logfire in general.
 //!  - The [Logfire GitHub repository](https://github.com/pydantic/logfire) for the source of the documentation, the Python SDK and an issue tracker for general questions about Logfire.
 //!
-//! > ***Initial release - feedback wanted!***
-//! >
-//! > This is an initial release of the Logfire Rust SDK. We've been using it internally to build
-//! > Logfire for some time, and it is serving us well. As we're using it ourselves in production,
-//! > we figured it's ready for everyone else also using Logfire.
-//! >
-//! > We are continually iterating to make this SDK better. We'd love your feedback on all aspects
-//! > of the SDK and are keen to make the design as idiomatic and performant as possible. There are
-//! > also many features currently supported by the Python SDK which are not yet supported by this
-//! > SDK; please open issues to help us prioritize these to close this gap. For example, we have not
-//! > yet implemented scrubbing in this Rust SDK, although we are aware it is important!
-//! >
-//! > In particular, the current coupling to `tracing` is an open design point. By building on top
-//! > of tracing we get widest compatibility and a relatively simple SDK, however to make
-//! > Logfire-specific adjustments we might prefer in future to move `tracing` to be an optional
-//! > integration.
+//! # Usage
+//!
+//! See below for a quick summary of how to use this SDK. The [usage guide][usage] contains more detailed
+//! information about how to use this SDK to its full potential.
 //!
 //! ## Getting Started
 //!
-//! To use Logfire in your Rust project, add the following to your `Cargo.toml`:
+//! To use `logfire` in your Rust project, add the following to your `Cargo.toml`:
 //!
 //! ```toml
 //! [dependencies]
 #![doc = concat!("logfire = \"", env!("CARGO_PKG_VERSION"), "\"\n")]
 //! ```
 //!
-//! Then, in your Rust code, add a call to `logfire::configure()` at the beginning of your program:
+//! Then, in your Rust code, add a call to [`logfire::configure()`][configure] at the beginning of your program:
 //!
 //! ```rust
-#![doc = include_str!("../examples/basic.rs")]
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let shutdown_handler = logfire::configure()
+//!         .install_panic_handler()
+//! #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
+//!         .finish()?;
+//!
+//!     logfire::info!("Hello world");
+//!
+//!     shutdown_handler.shutdown()?;
+//!     Ok(())
+//! }
 //! ```
 //!
 //! ## Configuration
 //!
 //! After adding basic setup as per above, the most two important environment variables are:
-//! - `LOGFIRE_TOKEN` - (required) the token to send data to the Logfire platform
-//! - `RUST_LOG` - (optional) the level of verbosity to send to the Logfire platform. By default
-//!   logs are captured at `TRACE` level so that all data is available for you to analyze in the
-//!   Logfire platform.
+//! - [`LOGFIRE_TOKEN`](https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens/) (required) - the token to send data to the Logfire platform
+//! - [`RUST_LOG`](https://docs.rs/env_logger/latest/env_logger/#filtering-results) (optional) - the level of verbosity to send to the Logfire platform. By default
+//!   data is captured at `TRACE` level so that all data is available for you to analyze in the
+//!   Logfire platform. This format should match the format used by the [`env_logger`](https://docs.rs/env_logger/) crate.
 //!
 //! All environment variables supported by the Rust Opentelemetry SDK are also supported by the
 //! Logfire SDK.
 //!
-//! ## Integrations
+//! # Examples
 //!
-//! The following sections describe briefly the interaction which this SDK has with other libraries.
-//!
-//! ### With `tracing`
-//!
-//! This SDK is built upon `tracing` (and `tracing-opentelemtry`) for the [`span!`] macro. This means
-//! that any code instrumented with `tracing` will automatically be captured by Logfire, and also
-//! that [`span!`] produces a `tracing::Span` which is fully compatible with the `tracing` ecosystem.
-//!
-//! If you are an existing `tracing` user, it is fine to continue to use the `tracing` APIs directly
-//! and ignore [`logfire::span!`][span]. The upside of [`span!`] is that it will show the fields
-//! directly in the logfire UI.
-//!
-//! There are many great APIs in `tracing` which we do not yet provide equivalents for, such as the
-//! [`#[tracing::instrument]`][`macro@tracing::instrument`] proc macro, so even if using [`logfire::span!`][span]
-//! you will likely use `tracing` APIs directly too.
-//!
-//! ### With `opentelemetry`
-//!
-//! This SDK is built upon the `opentelemetry` Rust SDK and will configure the global `opentelemetry`
-//! state as part of a call to [`logfire::configure()`][configure].
-//!
-//! All calls to [`logfire::info!`][info] and similar macros are directly forwarded to `opentelemetry`
-//! machinery without going through `tracing`, for performance.
-//!
-//! The metrics helpers exported by this SDK, such as [`logfire::u64_counter()`][u64_counter], are
-//! very thin wrappers around the `opentelemetry` SDK.
-//!
-//! ### With `log`
-//!
-//! This SDK configures the global `log` state to use an exporter which forwards logs to opentelemetry.
-//!
-//! All code instrumented with `log` will therefore automatically be captured by Logfire.
+//! See [examples][usage::examples] subchapter of this documentation.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -126,6 +94,9 @@ use crate::config::{
     AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
 };
 use crate::internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanProcessor};
+
+#[cfg(any(docsrs, doctest))]
+pub mod usage;
 
 mod bridges;
 pub mod config;

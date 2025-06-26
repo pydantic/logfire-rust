@@ -1,4 +1,4 @@
-//! A basic example of using Logfire to instrument Rust code.
+//! Example of using `logfire` to instrument a toy Rust application
 
 use std::fs;
 use std::sync::LazyLock;
