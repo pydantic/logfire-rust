@@ -1,3 +1,8 @@
+#![doc(html_favicon_url = "https://pydantic.dev/favicon/favicon.ico")]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/pydantic/logfire-rust/refs/heads/main/assets/logo-white.svg"
+)]
+
 //! # Rust SDK for Pydantic Logfire
 //!
 //! This goal of this SDK is to provide a first-class experience instrumenting Rust code for the Pydantic Logfire platform.
