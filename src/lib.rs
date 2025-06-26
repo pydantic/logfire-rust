@@ -72,7 +72,7 @@
 //!
 //! ### With `tracing`
 //!
-//! This SDK is built upon `tracing` (and `tracing-opentelemtry`) for the [`span!`] macro. This means
+//! This SDK is built upon `tracing` (and `tracing-opentelemetry`) for the [`span!`] macro. This means
 //! that any code instrumented with `tracing` will automatically be captured by Logfire, and also
 //! that [`span!`] produces a `tracing::Span` which is fully compatible with the `tracing` ecosystem.
 //!
@@ -100,6 +100,10 @@
 //! This SDK configures the global `log` state to use an exporter which forwards logs to opentelemetry.
 //!
 //! All code instrumented with `log` will therefore automatically be captured by Logfire.
+//!
+//! # Examples
+//!
+//! See
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -126,6 +130,9 @@ use crate::config::{
     AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
 };
 use crate::internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanProcessor};
+
+#[cfg(docsrs)]
+pub mod usage;
 
 mod bridges;
 pub mod config;
