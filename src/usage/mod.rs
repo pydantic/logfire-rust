@@ -9,7 +9,7 @@
 //!
 //! ## Integrations
 //!
-//! The following sections describe briefly the interaction which this SDK has with other libraries.
+//! This crate has integrations with the following libraries:
 //!
 //! ### With `tracing`
 //!
@@ -41,6 +41,56 @@
 //! This SDK configures the global `log` state to use an exporter which forwards logs to opentelemetry.
 //!
 //! All code instrumented with `log` will therefore automatically be captured by Logfire.
+//!
+//! # Dynamically adding data to spans
+//!
+//! Occasionally you may want to add data to a span after it has been created.
+//!
+//! This works the same way as with `tracing`, using the `record` method on the span. When creating
+//! the span, you need to initialize the attribute with [`tracing::field::Empty`].
+//!
+//! ```rust
+//! // 1. create span with placeholder attribute
+//! let span = logfire::span!("My span", my_attr = tracing::field::Empty);
+//!
+//! // 2. record data later
+//! span.record("my_attr", "some value");
+//! ```
+//!
+//! # Using `logfire` as a layer in an existing `tracing` application
+//!
+//! If you have an existing application which already has a [`tracing_subscriber`] and you
+//! want to use `logfire` to quickly configure the OpenTelemetry SDK and send traces and logs to Logfire, the
+//! [`LogfireTracingLayer`][crate::LogfireTracingLayer] can be used to achieve this.
+//!
+//! First, configure `logfire` as usual, setting it as a `.local()` instance to avoid configuring
+//! global state:
+//!
+//! ```rust
+//! use tracing_subscriber::prelude::*;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // 1. configure logfire as usual, setting it as a `.local()` instance
+//! let shutdown_handler = logfire::configure()
+//!    .local()
+//!     .install_panic_handler()
+//!    .finish()?;
+//!
+//! // 2. create a tracing subscriber
+//! let subscriber = tracing_subscriber::registry()
+//!     .with(shutdown_handler.tracing_layer());
+//!
+//! // 3. set the subscriber as the default (or otherwise set it up for your application)
+//! tracing::subscriber::set_global_default(subscriber)?;
+//!
+//! // 4. now tracing's spans and logs will be sent to Logfire
+//! tracing::info!("This will be sent to Logfire");
+//!
+//! // 5. when finished, call shutdown_handler.shutdown() to flush and clean up
+//! shutdown_handler.shutdown()?;
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! # Examples
 //!

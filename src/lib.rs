@@ -89,11 +89,11 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 
 use crate::__macros_impl::LogfireValue;
-use crate::bridges::tracing::LogfireTracingLayer;
 use crate::config::{
     AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
 };
 use crate::internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanProcessor};
+use crate::ulid_id_generator::UlidIdGenerator;
 
 #[cfg(any(docsrs, doctest))]
 pub mod usage;
@@ -105,9 +105,9 @@ mod macros;
 mod metrics;
 mod ulid_id_generator;
 
+pub use crate::bridges::tracing::LogfireTracingLayer;
 pub use macros::*;
 pub use metrics::*;
-use ulid_id_generator::UlidIdGenerator;
 
 mod internal;
 
