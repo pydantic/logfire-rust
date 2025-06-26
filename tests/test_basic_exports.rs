@@ -1147,6 +1147,24 @@ fn test_basic_span() {
                 },
                 KeyValue {
                     key: Static(
+                        "thread.id",
+                    ),
+                    value: I64(
+                        0,
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "thread.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test_basic_span",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
                         "code.filepath",
                     ),
                     value: String(
@@ -1170,24 +1188,6 @@ fn test_basic_span() {
                     value: String(
                         Static(
                             "test_basic_exports",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "thread.id",
-                    ),
-                    value: I64(
-                        0,
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "thread.name",
-                    ),
-                    value: String(
-                        Owned(
-                            "test_basic_span",
                         ),
                     ),
                 },
@@ -1223,7 +1223,7 @@ fn test_basic_span() {
             },
             parent_span_id: 00000000000000f0,
             span_kind: Internal,
-            name: "panic: {message}",
+            name: "panic",
             start_time: SystemTime {
                 tv_sec: 8,
                 tv_nsec: 0,
@@ -1233,16 +1233,6 @@ fn test_basic_span() {
                 tv_nsec: 0,
             },
             attributes: [
-                KeyValue {
-                    key: Static(
-                        "location",
-                    ),
-                    value: String(
-                        Owned(
-                            "tests/test_basic_exports.rs:58:13",
-                        ),
-                    ),
-                },
                 KeyValue {
                     key: Static(
                         "backtrace",
@@ -1287,35 +1277,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "{\"type\":\"object\",\"properties\":{\"location\":{},\"backtrace\":{}}}",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "code.filepath",
-                    ),
-                    value: String(
-                        Static(
-                            "src/lib.rs",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "code.lineno",
-                    ),
-                    value: I64(
-                        642,
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "code.namespace",
-                    ),
-                    value: String(
-                        Static(
-                            "logfire",
+                            "{\"type\":\"object\",\"properties\":{\"backtrace\":{}}}",
                         ),
                     ),
                 },
@@ -1335,6 +1297,24 @@ fn test_basic_span() {
                         Owned(
                             "test_basic_span",
                         ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "code.filepath",
+                    ),
+                    value: String(
+                        Owned(
+                            "tests/test_basic_exports.rs",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "code.lineno",
+                    ),
+                    value: I64(
+                        19,
                     ),
                 },
             ],
