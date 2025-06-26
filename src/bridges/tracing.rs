@@ -1,12 +1,12 @@
 use std::{any::TypeId, time::SystemTime};
 
 use opentelemetry::{
-    KeyValue,
+    Context, KeyValue,
     global::ObjectSafeSpan,
     trace::{SamplingDecision, TraceContextExt, Tracer},
 };
 use tracing::{Subscriber, field::Visit};
-use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData, PreSampledTracer};
+use tracing_opentelemetry::{OtelData, PreSampledTracer};
 use tracing_subscriber::{Layer, registry::LookupSpan};
 
 use crate::LogfireTracer;
@@ -95,14 +95,21 @@ where
     /// Tracing events currently are recorded as span events, so do not get printed by the span emitter.
     ///
     /// Instead we need to handle them here and write them to the logfire writer.
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
+    fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
         // Don't delegate events to OpenTelemetry layer, we emit them as log spans instead.
-        // FIXME: can we get current span from `ctx`?
-        emit_event_as_log_span(&self.tracer, event, &tracing::Span::current());
+        let event_span = ctx.event_span(event).and_then(|span| ctx.span(&span.id()));
+        let mut event_span_extensions = event_span.as_ref().map(|s| s.extensions_mut());
+
+        let context = if let Some(otel_data) = event_span_extensions
+            .as_mut()
+            .and_then(|e| e.get_mut::<OtelData>())
+        {
+            self.tracer.inner.sampled_context(otel_data)
+        } else {
+            Context::new()
+        };
+
+        emit_event_as_log_span(&self.tracer, event, &context);
     }
 
     fn on_exit(&self, id: &tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
@@ -242,7 +249,7 @@ pub(crate) fn level_to_level_number(level: tracing::Level) -> i64 {
 fn emit_event_as_log_span(
     tracer: &LogfireTracer,
     event: &tracing::Event<'_>,
-    parent_span: &tracing::Span,
+    parent_context: &Context,
 ) {
     let mut visitor = FieldsVisitor {
         message: None,
@@ -292,14 +299,13 @@ fn emit_event_as_log_span(
     // FIXME add thread.id, thread.name
 
     let ts = SystemTime::now();
-
     tracer
         .inner
         .span_builder(message)
         .with_attributes(attributes)
         .with_start_time(ts)
         // .with_end_time(ts) seems to not be respected, need to explicitly end as per below
-        .start_with_context(&tracer.inner, &parent_span.context())
+        .start_with_context(&tracer.inner, parent_context)
         .end_with_timestamp(ts);
 }
 
@@ -1408,7 +1414,7 @@ mod tests {
             },
             SpanData {
                 span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f3,
+                    trace_id: 000000000000000000000000000000f2,
                     span_id: 00000000000000fa,
                     trace_flags: TraceFlags(
                         1,
@@ -1418,7 +1424,7 @@ mod tests {
                         None,
                     ),
                 },
-                parent_span_id: 0000000000000000,
+                parent_span_id: 00000000000000f2,
                 span_kind: Internal,
                 name: "hello world log",
                 start_time: SystemTime {
@@ -1506,7 +1512,7 @@ mod tests {
             },
             SpanData {
                 span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f4,
+                    trace_id: 000000000000000000000000000000f2,
                     span_id: 00000000000000fb,
                     trace_flags: TraceFlags(
                         1,
@@ -1516,7 +1522,7 @@ mod tests {
                         None,
                     ),
                 },
-                parent_span_id: 0000000000000000,
+                parent_span_id: 00000000000000f2,
                 span_kind: Internal,
                 name: "hello world log with value",
                 start_time: SystemTime {
