@@ -5,7 +5,7 @@
 
 //! # Rust SDK for Pydantic Logfire
 //!
-//! This goal of this SDK is to provide a first-class experience instrumenting Rust code for the Pydantic Logfire platform.
+//! This SDK provides a first-class experience instrumenting Rust code for the Pydantic Logfire platform.
 //!
 //! The most important API is [`logfire::configure()`][configure], which is used to set up
 //! integrations with `tracing` and `log`, as well as exporters for `opentelemetry`. Code
@@ -20,25 +20,9 @@
 //! See also:
 //!  - The [integrations](#integrations) section below for more information on the relationship of
 //!    this SDK to other libraries.
+//!  - The [examples][usage::examples] subchapter of this documentation.
 //!  - The [Logfire documentation](https://logfire.pydantic.dev/docs/) for more information about Logfire in general.
 //!  - The [Logfire GitHub repository](https://github.com/pydantic/logfire) for the source of the documentation, the Python SDK and an issue tracker for general questions about Logfire.
-//!
-//! > ***Initial release - feedback wanted!***
-//! >
-//! > This is an initial release of the Logfire Rust SDK. We've been using it internally to build
-//! > Logfire for some time, and it is serving us well. As we're using it ourselves in production,
-//! > we figured it's ready for everyone else also using Logfire.
-//! >
-//! > We are continually iterating to make this SDK better. We'd love your feedback on all aspects
-//! > of the SDK and are keen to make the design as idiomatic and performant as possible. There are
-//! > also many features currently supported by the Python SDK which are not yet supported by this
-//! > SDK; please open issues to help us prioritize these to close this gap. For example, we have not
-//! > yet implemented scrubbing in this Rust SDK, although we are aware it is important!
-//! >
-//! > In particular, the current coupling to `tracing` is an open design point. By building on top
-//! > of tracing we get widest compatibility and a relatively simple SDK, however to make
-//! > Logfire-specific adjustments we might prefer in future to move `tracing` to be an optional
-//! > integration.
 //!
 //! ## Getting Started
 //!
@@ -103,7 +87,7 @@
 //!
 //! # Examples
 //!
-//! See
+//! See [examples][usage::examples] subchapter of this documentation.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -131,7 +115,7 @@ use crate::config::{
 };
 use crate::internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanProcessor};
 
-#[cfg(docsrs)]
+#[cfg(any(docsrs, doctest))]
 pub mod usage;
 
 mod bridges;
