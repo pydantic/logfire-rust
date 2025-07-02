@@ -77,7 +77,9 @@ use std::sync::{Arc, Once};
 use std::{backtrace::Backtrace, env::VarError, sync::OnceLock, time::Duration};
 
 use config::get_base_url_from_token;
+use opentelemetry::logs::LoggerProvider as _;
 use opentelemetry::trace::TracerProvider;
+use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLogger, SdkLoggerProvider};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use opentelemetry_sdk::trace::{BatchConfigBuilder, BatchSpanProcessor, SpanProcessor};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
@@ -92,7 +94,7 @@ use crate::__macros_impl::LogfireValue;
 use crate::config::{
     AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
 };
-use crate::internal::exporters::console::{ConsoleWriter, SimpleConsoleSpanProcessor};
+use crate::internal::exporters::console::{ConsoleWriter, create_console_processors};
 use crate::ulid_id_generator::UlidIdGenerator;
 
 #[cfg(any(docsrs, doctest))]
@@ -338,6 +340,7 @@ impl LogfireConfigBuilder {
             subscriber,
             tracer_provider,
             meter_provider,
+            logger_provider,
             ..
         } = self.build_parts(None)?;
 
@@ -365,6 +368,7 @@ impl LogfireConfigBuilder {
             tracer,
             subscriber,
             meter_provider,
+            logger_provider,
         })
     }
 
@@ -395,6 +399,7 @@ impl LogfireConfigBuilder {
         let advanced_options = self.advanced.unwrap_or_default();
 
         let mut tracer_provider_builder = SdkTracerProvider::builder();
+        let mut logger_provider_builder = SdkLoggerProvider::builder();
 
         if let Some(id_generator) = advanced_options.id_generator {
             tracer_provider_builder = tracer_provider_builder.with_id_generator(id_generator);
@@ -443,13 +448,13 @@ impl LogfireConfigBuilder {
             );
         }
 
-        let console_writer = self
+        let console_processors = self
             .console_options
-            .map(|o| Arc::new(ConsoleWriter::new(o)));
+            .map(|o| create_console_processors(Arc::new(ConsoleWriter::new(o))));
 
-        if let Some(console_writer) = console_writer.clone() {
-            tracer_provider_builder = tracer_provider_builder
-                .with_span_processor(SimpleConsoleSpanProcessor::new(console_writer));
+        if let Some((span_processor, log_processor)) = console_processors {
+            tracer_provider_builder = tracer_provider_builder.with_span_processor(span_processor);
+            logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
         }
 
         for span_processor in self.additional_span_processors {
@@ -471,14 +476,7 @@ impl LogfireConfigBuilder {
             .with_default_directive(default_level_filter.into())
             .from_env()?; // but allow the user to override this with `RUST_LOG`
 
-        let tracer = LogfireTracer {
-            inner: tracer,
-            handle_panics: self.install_panic_handler,
-        };
-
-        let subscriber = tracing_subscriber::registry()
-            .with(filter)
-            .with(LogfireTracingLayer::new(tracer.clone()));
+        let subscriber = tracing_subscriber::registry().with(filter);
 
         let mut meter_provider_builder = SdkMeterProvider::builder();
 
@@ -486,7 +484,7 @@ impl LogfireConfigBuilder {
             if self.enable_metrics {
                 let metric_reader = PeriodicReader::builder(exporters::metric_exporter(
                     logfire_base_url,
-                    http_headers,
+                    http_headers.clone(),
                 )?)
                 .build();
 
@@ -500,11 +498,41 @@ impl LogfireConfigBuilder {
             }
         }
 
-        if let Some(resource) = advanced_options.resource {
+        if let Some(resource) = advanced_options.resource.clone() {
             meter_provider_builder = meter_provider_builder.with_resource(resource);
         }
 
         let meter_provider = meter_provider_builder.build();
+
+        if let Some(logfire_base_url) = logfire_base_url {
+            logger_provider_builder = logger_provider_builder.with_log_processor(
+                BatchLogProcessor::builder(exporters::log_exporter(
+                    logfire_base_url,
+                    http_headers.clone(),
+                )?)
+                .build(),
+            );
+        }
+
+        for log_processor in advanced_options.log_record_processors {
+            logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
+        }
+
+        if let Some(resource) = advanced_options.resource {
+            logger_provider_builder = logger_provider_builder.with_resource(resource);
+        }
+
+        let logger_provider = logger_provider_builder.build();
+
+        let logger = Arc::new(logger_provider.logger("logfire"));
+
+        let tracer = LogfireTracer {
+            inner: tracer,
+            logger,
+            handle_panics: self.install_panic_handler,
+        };
+
+        let subscriber = subscriber.with(LogfireTracingLayer::new(tracer.clone()));
 
         if self.install_panic_handler {
             install_panic_handler();
@@ -516,6 +544,7 @@ impl LogfireConfigBuilder {
             subscriber: Arc::new(subscriber),
             tracer_provider,
             meter_provider,
+            logger_provider,
             #[cfg(test)]
             send_to_logfire,
         })
@@ -533,6 +562,7 @@ pub struct ShutdownHandler {
     tracer: LogfireTracer,
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     meter_provider: SdkMeterProvider,
+    logger_provider: SdkLoggerProvider,
 }
 
 impl ShutdownHandler {
@@ -549,6 +579,9 @@ impl ShutdownHandler {
             .shutdown()
             .map_err(|e| ConfigureError::Other(e.into()))?;
         self.meter_provider
+            .shutdown()
+            .map_err(|e| ConfigureError::Other(e.into()))?;
+        self.logger_provider
             .shutdown()
             .map_err(|e| ConfigureError::Other(e.into()))?;
         Ok(())
@@ -591,6 +624,7 @@ struct LogfireParts {
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     tracer_provider: SdkTracerProvider,
     meter_provider: SdkMeterProvider,
+    logger_provider: SdkLoggerProvider,
     #[cfg(test)]
     send_to_logfire: bool,
 }
@@ -612,7 +646,7 @@ fn install_panic_handler() {
         };
 
         let location = info.location();
-        crate::macros::__macros_impl::export_log_span(
+        crate::macros::__macros_impl::export_log(
             "panic",
             &tracing::Span::current(),
             format!("panic: {message}"),
@@ -661,6 +695,7 @@ fn get_optional_env(
 #[derive(Clone)]
 struct LogfireTracer {
     inner: Tracer,
+    logger: Arc<SdkLogger>,
     handle_panics: bool,
 }
 
@@ -734,7 +769,6 @@ pub fn set_local_logfire(shutdown_handler: ShutdownHandler) -> LocalLogfireGuard
 
     let tracing_guard = tracing::subscriber::set_default(shutdown_handler.subscriber.clone());
 
-    // TODO: logs??
     // TODO: metrics??
 
     LocalLogfireGuard {

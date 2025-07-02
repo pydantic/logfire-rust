@@ -1,8 +1,11 @@
 //! Helper functions to configure mo
 use std::collections::HashMap;
 
-use opentelemetry_otlp::{MetricExporter, Protocol};
-use opentelemetry_sdk::{metrics::exporter::PushMetricExporter, trace::SpanExporter};
+use opentelemetry_otlp::{LogExporter, MetricExporter, Protocol};
+use opentelemetry_sdk::{
+    logs::LogExporter as LogExporterTrait, metrics::exporter::PushMetricExporter,
+    trace::SpanExporter,
+};
 
 use crate::{
     ConfigureError, get_optional_env,
@@ -164,6 +167,76 @@ pub fn metric_exporter(
                     .with_protocol(Protocol::HttpBinary)
                     .with_headers(headers.unwrap_or_default())
                     .with_endpoint(format!("{endpoint}/v1/metrics"))
+                    .build()?)
+            })
+        }
+    }
+}
+
+/// Build a [`LogExporter`] for passing to log processors.
+///
+/// This uses `OTEL_EXPORTER_OTLP_PROTOCOL` and `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` environment
+/// variables to determine the protocol to use (or otherwise defaults to [`Protocol::HttpBinary`]).
+///
+/// # Errors
+///
+/// Returns an error if the protocol specified by the env var is not supported or if the required feature is not enabled for
+/// the given protocol.
+///
+/// Returns an error if the endpoint is not a valid URI.
+///
+/// Returns an error if any headers are not valid HTTP headers.
+pub fn log_exporter(
+    endpoint: &str,
+    headers: Option<HashMap<String, String>>,
+) -> Result<impl LogExporterTrait + use<>, ConfigureError> {
+    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_LOGS_PROTOCOL")?;
+
+    let builder = LogExporter::builder();
+
+    // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
+    // OTEL_EXPORTER_OTLP_PROTOCOL or OTEL_EXPORTER_OTLP_LOGS_PROTOCOL is set and let the SDK
+    // make a builder. (If unset, we could supply our preferred exporter.)
+    //
+    // But at the moment otel-rust ignores these env vars; see
+    // https://github.com/open-telemetry/opentelemetry-rust/issues/1983
+    match protocol {
+        Protocol::Grpc => {
+            feature_required!("export-grpc", source, {
+                use opentelemetry_otlp::WithTonicConfig;
+                Ok(builder
+                    .with_tonic()
+                    .with_channel(
+                        tonic::transport::Channel::builder(
+                            endpoint.try_into().map_err(|e: http::uri::InvalidUri| {
+                                ConfigureError::Other(e.into())
+                            })?,
+                        )
+                        .connect_lazy(),
+                    )
+                    .with_metadata(build_metadata_from_headers(headers.as_ref())?)
+                    .build()?)
+            })
+        }
+        Protocol::HttpBinary => {
+            feature_required!("export-http-protobuf", source, {
+                use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+                Ok(builder
+                    .with_http()
+                    .with_protocol(Protocol::HttpBinary)
+                    .with_headers(headers.unwrap_or_default())
+                    .with_endpoint(format!("{endpoint}/v1/logs"))
+                    .build()?)
+            })
+        }
+        Protocol::HttpJson => {
+            feature_required!("export-http-json", source, {
+                use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+                Ok(builder
+                    .with_http()
+                    .with_protocol(Protocol::HttpBinary)
+                    .with_headers(headers.unwrap_or_default())
+                    .with_endpoint(format!("{endpoint}/v1/logs"))
                     .build()?)
             })
         }
