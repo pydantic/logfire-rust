@@ -13,11 +13,13 @@ use std::{
 
 use opentelemetry::{
     InstrumentationScope, Value,
+    logs::{LogRecord, Logger, LoggerProvider as _},
     trace::{SpanId, TraceId},
 };
 use opentelemetry_sdk::{
     Resource,
     error::OTelSdkResult,
+    logs::{SdkLoggerProvider, in_memory_exporter::LogDataWithResource},
     metrics::data::{AggregatedMetrics, MetricData, ResourceMetrics},
     trace::{IdGenerator, SpanData, SpanExporter},
 };
@@ -238,4 +240,126 @@ pub fn find_attr<'a>(
         .iter()
         .find(|kv| kv.key.as_str() == key)
         .unwrap_or_else(|| panic!("attribute '{}' not found in span '{}'", key, span.name))
+}
+
+/// Find a log by event name in a slice of LogDataWithResource.
+pub fn find_log<'a>(logs: &'a [LogDataWithResource], name: &str) -> &'a LogDataWithResource {
+    logs.iter()
+        .find(|log| {
+            log.record
+                .attributes_iter()
+                .find(|(key, _)| key.as_str() == "logfire.msg")
+                .map(|(_, value)| format!("{:?}", value).contains(name))
+                .unwrap_or(false)
+        })
+        .expect("log present")
+}
+
+/// Find an attribute by key in a log's attributes, panicking if not found.
+pub fn find_log_attr<'a>(
+    log: &'a LogDataWithResource,
+    key: &str,
+) -> &'a opentelemetry::logs::AnyValue {
+    log.record
+        .attributes_iter()
+        .find(|(k, _)| k.as_str() == key)
+        .map(|(_, v)| v)
+        .unwrap_or_else(|| panic!("attribute '{}' not found in log", key))
+}
+
+/// Make log data deterministic by cleaning up non-deterministic fields
+pub fn make_deterministic_logs(
+    logs: Vec<LogDataWithResource>,
+    file: &str,
+    line_offset: u32,
+) -> Vec<LogDataWithResource> {
+    let timestamp_remap = Arc::new(Mutex::new(TimestampRemapper::new()));
+
+    // A new logger is necessary to be able to create log records; `SdkLogRecord` constructor is private.
+    let logger_provider = SdkLoggerProvider::builder().build();
+    let logger = logger_provider.logger("test_logger");
+
+    logs.into_iter()
+        .map(|log_data| {
+            let original_record = &log_data.record;
+
+            // Create a new log record
+            let mut new_record = logger.create_log_record();
+
+            // Copy basic fields with deterministic timestamp remapping
+            if let Some(timestamp) = original_record.timestamp() {
+                new_record
+                    .set_timestamp(timestamp_remap.lock().unwrap().remap_timestamp(timestamp));
+            }
+            if let Some(observed_timestamp) = original_record.observed_timestamp() {
+                new_record.set_observed_timestamp(
+                    timestamp_remap
+                        .lock()
+                        .unwrap()
+                        .remap_timestamp(observed_timestamp),
+                );
+            }
+            if let Some(trace_context) = original_record.trace_context() {
+                new_record.set_trace_context(
+                    trace_context.trace_id,
+                    trace_context.span_id,
+                    trace_context.trace_flags,
+                );
+            }
+            if let Some(severity_text) = original_record.severity_text() {
+                new_record.set_severity_text(severity_text);
+            }
+            if let Some(severity_number) = original_record.severity_number() {
+                new_record.set_severity_number(severity_number);
+            }
+            if let Some(body) = original_record.body() {
+                new_record.set_body(body.clone());
+            }
+            if let Some(target) = original_record.target() {
+                new_record.set_target(target.clone());
+            }
+
+            // Check if we need to remap line numbers for this file
+            let mut remap_line = false;
+            for (key, value) in original_record.attributes_iter() {
+                if key.as_str() == "code.filepath" {
+                    if let opentelemetry::logs::AnyValue::String(s) = value {
+                        if s.as_str() == file {
+                            remap_line = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let mut new_attributes = Vec::new();
+
+            // Copy attributes with deterministic modifications
+            for (key, value) in original_record.attributes_iter() {
+                let new_value = match key.as_str() {
+                    "thread.id" => opentelemetry::logs::AnyValue::Int(0),
+                    "code.lineno" if remap_line => {
+                        if let opentelemetry::logs::AnyValue::Int(line) = value {
+                            opentelemetry::logs::AnyValue::Int(line - i64::from(line_offset))
+                        } else {
+                            value.clone()
+                        }
+                    }
+                    _ => value.clone(),
+                };
+                new_attributes.push((key.clone(), new_value));
+            }
+
+            new_attributes.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+            new_record.add_attributes(new_attributes);
+
+            LogDataWithResource {
+                record: new_record,
+                // avoid non-deteministic resource
+                resource: Cow::Owned(Resource::builder_empty().build()),
+                ..log_data
+            }
+        })
+        .collect()
 }

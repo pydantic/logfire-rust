@@ -1,23 +1,24 @@
 //! Tests for logfire::log! macro attribute forms.
 
-use logfire::log;
-use opentelemetry_sdk::trace::InMemorySpanExporterBuilder;
+use logfire::{config::AdvancedOptions, log};
+use opentelemetry_sdk::logs::{InMemoryLogExporter, SimpleLogProcessor};
 
 #[path = "../src/test_utils.rs"]
 mod test_utils;
 
-use test_utils::{find_attr, find_span};
+use test_utils::{find_log, find_log_attr};
 use tracing::Level;
 
 #[test]
-fn test_span_macro_attributes() {
-    let exporter = InMemorySpanExporterBuilder::new().build();
+fn test_log_macro_attributes() {
+    let log_exporter = InMemoryLogExporter::default();
     let handler = logfire::configure()
         .local()
         .send_to_logfire(false)
-        .with_additional_span_processor(opentelemetry_sdk::trace::SimpleSpanProcessor::new(
-            exporter.clone(),
-        ))
+        .with_advanced_options(
+            AdvancedOptions::default()
+                .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
+        )
         .finish()
         .unwrap();
     let guard = logfire::set_local_logfire(handler);
@@ -36,42 +37,42 @@ fn test_span_macro_attributes() {
             d.e = 3
         );
     });
-    let spans = exporter.get_finished_spans().unwrap();
+    let logs = log_exporter.get_emitted_logs().unwrap();
 
     // String attribute
-    let span = find_span(&spans, "string_attr_log");
-    let kv = find_attr(span, "foo");
-    assert!(matches!(&kv.value, opentelemetry::Value::String(s) if s.as_str() == "bar"));
+    let log = find_log(&logs, "string_attr_log");
+    let value = find_log_attr(log, "foo");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::String(s) if s.as_str() == "bar"));
 
     // Integer attribute
-    let span = find_span(&spans, "int_attr_log");
-    let kv = find_attr(span, "num");
-    assert!(matches!(&kv.value, opentelemetry::Value::I64(v) if *v == 42));
+    let log = find_log(&logs, "int_attr_log");
+    let value = find_log_attr(log, "num");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Int(v) if *v == 42));
 
     // Boolean attribute
-    let span = find_span(&spans, "bool_attr_log");
-    let kv = find_attr(span, "flag");
-    assert!(matches!(&kv.value, opentelemetry::Value::Bool(v) if *v));
+    let log = find_log(&logs, "bool_attr_log");
+    let value = find_log_attr(log, "flag");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Boolean(v) if *v));
 
     // Dotted key attribute
-    let span = find_span(&spans, "dotted_attr_log");
-    let kv = find_attr(span, "dotted.key");
-    assert!(matches!(&kv.value, opentelemetry::Value::String(s) if s.as_str() == "value"));
+    let log = find_log(&logs, "dotted_attr_log");
+    let value = find_log_attr(log, "dotted.key");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::String(s) if s.as_str() == "value"));
 
     // Multiple attributes
-    let span = find_span(&spans, "multi_attr_log");
-    let kv = find_attr(span, "a");
-    assert!(matches!(&kv.value, opentelemetry::Value::I64(v) if *v == 1));
-    let kv = find_attr(span, "b");
-    assert!(matches!(&kv.value, opentelemetry::Value::String(s) if s.as_str() == "two"));
-    let kv = find_attr(span, "c");
-    assert!(matches!(&kv.value, opentelemetry::Value::Bool(v) if !*v));
-    let kv = find_attr(span, "d.e");
-    assert!(matches!(&kv.value, opentelemetry::Value::I64(v) if *v == 3));
+    let log = find_log(&logs, "multi_attr_log");
+    let value = find_log_attr(log, "a");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Int(v) if *v == 1));
+    let value = find_log_attr(log, "b");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::String(s) if s.as_str() == "two"));
+    let value = find_log_attr(log, "c");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Boolean(v) if !*v));
+    let value = find_log_attr(log, "d.e");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Int(v) if *v == 3));
 }
 
 #[test]
-fn test_span_macro_shorthand_ident() {
+fn test_log_macro_shorthand_ident() {
     #[derive(Debug)]
     struct Dotted {
         key: &'static str,
@@ -94,15 +95,17 @@ fn test_span_macro_shorthand_ident() {
         d_e: 3,
     };
 
-    let exporter = InMemorySpanExporterBuilder::new().build();
+    let log_exporter = InMemoryLogExporter::default();
     let handler = logfire::configure()
         .local()
         .send_to_logfire(false)
-        .with_additional_span_processor(opentelemetry_sdk::trace::SimpleSpanProcessor::new(
-            exporter.clone(),
-        ))
+        .with_advanced_options(
+            AdvancedOptions::default()
+                .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
+        )
         .finish()
         .unwrap();
+
     let guard = logfire::set_local_logfire(handler);
     tracing::subscriber::with_default(guard.subscriber(), || {
         let _ = log!(Level::INFO, "dotted_attr_log", dotted.key);
@@ -118,31 +121,31 @@ fn test_span_macro_shorthand_ident() {
         );
     });
 
-    let spans = exporter.get_finished_spans().unwrap();
+    let logs = log_exporter.get_emitted_logs().unwrap();
 
     // Dotted key attribute
-    let span = find_span(&spans, "dotted_attr_log");
-    let kv = find_attr(span, "dotted.key");
-    assert!(matches!(&kv.value, opentelemetry::Value::String(s) if s.as_str() == "value"));
+    let log = find_log(&logs, "dotted_attr_log");
+    let value = find_log_attr(log, "dotted.key");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::String(s) if s.as_str() == "value"));
 
     // Int attribute
-    let span = find_span(&spans, "int_attr_log");
-    let kv = find_attr(span, "int_val");
-    assert!(matches!(&kv.value, opentelemetry::Value::I64(v) if *v == 42));
+    let log = find_log(&logs, "int_attr_log");
+    let value = find_log_attr(log, "int_val");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Int(v) if *v == 42));
 
     // Bool attribute
-    let span = find_span(&spans, "bool_attr_log");
-    let kv = find_attr(span, "bool_val");
-    assert!(matches!(&kv.value, opentelemetry::Value::Bool(v) if *v));
+    let log = find_log(&logs, "bool_attr_log");
+    let value = find_log_attr(log, "bool_val");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Boolean(v) if *v));
 
     // Multi attributes
-    let span = find_span(&spans, "multi_attr_log");
-    let kv = find_attr(span, "multi.a");
-    assert!(matches!(&kv.value, opentelemetry::Value::I64(v) if *v == 1));
-    let kv = find_attr(span, "multi.b");
-    assert!(matches!(&kv.value, opentelemetry::Value::String(s) if s.as_str() == "two"));
-    let kv = find_attr(span, "multi.c");
-    assert!(matches!(&kv.value, opentelemetry::Value::Bool(v) if !*v));
-    let kv = find_attr(span, "multi.d_e");
-    assert!(matches!(&kv.value, opentelemetry::Value::I64(v) if *v == 3));
+    let log = find_log(&logs, "multi_attr_log");
+    let value = find_log_attr(log, "multi.a");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Int(v) if *v == 1));
+    let value = find_log_attr(log, "multi.b");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::String(s) if s.as_str() == "two"));
+    let value = find_log_attr(log, "multi.c");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Boolean(v) if !*v));
+    let value = find_log_attr(log, "multi.d_e");
+    assert!(matches!(value, opentelemetry::logs::AnyValue::Int(v) if *v == 3));
 }

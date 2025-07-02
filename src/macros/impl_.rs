@@ -7,7 +7,9 @@ use std::{borrow::Cow, marker::PhantomData, ops::Deref, time::SystemTime};
 
 use crate::{bridges::tracing::level_to_level_number, try_with_logfire_tracer};
 use opentelemetry::{
-    Array, Key, KeyValue, StringValue, Value, global::ObjectSafeSpan, trace::Tracer as _,
+    Array, Key, Value,
+    logs::{AnyValue, LogRecord, Logger, Severity},
+    trace::TraceContextExt,
 };
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
@@ -133,8 +135,18 @@ impl<T> FallbackToConvertValue<T> {
     }
 }
 
+fn tracing_level_to_severity(level: tracing::Level) -> Severity {
+    match level {
+        tracing::Level::ERROR => Severity::Error,
+        tracing::Level::WARN => Severity::Warn,
+        tracing::Level::INFO => Severity::Info,
+        tracing::Level::DEBUG => Severity::Debug,
+        tracing::Level::TRACE => Severity::Trace,
+    }
+}
+
 #[expect(clippy::too_many_arguments)] // FIXME probably can group these
-pub fn export_log_span(
+pub fn export_log(
     name: &'static str,
     parent_span: &tracing::Span,
     message: String,
@@ -158,63 +170,84 @@ pub fn export_log_span(
     }
 
     try_with_logfire_tracer(|tracer| {
-        let mut null_args: Vec<StringValue> = Vec::new();
+        let mut null_args: Vec<AnyValue> = Vec::new();
 
-        let mut attributes: Vec<_> = args
-            .into_iter()
-            .filter_map(|arg| {
-                if let Some(value) = arg.value {
-                    Some(KeyValue::new(arg.name, value))
-                } else {
-                    // FIXME: otel should allow Key <=> StringValue to avoid copy
-                    null_args.push(arg.name.as_str().to_owned().into());
-                    None
-                }
-            })
-            .chain([
-                KeyValue::new("logfire.msg", message),
-                KeyValue::new("logfire.level_num", level_to_level_number(level)),
-                KeyValue::new("logfire.span_type", "log"),
-                KeyValue::new("logfire.json_schema", schema),
-                KeyValue::new("thread.id", THREAD_ID.with(|id| *id)),
-            ])
-            .chain(
-                // if thread.name is available, add it
-                std::thread::current()
-                    .name()
-                    .map(|name| KeyValue::new("thread.name", name.to_owned())),
-            )
-            .collect();
-
-        if let Some(file) = file {
-            attributes.push(KeyValue::new("code.filepath", file));
-        }
-
-        if let Some(line) = line {
-            attributes.push(KeyValue::new("code.lineno", i64::from(line)));
-        }
-
-        if let Some(module_path) = module_path {
-            attributes.push(KeyValue::new("code.namespace", module_path));
-        }
-
-        if !null_args.is_empty() {
-            attributes.push(KeyValue::new(
-                "logfire.null_args",
-                Value::Array(Array::from(null_args)),
-            ));
-        }
+        // Create and emit a log record instead of a span
+        let mut log_record = tracer.logger.create_log_record();
 
         let ts = SystemTime::now();
 
-        tracer
-            .inner
-            .span_builder(name)
-            .with_attributes(attributes)
-            .with_start_time(ts)
-            // .with_end_time(ts) seems to not be respected, need to explicitly end as per below
-            .start_with_context(&tracer.inner, &parent_span.context())
-            .end_with_timestamp(ts);
+        log_record.set_event_name(name);
+        log_record.set_timestamp(ts);
+        log_record.set_observed_timestamp(ts);
+        log_record.set_body(message.clone().into());
+        log_record.set_severity_text(level.as_str());
+        log_record.set_severity_number(tracing_level_to_severity(level));
+
+        for arg in args {
+            if let Some(value) = arg.value {
+                let any_value = match value {
+                    Value::Bool(b) => AnyValue::Boolean(b),
+                    Value::I64(i) => AnyValue::Int(i),
+                    Value::F64(f) => AnyValue::Double(f),
+                    Value::String(string_value) => AnyValue::String(string_value),
+                    Value::Array(Array::Bool(b)) => {
+                        AnyValue::ListAny(Box::new(b.into_iter().map(AnyValue::Boolean).collect()))
+                    }
+                    Value::Array(Array::I64(i)) => {
+                        AnyValue::ListAny(Box::new(i.into_iter().map(AnyValue::Int).collect()))
+                    }
+                    Value::Array(Array::F64(f)) => {
+                        AnyValue::ListAny(Box::new(f.into_iter().map(AnyValue::Double).collect()))
+                    }
+                    Value::Array(Array::String(s)) => {
+                        AnyValue::ListAny(Box::new(s.into_iter().map(AnyValue::String).collect()))
+                    }
+                    _ => AnyValue::String(format!("{value:?}").into()),
+                };
+                log_record.add_attribute(arg.name, any_value);
+            } else {
+                null_args.push(arg.name.as_str().to_owned().into());
+            }
+        }
+
+        log_record.add_attribute("logfire.msg", message);
+        log_record.add_attribute("logfire.level_num", level_to_level_number(level));
+        log_record.add_attribute("logfire.json_schema", schema);
+        log_record.add_attribute("thread.id", THREAD_ID.with(|id| *id));
+
+        // Add thread name if available
+        if let Some(thread_name) = std::thread::current().name() {
+            log_record.add_attribute("thread.name", thread_name.to_owned());
+        }
+
+        if let Some(file) = file {
+            log_record.add_attribute("code.filepath", file);
+        }
+
+        if let Some(line) = line {
+            log_record.add_attribute("code.lineno", i64::from(line));
+        }
+
+        if let Some(module_path) = module_path {
+            log_record.add_attribute("code.namespace", module_path);
+        }
+
+        if !null_args.is_empty() {
+            log_record.add_attribute("logfire.null_args", AnyValue::ListAny(Box::new(null_args)));
+        }
+
+        // Get trace context from parent span
+        let context = parent_span.context();
+        let span = context.span();
+        let span_context = span.span_context();
+        log_record.set_trace_context(
+            span_context.trace_id(),
+            span_context.span_id(),
+            Some(span_context.trace_flags()),
+        );
+
+        tracer.logger.emit(log_record);
     });
 }
 
@@ -302,7 +335,7 @@ macro_rules! __log {
             // bind single ident args early to allow them in the format string
             // without multiple evaluation
             $crate::__bind_single_ident_args!($($($path).+ $(= $value)?),*);
-            $crate::__macros_impl::export_log_span(
+            $crate::__macros_impl::export_log(
                 $format,
                 &$parent,
                 format!($format),

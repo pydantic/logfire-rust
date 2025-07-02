@@ -9,6 +9,7 @@ use std::{
 };
 
 use opentelemetry_sdk::{
+    logs::LogProcessor,
     metrics::reader::MetricReader,
     trace::{IdGenerator, SpanProcessor},
 };
@@ -193,15 +194,15 @@ pub struct AdvancedOptions {
     pub(crate) id_generator: Option<BoxedIdGenerator>,
     /// Resource to override default resource detection.
     pub(crate) resource: Option<opentelemetry_sdk::Resource>,
+
+    // Configuration for OpenTelemetry logging. This is experimental and may be removed.
+    pub(crate) log_record_processors: Vec<BoxedLogProcessor>,
     //
     //
     // TODO: arguments below supported by Python
 
     // /// Generator for nanosecond start and end timestamps of spans.
     // pub ns_timestamp_generator: Option,
-
-    // /// Configuration for OpenTelemetry logging. This is experimental and may be removed.
-    // pub log_record_processors: Vec<Box<dyn LogRecordProcessor>>,
 }
 
 impl AdvancedOptions {
@@ -226,6 +227,17 @@ impl AdvancedOptions {
     #[must_use]
     pub fn with_resource(mut self, resource: opentelemetry_sdk::Resource) -> Self {
         self.resource = Some(resource);
+        self
+    }
+
+    /// Add a log processor to the list of log processors.
+    #[must_use]
+    pub fn with_log_processor<T: LogProcessor + Send + Sync + 'static>(
+        mut self,
+        processor: T,
+    ) -> Self {
+        self.log_record_processors
+            .push(BoxedLogProcessor::new(Box::new(processor)));
         self
     }
 }
@@ -385,6 +397,37 @@ impl MetricReader for BoxedMetricReader {
         kind: opentelemetry_sdk::metrics::InstrumentKind,
     ) -> opentelemetry_sdk::metrics::Temporality {
         self.0.temporality(kind)
+    }
+}
+
+/// Boxed log processor for dynamic dispatch
+#[derive(Debug)]
+pub(crate) struct BoxedLogProcessor {
+    inner: Box<dyn LogProcessor + Send + Sync>,
+}
+
+impl BoxedLogProcessor {
+    /// Create a new boxed log processor.
+    pub fn new(processor: Box<dyn LogProcessor + Send + Sync>) -> Self {
+        Self { inner: processor }
+    }
+}
+
+impl LogProcessor for BoxedLogProcessor {
+    fn emit(
+        &self,
+        log_record: &mut opentelemetry_sdk::logs::SdkLogRecord,
+        instrumentation_scope: &opentelemetry::InstrumentationScope,
+    ) {
+        self.inner.emit(log_record, instrumentation_scope);
+    }
+
+    fn force_flush(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.inner.force_flush()
+    }
+
+    fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.inner.shutdown()
     }
 }
 

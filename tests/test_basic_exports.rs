@@ -5,6 +5,7 @@ use std::sync::Arc;
 use insta::assert_debug_snapshot;
 use opentelemetry_sdk::{
     Resource,
+    logs::{InMemoryLogExporter, SimpleLogProcessor},
     metrics::{
         InMemoryMetricExporterBuilder, ManualReader, data::ResourceMetrics,
         exporter::PushMetricExporter, reader::MetricReader,
@@ -22,26 +23,33 @@ use logfire::{
 mod test_utils;
 
 use test_utils::{
-    DeterministicExporter, DeterministicIdGenerator, make_deterministic_resource_metrics,
+    DeterministicExporter, DeterministicIdGenerator, make_deterministic_logs,
+    make_deterministic_resource_metrics,
 };
 
 #[expect(clippy::too_many_lines)]
 #[test]
 fn test_basic_span() {
+    const TEST_FILE: &str = file!();
+    const TEST_LINE: u32 = line!();
+
     let exporter = InMemorySpanExporterBuilder::new().build();
+    let log_exporter = InMemoryLogExporter::default();
 
     let handler = logfire::configure()
         .local()
         .send_to_logfire(false)
         .with_additional_span_processor(SimpleSpanProcessor::new(DeterministicExporter::new(
             exporter.clone(),
-            file!(),
-            line!(),
+            TEST_FILE,
+            TEST_LINE,
         )))
         .install_panic_handler()
         .with_default_level_filter(LevelFilter::TRACE)
         .with_advanced_options(
-            AdvancedOptions::default().with_id_generator(DeterministicIdGenerator::new()),
+            AdvancedOptions::default()
+                .with_id_generator(DeterministicIdGenerator::new())
+                .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
         )
         .finish()
         .unwrap();
@@ -112,7 +120,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        14,
+                        27,
                     ),
                 },
                 KeyValue {
@@ -238,7 +246,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        15,
+                        28,
                     ),
                 },
                 KeyValue {
@@ -394,7 +402,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        15,
+                        28,
                     ),
                 },
                 KeyValue {
@@ -556,7 +564,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        16,
+                        29,
                     ),
                 },
                 KeyValue {
@@ -692,7 +700,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        16,
+                        29,
                     ),
                 },
                 KeyValue {
@@ -834,7 +842,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        17,
+                        30,
                     ),
                 },
                 KeyValue {
@@ -970,7 +978,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        17,
+                        30,
                     ),
                 },
                 KeyValue {
@@ -1066,278 +1074,6 @@ fn test_basic_span() {
         SpanData {
             span_context: SpanContext {
                 trace_id: 000000000000000000000000000000f0,
-                span_id: 00000000000000f8,
-                trace_flags: TraceFlags(
-                    1,
-                ),
-                is_remote: false,
-                trace_state: TraceState(
-                    None,
-                ),
-            },
-            parent_span_id: 00000000000000f0,
-            span_kind: Internal,
-            name: "hello world log",
-            start_time: SystemTime {
-                tv_sec: 7,
-                tv_nsec: 0,
-            },
-            end_time: SystemTime {
-                tv_sec: 7,
-                tv_nsec: 0,
-            },
-            attributes: [
-                KeyValue {
-                    key: Static(
-                        "attr",
-                    ),
-                    value: String(
-                        Static(
-                            "x",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "dotted.attr",
-                    ),
-                    value: String(
-                        Static(
-                            "y",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "logfire.msg",
-                    ),
-                    value: String(
-                        Owned(
-                            "hello world log",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "logfire.level_num",
-                    ),
-                    value: I64(
-                        9,
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "logfire.span_type",
-                    ),
-                    value: String(
-                        Static(
-                            "log",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "logfire.json_schema",
-                    ),
-                    value: String(
-                        Static(
-                            "{\"type\":\"object\",\"properties\":{\"attr\":{},\"dotted.attr\":{}}}",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "thread.id",
-                    ),
-                    value: I64(
-                        0,
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "thread.name",
-                    ),
-                    value: String(
-                        Owned(
-                            "test_basic_span",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "code.filepath",
-                    ),
-                    value: String(
-                        Static(
-                            "tests/test_basic_exports.rs",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "code.lineno",
-                    ),
-                    value: I64(
-                        18,
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "code.namespace",
-                    ),
-                    value: String(
-                        Static(
-                            "test_basic_exports",
-                        ),
-                    ),
-                },
-            ],
-            dropped_attributes_count: 0,
-            events: SpanEvents {
-                events: [],
-                dropped_count: 0,
-            },
-            links: SpanLinks {
-                links: [],
-                dropped_count: 0,
-            },
-            status: Unset,
-            instrumentation_scope: InstrumentationScope {
-                name: "logfire",
-                version: None,
-                schema_url: None,
-                attributes: [],
-            },
-        },
-        SpanData {
-            span_context: SpanContext {
-                trace_id: 000000000000000000000000000000f0,
-                span_id: 00000000000000f9,
-                trace_flags: TraceFlags(
-                    1,
-                ),
-                is_remote: false,
-                trace_state: TraceState(
-                    None,
-                ),
-            },
-            parent_span_id: 00000000000000f0,
-            span_kind: Internal,
-            name: "panic",
-            start_time: SystemTime {
-                tv_sec: 8,
-                tv_nsec: 0,
-            },
-            end_time: SystemTime {
-                tv_sec: 8,
-                tv_nsec: 0,
-            },
-            attributes: [
-                KeyValue {
-                    key: Static(
-                        "backtrace",
-                    ),
-                    value: String(
-                        Owned(
-                            "disabled backtrace",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "logfire.msg",
-                    ),
-                    value: String(
-                        Owned(
-                            "panic: oh no!",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "logfire.level_num",
-                    ),
-                    value: I64(
-                        17,
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "logfire.span_type",
-                    ),
-                    value: String(
-                        Static(
-                            "log",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "logfire.json_schema",
-                    ),
-                    value: String(
-                        Static(
-                            "{\"type\":\"object\",\"properties\":{\"backtrace\":{}}}",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "thread.id",
-                    ),
-                    value: I64(
-                        0,
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "thread.name",
-                    ),
-                    value: String(
-                        Owned(
-                            "test_basic_span",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "code.filepath",
-                    ),
-                    value: String(
-                        Owned(
-                            "tests/test_basic_exports.rs",
-                        ),
-                    ),
-                },
-                KeyValue {
-                    key: Static(
-                        "code.lineno",
-                    ),
-                    value: I64(
-                        19,
-                    ),
-                },
-            ],
-            dropped_attributes_count: 0,
-            events: SpanEvents {
-                events: [],
-                dropped_count: 0,
-            },
-            links: SpanLinks {
-                links: [],
-                dropped_count: 0,
-            },
-            status: Unset,
-            instrumentation_scope: InstrumentationScope {
-                name: "logfire",
-                version: None,
-                schema_url: None,
-                attributes: [],
-            },
-        },
-        SpanData {
-            span_context: SpanContext {
-                trace_id: 000000000000000000000000000000f0,
                 span_id: 00000000000000f0,
                 trace_flags: TraceFlags(
                     1,
@@ -1355,7 +1091,7 @@ fn test_basic_span() {
                 tv_nsec: 0,
             },
             end_time: SystemTime {
-                tv_sec: 9,
+                tv_sec: 7,
                 tv_nsec: 0,
             },
             attributes: [
@@ -1384,7 +1120,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        14,
+                        27,
                     ),
                 },
                 KeyValue {
@@ -1475,6 +1211,343 @@ fn test_basic_span() {
                 version: None,
                 schema_url: None,
                 attributes: [],
+            },
+        },
+    ]
+    "#);
+
+    let logs = log_exporter.get_emitted_logs().unwrap();
+    let logs = make_deterministic_logs(logs, TEST_FILE, TEST_LINE);
+    assert_debug_snapshot!(logs, @r#"
+    [
+        LogDataWithResource {
+            record: SdkLogRecord {
+                event_name: None,
+                target: None,
+                timestamp: Some(
+                    SystemTime {
+                        tv_sec: 0,
+                        tv_nsec: 0,
+                    },
+                ),
+                observed_timestamp: Some(
+                    SystemTime {
+                        tv_sec: 0,
+                        tv_nsec: 0,
+                    },
+                ),
+                trace_context: Some(
+                    TraceContext {
+                        trace_id: 000000000000000000000000000000f0,
+                        span_id: 00000000000000f0,
+                        trace_flags: Some(
+                            TraceFlags(
+                                1,
+                            ),
+                        ),
+                    },
+                ),
+                severity_text: Some(
+                    "INFO",
+                ),
+                severity_number: Some(
+                    Info,
+                ),
+                body: Some(
+                    String(
+                        Owned(
+                            "hello world log",
+                        ),
+                    ),
+                ),
+                attributes: GrowableArray {
+                    inline: [
+                        Some(
+                            (
+                                Static(
+                                    "attr",
+                                ),
+                                String(
+                                    Static(
+                                        "x",
+                                    ),
+                                ),
+                            ),
+                        ),
+                        Some(
+                            (
+                                Static(
+                                    "code.filepath",
+                                ),
+                                String(
+                                    Static(
+                                        "tests/test_basic_exports.rs",
+                                    ),
+                                ),
+                            ),
+                        ),
+                        Some(
+                            (
+                                Static(
+                                    "code.lineno",
+                                ),
+                                Int(
+                                    31,
+                                ),
+                            ),
+                        ),
+                        Some(
+                            (
+                                Static(
+                                    "code.namespace",
+                                ),
+                                String(
+                                    Static(
+                                        "test_basic_exports",
+                                    ),
+                                ),
+                            ),
+                        ),
+                        Some(
+                            (
+                                Static(
+                                    "dotted.attr",
+                                ),
+                                String(
+                                    Static(
+                                        "y",
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ],
+                    overflow: Some(
+                        [
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.json_schema",
+                                    ),
+                                    String(
+                                        Static(
+                                            "{\"type\":\"object\",\"properties\":{\"attr\":{},\"dotted.attr\":{}}}",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.level_num",
+                                    ),
+                                    Int(
+                                        9,
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.msg",
+                                    ),
+                                    String(
+                                        Owned(
+                                            "hello world log",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "thread.id",
+                                    ),
+                                    Int(
+                                        0,
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "thread.name",
+                                    ),
+                                    String(
+                                        Owned(
+                                            "test_basic_span",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                    ),
+                    count: 5,
+                },
+            },
+            instrumentation: InstrumentationScope {
+                name: "logfire",
+                version: None,
+                schema_url: None,
+                attributes: [],
+            },
+            resource: Resource {
+                inner: ResourceInner {
+                    attrs: {},
+                    schema_url: None,
+                },
+            },
+        },
+        LogDataWithResource {
+            record: SdkLogRecord {
+                event_name: None,
+                target: None,
+                timestamp: Some(
+                    SystemTime {
+                        tv_sec: 1,
+                        tv_nsec: 0,
+                    },
+                ),
+                observed_timestamp: Some(
+                    SystemTime {
+                        tv_sec: 1,
+                        tv_nsec: 0,
+                    },
+                ),
+                trace_context: Some(
+                    TraceContext {
+                        trace_id: 000000000000000000000000000000f0,
+                        span_id: 00000000000000f0,
+                        trace_flags: Some(
+                            TraceFlags(
+                                1,
+                            ),
+                        ),
+                    },
+                ),
+                severity_text: Some(
+                    "ERROR",
+                ),
+                severity_number: Some(
+                    Error,
+                ),
+                body: Some(
+                    String(
+                        Owned(
+                            "panic: oh no!",
+                        ),
+                    ),
+                ),
+                attributes: GrowableArray {
+                    inline: [
+                        Some(
+                            (
+                                Static(
+                                    "backtrace",
+                                ),
+                                String(
+                                    Owned(
+                                        "disabled backtrace",
+                                    ),
+                                ),
+                            ),
+                        ),
+                        Some(
+                            (
+                                Static(
+                                    "code.filepath",
+                                ),
+                                String(
+                                    Owned(
+                                        "tests/test_basic_exports.rs",
+                                    ),
+                                ),
+                            ),
+                        ),
+                        Some(
+                            (
+                                Static(
+                                    "code.lineno",
+                                ),
+                                Int(
+                                    32,
+                                ),
+                            ),
+                        ),
+                        Some(
+                            (
+                                Static(
+                                    "logfire.json_schema",
+                                ),
+                                String(
+                                    Static(
+                                        "{\"type\":\"object\",\"properties\":{\"backtrace\":{}}}",
+                                    ),
+                                ),
+                            ),
+                        ),
+                        Some(
+                            (
+                                Static(
+                                    "logfire.level_num",
+                                ),
+                                Int(
+                                    17,
+                                ),
+                            ),
+                        ),
+                    ],
+                    overflow: Some(
+                        [
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.msg",
+                                    ),
+                                    String(
+                                        Owned(
+                                            "panic: oh no!",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "thread.id",
+                                    ),
+                                    Int(
+                                        0,
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "thread.name",
+                                    ),
+                                    String(
+                                        Owned(
+                                            "test_basic_span",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                    ),
+                    count: 5,
+                },
+            },
+            instrumentation: InstrumentationScope {
+                name: "logfire",
+                version: None,
+                schema_url: None,
+                attributes: [],
+            },
+            resource: Resource {
+                inner: ResourceInner {
+                    attrs: {},
+                    schema_url: None,
+                },
             },
         },
     ]

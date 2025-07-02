@@ -5,7 +5,8 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use nu_ansi_term::{Color, Style};
-use opentelemetry::Value;
+use opentelemetry::{Value, logs::AnyValue};
+use opentelemetry_sdk::logs::SdkLogRecord;
 use opentelemetry_sdk::trace::SpanData;
 
 use crate::{
@@ -14,37 +15,86 @@ use crate::{
     internal::{constants::ATTRIBUTES_SPAN_TYPE_KEY, span_data_ext::SpanDataExt},
 };
 
-/// Simple span processor which attempts to match the "simple" Python logfire console exporter.
+/// Enum to represent different types of telemetry data that can be written to console
 #[derive(Debug)]
-pub struct SimpleConsoleSpanProcessor {
-    tx: Mutex<Option<mpsc::Sender<SpanData>>>,
-    thread_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
+enum ConsoleItem {
+    Span(SpanData),
+    Log(SdkLogRecord),
 }
 
-impl SimpleConsoleSpanProcessor {
-    pub fn new(writer: Arc<ConsoleWriter>) -> Self {
-        let (tx, rx) = mpsc::channel();
+/// Shared state for console processors
+#[derive(Debug)]
+struct ConsoleSharedState {
+    tx: mpsc::Sender<ConsoleItem>,
+    thread_handle: std::thread::JoinHandle<()>,
+}
 
-        // Spawn a thread to handle the received spans
-        let thread_handle = std::thread::spawn(move || {
-            while let Ok(span) = rx.recv() {
-                writer.write_batch(&[span]);
+impl ConsoleSharedState {
+    fn shutdown_with_timeout(
+        self,
+        timeout: std::time::Duration,
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
+        // Close the channel to signal shutdown
+        drop(self.tx);
+        // Wait for the thread to finish, polling every 10ms
+        let start = std::time::Instant::now();
+        loop {
+            if self.thread_handle.is_finished() {
+                self.thread_handle.join().expect("failed to join thread");
+                break;
             }
-        });
-
-        Self {
-            tx: Mutex::new(Some(tx)),
-            thread_handle: Mutex::new(Some(thread_handle)),
+            if start.elapsed() >= timeout {
+                return Err(opentelemetry_sdk::error::OTelSdkError::Timeout(timeout));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
+        Ok(())
     }
+}
+
+/// Create both console processors that share a single background thread
+pub fn create_console_processors(
+    writer: Arc<ConsoleWriter>,
+) -> (SimpleConsoleSpanProcessor, SimpleConsoleLogProcessor) {
+    let (tx, rx) = mpsc::channel();
+
+    // Spawn a single thread to handle both spans and logs
+    let thread_handle = std::thread::spawn(move || {
+        while let Ok(item) = rx.recv() {
+            match item {
+                ConsoleItem::Span(span) => writer.write_batch(&[span]),
+                ConsoleItem::Log(log_record) => writer.write_log_batch(&[log_record]),
+            }
+        }
+    });
+
+    let shared_state = Arc::new(ConsoleSharedState { tx, thread_handle });
+
+    let span_processor = SimpleConsoleSpanProcessor {
+        shared_state: Mutex::new(Some(shared_state.clone())),
+    };
+
+    let log_processor = SimpleConsoleLogProcessor {
+        shared_state: Mutex::new(Some(shared_state)),
+    };
+
+    (span_processor, log_processor)
+}
+
+/// Simple span processor which sends spans to the shared console writer.
+#[derive(Debug)]
+pub struct SimpleConsoleSpanProcessor {
+    shared_state: Mutex<Option<Arc<ConsoleSharedState>>>,
 }
 
 impl opentelemetry_sdk::trace::SpanProcessor for SimpleConsoleSpanProcessor {
     fn on_start(&self, _span: &mut opentelemetry_sdk::trace::Span, _cx: &opentelemetry::Context) {}
 
     fn on_end(&self, span: opentelemetry_sdk::trace::SpanData) {
-        if let Some(tx) = self.tx.lock().expect("no poisoning").as_mut() {
-            tx.send(span)
+        if let Some(state) = self.shared_state.lock().expect("no poisoning").as_mut() {
+            state
+                .tx
+                .send(ConsoleItem::Span(span))
                 .expect("failed to send span to console writer");
         }
     }
@@ -55,12 +105,57 @@ impl opentelemetry_sdk::trace::SpanProcessor for SimpleConsoleSpanProcessor {
 
     fn shutdown_with_timeout(
         &self,
-        _timeout: std::time::Duration,
+        timeout: std::time::Duration,
     ) -> opentelemetry_sdk::error::OTelSdkResult {
-        // FIXME should timeout here?
-        *self.tx.lock().expect("no poisoning") = None;
-        if let Some(thread_handle) = self.thread_handle.lock().expect("no poisoning").take() {
-            thread_handle.join().expect("failed to join thread");
+        if let Some(state) = self
+            .shared_state
+            .lock()
+            .expect("no poisoning")
+            .take()
+            .and_then(Arc::into_inner)
+        {
+            state.shutdown_with_timeout(timeout)?;
+        }
+        Ok(())
+    }
+}
+
+/// Simple log processor which sends logs to the shared console writer.
+#[derive(Debug)]
+pub struct SimpleConsoleLogProcessor {
+    shared_state: Mutex<Option<Arc<ConsoleSharedState>>>,
+}
+
+impl opentelemetry_sdk::logs::LogProcessor for SimpleConsoleLogProcessor {
+    fn emit(
+        &self,
+        log_record: &mut SdkLogRecord,
+        _instrumentation_scope: &opentelemetry::InstrumentationScope,
+    ) {
+        if let Some(state) = self.shared_state.lock().expect("no poisoning").as_mut() {
+            state
+                .tx
+                .send(ConsoleItem::Log(log_record.clone()))
+                .expect("failed to send log to console writer");
+        }
+    }
+
+    fn force_flush(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        Ok(())
+    }
+
+    fn shutdown_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
+        if let Some(state) = self
+            .shared_state
+            .lock()
+            .expect("no poisoning")
+            .take()
+            .and_then(Arc::into_inner)
+        {
+            state.shutdown_with_timeout(timeout)?;
         }
         Ok(())
     }
@@ -97,6 +192,15 @@ impl ConsoleWriter {
             let mut buffer = BufWriter::new(w);
             for span in batch {
                 let _ = self.span_to_writer(span, &mut buffer);
+            }
+        });
+    }
+
+    pub fn write_log_batch(&self, batch: &[SdkLogRecord]) {
+        self.with_writer(|w| {
+            let mut buffer = BufWriter::new(w);
+            for log_data in batch {
+                let _ = self.log_to_writer(log_data, &mut buffer);
             }
         });
     }
@@ -190,20 +294,117 @@ impl ConsoleWriter {
 
         writeln!(w)
     }
+
+    fn log_to_writer<W: io::Write>(&self, log_record: &SdkLogRecord, w: &mut W) -> io::Result<()> {
+        let mut msg = None;
+        let mut level = None;
+        let mut target = None;
+
+        let mut fields = Vec::new();
+
+        for (key, value) in log_record.attributes_iter() {
+            match key.as_str() {
+                "logfire.msg" => {
+                    if let opentelemetry::logs::AnyValue::String(s) = value {
+                        msg = Some(s.as_str());
+                    }
+                }
+                "logfire.level_num" => {
+                    if let opentelemetry::logs::AnyValue::Int(level_num) = value {
+                        if *level_num < level_to_level_number(self.options.min_log_level) {
+                            return Ok(());
+                        }
+                        level = Some(*level_num);
+                    }
+                }
+                "code.namespace" => {
+                    if let opentelemetry::logs::AnyValue::String(s) = value {
+                        target = Some(s.as_str());
+                    }
+                }
+                // Filter out known values
+                "logfire.json_schema"
+                | "code.filepath"
+                | "code.lineno"
+                | "thread.id"
+                | "thread.name"
+                | "logfire.null_args"
+                | "busy_ns"
+                | "idle_ns" => (),
+                _ => {
+                    fields.push((key, value));
+                }
+            }
+        }
+
+        if msg.is_none() {
+            // Use the body as the message if no logfire.msg
+            if let Some(AnyValue::String(s)) = log_record.body() {
+                msg = Some(s.as_str());
+            }
+        }
+
+        if self.options.include_timestamps {
+            if let Some(timestamp) = log_record.timestamp() {
+                let timestamp: DateTime<Utc> = timestamp.into();
+                write!(
+                    w,
+                    "{}",
+                    DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+                )?;
+            }
+        }
+
+        if let Some(level) = level {
+            level_int_to_text(level, w)?;
+        }
+
+        if let Some(target) = target {
+            write!(w, " {}", DIMMED_AND_ITALIC.paint(target))?;
+        }
+
+        if let Some(msg) = msg {
+            write!(w, " {}", BOLD.paint(msg))?;
+        }
+
+        if !fields.is_empty() {
+            for (idx, (key, value)) in fields.iter().enumerate() {
+                let key = key.as_str();
+                let value_str = match value {
+                    opentelemetry::logs::AnyValue::String(s) => s.as_str(),
+                    opentelemetry::logs::AnyValue::Int(i) => {
+                        return write!(w, " {}={}", ITALIC.paint(key), i);
+                    }
+                    opentelemetry::logs::AnyValue::Double(d) => {
+                        return write!(w, " {}={}", ITALIC.paint(key), d);
+                    }
+                    opentelemetry::logs::AnyValue::Boolean(b) => {
+                        return write!(w, " {}={}", ITALIC.paint(key), b);
+                    }
+                    _ => &format!("{value:?}"),
+                };
+                write!(w, " {}={}", ITALIC.paint(key), value_str)?;
+                if idx < fields.len() - 1 {
+                    write!(w, ",")?;
+                }
+            }
+        }
+
+        writeln!(w)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use insta::assert_snapshot;
-    use tracing::{Level, level_filters::LevelFilter};
-
     use crate::{
         config::{ConsoleOptions, Target},
         set_local_logfire,
         test_utils::remap_timestamps_in_console_output,
     };
+    use insta::assert_snapshot;
+    use tracing::{Level, level_filters::LevelFilter};
 
     #[test]
     fn test_print_to_console() {
