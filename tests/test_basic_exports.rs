@@ -1338,16 +1338,6 @@ fn test_basic_span() {
                             Some(
                                 (
                                     Static(
-                                        "logfire.level_num",
-                                    ),
-                                    Int(
-                                        9,
-                                    ),
-                                ),
-                            ),
-                            Some(
-                                (
-                                    Static(
                                         "logfire.msg",
                                     ),
                                     String(
@@ -1488,28 +1478,18 @@ fn test_basic_span() {
                         Some(
                             (
                                 Static(
-                                    "logfire.level_num",
+                                    "logfire.msg",
                                 ),
-                                Int(
-                                    17,
+                                String(
+                                    Owned(
+                                        "panic: oh no!",
+                                    ),
                                 ),
                             ),
                         ),
                     ],
                     overflow: Some(
                         [
-                            Some(
-                                (
-                                    Static(
-                                        "logfire.msg",
-                                    ),
-                                    String(
-                                        Owned(
-                                            "panic: oh no!",
-                                        ),
-                                    ),
-                                ),
-                            ),
                             Some(
                                 (
                                     Static(

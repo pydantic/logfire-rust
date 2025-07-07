@@ -297,7 +297,6 @@ impl ConsoleWriter {
 
     fn log_to_writer<W: io::Write>(&self, log_record: &SdkLogRecord, w: &mut W) -> io::Result<()> {
         let mut msg = None;
-        let mut level = None;
         let mut target = None;
 
         let mut fields = Vec::new();
@@ -307,14 +306,6 @@ impl ConsoleWriter {
                 "logfire.msg" => {
                     if let opentelemetry::logs::AnyValue::String(s) = value {
                         msg = Some(s.as_str());
-                    }
-                }
-                "logfire.level_num" => {
-                    if let opentelemetry::logs::AnyValue::Int(level_num) = value {
-                        if *level_num < level_to_level_number(self.options.min_log_level) {
-                            return Ok(());
-                        }
-                        level = Some(*level_num);
                     }
                 }
                 "code.namespace" => {
@@ -355,8 +346,8 @@ impl ConsoleWriter {
             }
         }
 
-        if let Some(level) = level {
-            level_int_to_text(level, w)?;
+        if let Some(level) = log_record.severity_number() {
+            level_int_to_text(level as i64, w)?;
         }
 
         if let Some(target) = target {

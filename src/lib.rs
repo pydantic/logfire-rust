@@ -70,19 +70,18 @@
 //! See [examples][usage::examples] subchapter of this documentation.
 
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::panic::PanicHookInfo;
 use std::sync::{Arc, Once};
-use std::{backtrace::Backtrace, env::VarError, sync::OnceLock, time::Duration};
+use std::{backtrace::Backtrace, env::VarError, time::Duration};
 
 use config::get_base_url_from_token;
 use opentelemetry::logs::LoggerProvider as _;
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLogger, SdkLoggerProvider};
+use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::trace::{BatchConfigBuilder, BatchSpanProcessor, SpanProcessor};
-use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer};
 use thiserror::Error;
 use tracing::Subscriber;
 use tracing::level_filters::LevelFilter;
@@ -95,6 +94,7 @@ use crate::config::{
     AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
 };
 use crate::internal::exporters::console::{ConsoleWriter, create_console_processors};
+use crate::internal::logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer};
 use crate::ulid_id_generator::UlidIdGenerator;
 
 #[cfg(any(docsrs, doctest))]
@@ -346,7 +346,7 @@ impl LogfireConfigBuilder {
 
         if !local {
             tracing::subscriber::set_global_default(subscriber.clone())?;
-            let logger = bridges::log::LogfireLogger::init(tracer.inner.clone());
+            let logger = bridges::log::LogfireLogger::init(tracer.clone());
             log::set_logger(logger)?;
             log::set_max_level(logger.max_level());
 
@@ -632,7 +632,7 @@ struct LogfireParts {
 /// Install `handler` as part of a chain of panic handlers.
 fn install_panic_handler() {
     fn panic_hook(info: &PanicHookInfo) {
-        if try_with_logfire_tracer(|tracer| tracer.handle_panics) != Some(true) {
+        if LogfireTracer::try_with(|tracer| tracer.handle_panics) != Some(true) {
             // this tracer is not handling panics
             return;
         }
@@ -690,39 +690,6 @@ fn get_optional_env(
             )),
         }
     }
-}
-
-#[derive(Clone)]
-struct LogfireTracer {
-    inner: Tracer,
-    logger: Arc<SdkLogger>,
-    handle_panics: bool,
-}
-
-// Global tracer configured in `logfire::configure()`
-static GLOBAL_TRACER: OnceLock<LogfireTracer> = OnceLock::new();
-
-thread_local! {
-    static LOCAL_TRACER: RefCell<Option<LogfireTracer>> = const { RefCell::new(None) };
-}
-
-/// Internal function to execute some code with the current tracer
-fn try_with_logfire_tracer<R>(f: impl FnOnce(&LogfireTracer) -> R) -> Option<R> {
-    let mut f = Some(f);
-    if let Some(result) = LOCAL_TRACER
-        .try_with(|local_logfire| {
-            local_logfire
-                .borrow()
-                .as_ref()
-                .map(|tracer| f.take().expect("not called")(tracer))
-        })
-        .ok()
-        .flatten()
-    {
-        return Some(result);
-    }
-
-    GLOBAL_TRACER.get().map(f.expect("local tls not used"))
 }
 
 /// Helper for installing a logfire guard locally to a thread.
