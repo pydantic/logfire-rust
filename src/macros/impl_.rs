@@ -5,8 +5,9 @@
 
 use std::{borrow::Cow, marker::PhantomData, ops::Deref};
 
-use crate::internal::logfire_tracer::LogfireTracer;
-use opentelemetry::{Key, Value, logs::Severity};
+use crate::{bridges::tracing::tracing_level_to_severity, internal::logfire_tracer::LogfireTracer};
+use opentelemetry::{Key, Value};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 // Re-export macros marked with `#[macro_export]` from this module, because `#[macro_export]` places
 // them at the crate root.
@@ -130,16 +131,6 @@ impl<T> FallbackToConvertValue<T> {
     }
 }
 
-fn tracing_level_to_severity(level: tracing::Level) -> Severity {
-    match level {
-        tracing::Level::ERROR => Severity::Error,
-        tracing::Level::WARN => Severity::Warn,
-        tracing::Level::INFO => Severity::Info,
-        tracing::Level::DEBUG => Severity::Debug,
-        tracing::Level::TRACE => Severity::Trace,
-    }
-}
-
 #[expect(clippy::too_many_arguments)] // FIXME probably can group these
 pub fn export_log(
     name: &'static str,
@@ -155,7 +146,7 @@ pub fn export_log(
     LogfireTracer::try_with(|tracer| {
         tracer.export_log(
             name,
-            parent_span,
+            &parent_span.context(),
             message,
             tracing_level_to_severity(level),
             schema,

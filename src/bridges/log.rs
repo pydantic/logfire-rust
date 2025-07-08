@@ -1,6 +1,7 @@
 use std::{borrow::Cow, sync::OnceLock};
 
 use log::{LevelFilter, Metadata, Record};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::internal::logfire_tracer::LogfireTracer;
 
@@ -41,7 +42,7 @@ impl log::Log for LogfireLogger {
         if self.enabled(record.metadata()) {
             self.tracer.export_log(
                 "log message",
-                &tracing::Span::current(),
+                &tracing::Span::current().context(),
                 record.args().to_string(),
                 level_to_severity(record.level()),
                 "{}",
@@ -1185,6 +1186,8 @@ mod tests {
         [2m1970-01-01T00:00:00.000004Z[0m[33m  WARN[0m [2;3mlogfire::bridges::log::tests[0m [1mwarning log[0m
         [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire::bridges::log::tests[0m [1merror log[0m
         [2m1970-01-01T00:00:00.000006Z[0m[35m TRACE[0m [2;3mlogfire::bridges::log::tests[0m [1mtrace log[0m
+        [2m1970-01-01T00:00:00.000007Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
+        [2m1970-01-01T00:00:00.000008Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
     }
 }

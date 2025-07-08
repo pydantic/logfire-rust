@@ -1,15 +1,16 @@
-use std::{any::TypeId, time::SystemTime};
+use std::{any::TypeId, borrow::Cow};
 
 use opentelemetry::{
     Context, KeyValue,
     global::ObjectSafeSpan,
-    trace::{SamplingDecision, TraceContextExt, Tracer},
+    logs::Severity,
+    trace::{SamplingDecision, TraceContextExt},
 };
 use tracing::{Subscriber, field::Visit};
 use tracing_opentelemetry::{OtelData, PreSampledTracer};
 use tracing_subscriber::{Layer, registry::LookupSpan};
 
-use crate::LogfireTracer;
+use crate::{__macros_impl::LogfireValue, LogfireTracer};
 
 /// A `tracing` layer that bridges `tracing` spans to OpenTelemetry spans using the Logfire tracer.
 ///
@@ -61,7 +62,7 @@ where
 
             attributes.push(opentelemetry::KeyValue::new(
                 "logfire.level_num",
-                level_to_level_number(*attrs.metadata().level()),
+                tracing_level_to_severity(*attrs.metadata().level()) as i64,
             ));
             attributes.push(KeyValue::new("logfire.span_type", "span"));
         }
@@ -235,14 +236,13 @@ fn emit_pending_span(tracer: &LogfireTracer, otel_data: &mut tracing_opentelemet
     pending_span.end_with_timestamp(start_time);
 }
 
-pub(crate) fn level_to_level_number(level: tracing::Level) -> i64 {
-    // These numbers were chosen to match the values emitted by the Python logfire SDK.
+pub(crate) fn tracing_level_to_severity(level: tracing::Level) -> Severity {
     match level {
-        tracing::Level::TRACE => 1,
-        tracing::Level::DEBUG => 5,
-        tracing::Level::INFO => 9,
-        tracing::Level::WARN => 13,
-        tracing::Level::ERROR => 17,
+        tracing::Level::ERROR => Severity::Error,
+        tracing::Level::WARN => Severity::Warn,
+        tracing::Level::INFO => Severity::Info,
+        tracing::Level::DEBUG => Severity::Debug,
+        tracing::Level::TRACE => Severity::Trace,
     }
 }
 
@@ -267,46 +267,22 @@ fn emit_event_as_log_span(
     let attributes: Vec<_> = visitor
         .fields
         .into_iter()
-        .map(|(name, value)| KeyValue::new(name, value))
-        .chain([
-            KeyValue::new("logfire.msg", message.clone()),
-            KeyValue::new(
-                "logfire.level_num",
-                level_to_level_number(*event.metadata().level()),
-            ),
-            KeyValue::new("logfire.span_type", "log"),
-        ])
-        .chain(
-            event
-                .metadata()
-                .file()
-                .map(|file| KeyValue::new("code.filepath", file)),
-        )
-        .chain(
-            event
-                .metadata()
-                .line()
-                .map(|line| KeyValue::new("code.lineno", i64::from(line))),
-        )
-        .chain(
-            event
-                .metadata()
-                .module_path()
-                .map(|module_path| KeyValue::new("code.namespace", module_path)),
-        )
+        .map(|(name, value)| {
+            LogfireValue::new(name, Some(opentelemetry::Value::String(value.into())))
+        })
         .collect();
 
-    // FIXME add thread.id, thread.name
-
-    let ts = SystemTime::now();
-    tracer
-        .inner
-        .span_builder(message)
-        .with_attributes(attributes)
-        .with_start_time(ts)
-        // .with_end_time(ts) seems to not be respected, need to explicitly end as per below
-        .start_with_context(&tracer.inner, parent_context)
-        .end_with_timestamp(ts);
+    tracer.export_log(
+        event.metadata().name(),
+        parent_context,
+        message,
+        tracing_level_to_severity(*event.metadata().level()),
+        "{}",
+        event.metadata().file().map(Cow::Borrowed),
+        event.metadata().line(),
+        event.metadata().module_path().map(Cow::Borrowed),
+        attributes,
+    );
 }
 
 /// Internal helper to `visit` a `tracing::Event` and collect relevant fields.
@@ -338,32 +314,42 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use insta::{assert_debug_snapshot, assert_snapshot};
-    use opentelemetry_sdk::trace::{InMemorySpanExporterBuilder, SimpleSpanProcessor};
+    use opentelemetry_sdk::{
+        logs::{InMemoryLogExporter, SimpleLogProcessor},
+        trace::{InMemorySpanExporterBuilder, SimpleSpanProcessor},
+    };
     use tracing::{Level, level_filters::LevelFilter};
 
     use crate::{
         config::{AdvancedOptions, ConsoleOptions, Target},
         set_local_logfire,
         test_utils::{
-            DeterministicExporter, DeterministicIdGenerator, remap_timestamps_in_console_output,
+            DeterministicExporter, DeterministicIdGenerator, make_deterministic_logs,
+            remap_timestamps_in_console_output,
         },
     };
 
     #[test]
     fn test_tracing_bridge() {
+        const TEST_FILE: &str = file!();
+        const TEST_LINE: u32 = line!();
+
         let exporter = InMemorySpanExporterBuilder::new().build();
+        let log_exporter = InMemoryLogExporter::default();
 
         let handler =
             crate::configure()
                 .local()
                 .send_to_logfire(false)
                 .with_additional_span_processor(SimpleSpanProcessor::new(
-                    DeterministicExporter::new(exporter.clone(), file!(), line!()),
+                    DeterministicExporter::new(exporter.clone(), TEST_FILE, TEST_LINE),
                 ))
                 .install_panic_handler()
                 .with_default_level_filter(LevelFilter::TRACE)
                 .with_advanced_options(
-                    AdvancedOptions::default().with_id_generator(DeterministicIdGenerator::new()),
+                    AdvancedOptions::default()
+                        .with_id_generator(DeterministicIdGenerator::new())
+                        .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
                 )
                 .finish()
                 .unwrap();
@@ -389,104 +375,6 @@ mod tests {
             SpanData {
                 span_context: SpanContext {
                     trace_id: 000000000000000000000000000000f0,
-                    span_id: 00000000000000f0,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 0000000000000000,
-                span_kind: Internal,
-                name: "root event",
-                start_time: SystemTime {
-                    tv_sec: 0,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 0,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "root event",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "log",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/bridges/tracing.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            13,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::bridges::tracing::tests",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f1,
                     span_id: 00000000000000f1,
                     trace_flags: TraceFlags(
                         1,
@@ -496,123 +384,15 @@ mod tests {
                         None,
                     ),
                 },
-                parent_span_id: 0000000000000000,
-                span_kind: Internal,
-                name: "root event with value",
-                start_time: SystemTime {
-                    tv_sec: 1,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 1,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "field_value",
-                        ),
-                        value: String(
-                            Owned(
-                                "1",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "root event with value",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "log",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/bridges/tracing.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            14,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::bridges::tracing::tests",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000f3,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f2,
+                parent_span_id: 00000000000000f0,
                 span_kind: Internal,
                 name: "root span",
                 start_time: SystemTime {
-                    tv_sec: 2,
+                    tv_sec: 0,
                     tv_nsec: 0,
                 },
                 end_time: SystemTime {
-                    tv_sec: 2,
+                    tv_sec: 0,
                     tv_nsec: 0,
                 },
                 attributes: [
@@ -641,7 +421,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            16,
+                            28,
                         ),
                     },
                     KeyValue {
@@ -700,8 +480,8 @@ mod tests {
             },
             SpanData {
                 span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000f5,
+                    trace_id: 000000000000000000000000000000f0,
+                    span_id: 00000000000000f3,
                     trace_flags: TraceFlags(
                         1,
                     ),
@@ -710,15 +490,15 @@ mod tests {
                         None,
                     ),
                 },
-                parent_span_id: 00000000000000f4,
+                parent_span_id: 00000000000000f2,
                 span_kind: Internal,
                 name: "hello world span",
                 start_time: SystemTime {
-                    tv_sec: 3,
+                    tv_sec: 1,
                     tv_nsec: 0,
                 },
                 end_time: SystemTime {
-                    tv_sec: 3,
+                    tv_sec: 1,
                     tv_nsec: 0,
                 },
                 attributes: [
@@ -747,7 +527,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            17,
+                            29,
                         ),
                     },
                     KeyValue {
@@ -792,7 +572,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "00000000000000f2",
+                                "00000000000000f0",
                             ),
                         ),
                     },
@@ -816,7 +596,245 @@ mod tests {
             },
             SpanData {
                 span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
+                    trace_id: 000000000000000000000000000000f0,
+                    span_id: 00000000000000f2,
+                    trace_flags: TraceFlags(
+                        1,
+                    ),
+                    is_remote: false,
+                    trace_state: TraceState(
+                        None,
+                    ),
+                },
+                parent_span_id: 00000000000000f0,
+                span_kind: Internal,
+                name: "hello world span",
+                start_time: SystemTime {
+                    tv_sec: 1,
+                    tv_nsec: 0,
+                },
+                end_time: SystemTime {
+                    tv_sec: 2,
+                    tv_nsec: 0,
+                },
+                attributes: [
+                    KeyValue {
+                        key: Static(
+                            "code.filepath",
+                        ),
+                        value: String(
+                            Static(
+                                "src/bridges/tracing.rs",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "code.namespace",
+                        ),
+                        value: String(
+                            Static(
+                                "logfire::bridges::tracing::tests",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "code.lineno",
+                        ),
+                        value: I64(
+                            29,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "thread.id",
+                        ),
+                        value: I64(
+                            0,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "thread.name",
+                        ),
+                        value: String(
+                            Owned(
+                                "bridges::tracing::tests::test_tracing_bridge",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.level_num",
+                        ),
+                        value: I64(
+                            9,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.span_type",
+                        ),
+                        value: String(
+                            Static(
+                                "span",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "busy_ns",
+                        ),
+                        value: I64(
+                            0,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "idle_ns",
+                        ),
+                        value: I64(
+                            0,
+                        ),
+                    },
+                ],
+                dropped_attributes_count: 0,
+                events: SpanEvents {
+                    events: [],
+                    dropped_count: 0,
+                },
+                links: SpanLinks {
+                    links: [],
+                    dropped_count: 0,
+                },
+                status: Unset,
+                instrumentation_scope: InstrumentationScope {
+                    name: "logfire",
+                    version: None,
+                    schema_url: None,
+                    attributes: [],
+                },
+            },
+            SpanData {
+                span_context: SpanContext {
+                    trace_id: 000000000000000000000000000000f0,
+                    span_id: 00000000000000f5,
+                    trace_flags: TraceFlags(
+                        1,
+                    ),
+                    is_remote: false,
+                    trace_state: TraceState(
+                        None,
+                    ),
+                },
+                parent_span_id: 00000000000000f4,
+                span_kind: Internal,
+                name: "debug span",
+                start_time: SystemTime {
+                    tv_sec: 3,
+                    tv_nsec: 0,
+                },
+                end_time: SystemTime {
+                    tv_sec: 3,
+                    tv_nsec: 0,
+                },
+                attributes: [
+                    KeyValue {
+                        key: Static(
+                            "code.filepath",
+                        ),
+                        value: String(
+                            Static(
+                                "src/bridges/tracing.rs",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "code.namespace",
+                        ),
+                        value: String(
+                            Static(
+                                "logfire::bridges::tracing::tests",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "code.lineno",
+                        ),
+                        value: I64(
+                            30,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "thread.id",
+                        ),
+                        value: I64(
+                            0,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "thread.name",
+                        ),
+                        value: String(
+                            Owned(
+                                "bridges::tracing::tests::test_tracing_bridge",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.level_num",
+                        ),
+                        value: I64(
+                            5,
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.span_type",
+                        ),
+                        value: String(
+                            Static(
+                                "pending_span",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "logfire.pending_parent_id",
+                        ),
+                        value: String(
+                            Owned(
+                                "00000000000000f0",
+                            ),
+                        ),
+                    },
+                ],
+                dropped_attributes_count: 0,
+                events: SpanEvents {
+                    events: [],
+                    dropped_count: 0,
+                },
+                links: SpanLinks {
+                    links: [],
+                    dropped_count: 0,
+                },
+                status: Unset,
+                instrumentation_scope: InstrumentationScope {
+                    name: "logfire",
+                    version: None,
+                    schema_url: None,
+                    attributes: [],
+                },
+            },
+            SpanData {
+                span_context: SpanContext {
+                    trace_id: 000000000000000000000000000000f0,
                     span_id: 00000000000000f4,
                     trace_flags: TraceFlags(
                         1,
@@ -826,9 +844,9 @@ mod tests {
                         None,
                     ),
                 },
-                parent_span_id: 00000000000000f2,
+                parent_span_id: 00000000000000f0,
                 span_kind: Internal,
-                name: "hello world span",
+                name: "debug span",
                 start_time: SystemTime {
                     tv_sec: 3,
                     tv_nsec: 0,
@@ -863,7 +881,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            17,
+                            30,
                         ),
                     },
                     KeyValue {
@@ -889,7 +907,7 @@ mod tests {
                             "logfire.level_num",
                         ),
                         value: I64(
-                            9,
+                            5,
                         ),
                     },
                     KeyValue {
@@ -938,7 +956,7 @@ mod tests {
             },
             SpanData {
                 span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
+                    trace_id: 000000000000000000000000000000f0,
                     span_id: 00000000000000f7,
                     trace_flags: TraceFlags(
                         1,
@@ -950,7 +968,7 @@ mod tests {
                 },
                 parent_span_id: 00000000000000f6,
                 span_kind: Internal,
-                name: "debug span",
+                name: "debug span with explicit parent",
                 start_time: SystemTime {
                     tv_sec: 5,
                     tv_nsec: 0,
@@ -985,7 +1003,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            18,
+                            31,
                         ),
                     },
                     KeyValue {
@@ -1030,7 +1048,7 @@ mod tests {
                         ),
                         value: String(
                             Owned(
-                                "00000000000000f2",
+                                "00000000000000f0",
                             ),
                         ),
                     },
@@ -1054,7 +1072,7 @@ mod tests {
             },
             SpanData {
                 span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
+                    trace_id: 000000000000000000000000000000f0,
                     span_id: 00000000000000f6,
                     trace_flags: TraceFlags(
                         1,
@@ -1064,9 +1082,9 @@ mod tests {
                         None,
                     ),
                 },
-                parent_span_id: 00000000000000f2,
+                parent_span_id: 00000000000000f0,
                 span_kind: Internal,
-                name: "debug span",
+                name: "debug span with explicit parent",
                 start_time: SystemTime {
                     tv_sec: 5,
                     tv_nsec: 0,
@@ -1101,7 +1119,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            18,
+                            31,
                         ),
                     },
                     KeyValue {
@@ -1176,452 +1194,8 @@ mod tests {
             },
             SpanData {
                 span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000f9,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f8,
-                span_kind: Internal,
-                name: "debug span with explicit parent",
-                start_time: SystemTime {
-                    tv_sec: 7,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 7,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/bridges/tracing.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::bridges::tracing::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            19,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "bridges::tracing::tests::test_tracing_bridge",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "pending_span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.pending_parent_id",
-                        ),
-                        value: String(
-                            Owned(
-                                "00000000000000f2",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000f8,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f2,
-                span_kind: Internal,
-                name: "debug span with explicit parent",
-                start_time: SystemTime {
-                    tv_sec: 7,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 8,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/bridges/tracing.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::bridges::tracing::tests",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            19,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.id",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "thread.name",
-                        ),
-                        value: String(
-                            Owned(
-                                "bridges::tracing::tests::test_tracing_bridge",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "span",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "busy_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "idle_ns",
-                        ),
-                        value: I64(
-                            0,
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000fa,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f2,
-                span_kind: Internal,
-                name: "hello world log",
-                start_time: SystemTime {
-                    tv_sec: 9,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 9,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "hello world log",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "log",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/bridges/tracing.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            21,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::bridges::tracing::tests",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000fb,
-                    trace_flags: TraceFlags(
-                        1,
-                    ),
-                    is_remote: false,
-                    trace_state: TraceState(
-                        None,
-                    ),
-                },
-                parent_span_id: 00000000000000f2,
-                span_kind: Internal,
-                name: "hello world log with value",
-                start_time: SystemTime {
-                    tv_sec: 10,
-                    tv_nsec: 0,
-                },
-                end_time: SystemTime {
-                    tv_sec: 10,
-                    tv_nsec: 0,
-                },
-                attributes: [
-                    KeyValue {
-                        key: Static(
-                            "field_value",
-                        ),
-                        value: String(
-                            Owned(
-                                "1",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.msg",
-                        ),
-                        value: String(
-                            Owned(
-                                "hello world log with value",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.level_num",
-                        ),
-                        value: I64(
-                            9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "log",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.filepath",
-                        ),
-                        value: String(
-                            Static(
-                                "src/bridges/tracing.rs",
-                            ),
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.lineno",
-                        ),
-                        value: I64(
-                            22,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "code.namespace",
-                        ),
-                        value: String(
-                            Static(
-                                "logfire::bridges::tracing::tests",
-                            ),
-                        ),
-                    },
-                ],
-                dropped_attributes_count: 0,
-                events: SpanEvents {
-                    events: [],
-                    dropped_count: 0,
-                },
-                links: SpanLinks {
-                    links: [],
-                    dropped_count: 0,
-                },
-                status: Unset,
-                instrumentation_scope: InstrumentationScope {
-                    name: "logfire",
-                    version: None,
-                    schema_url: None,
-                    attributes: [],
-                },
-            },
-            SpanData {
-                span_context: SpanContext {
-                    trace_id: 000000000000000000000000000000f2,
-                    span_id: 00000000000000f2,
+                    trace_id: 000000000000000000000000000000f0,
+                    span_id: 00000000000000f0,
                     trace_flags: TraceFlags(
                         1,
                     ),
@@ -1634,11 +1208,11 @@ mod tests {
                 span_kind: Internal,
                 name: "root span",
                 start_time: SystemTime {
-                    tv_sec: 2,
+                    tv_sec: 0,
                     tv_nsec: 0,
                 },
                 end_time: SystemTime {
-                    tv_sec: 11,
+                    tv_sec: 7,
                     tv_nsec: 0,
                 },
                 attributes: [
@@ -1667,7 +1241,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            16,
+                            28,
                         ),
                     },
                     KeyValue {
@@ -1742,6 +1316,609 @@ mod tests {
             },
         ]
         "#);
+
+        let logs = log_exporter.get_emitted_logs().unwrap();
+        let logs = make_deterministic_logs(logs, TEST_FILE, TEST_LINE);
+        assert_debug_snapshot!(logs, @r#"
+        [
+            LogDataWithResource {
+                record: SdkLogRecord {
+                    event_name: None,
+                    target: None,
+                    timestamp: Some(
+                        SystemTime {
+                            tv_sec: 0,
+                            tv_nsec: 0,
+                        },
+                    ),
+                    observed_timestamp: Some(
+                        SystemTime {
+                            tv_sec: 0,
+                            tv_nsec: 0,
+                        },
+                    ),
+                    trace_context: Some(
+                        TraceContext {
+                            trace_id: 00000000000000000000000000000000,
+                            span_id: 0000000000000000,
+                            trace_flags: Some(
+                                TraceFlags(
+                                    0,
+                                ),
+                            ),
+                        },
+                    ),
+                    severity_text: Some(
+                        "INFO",
+                    ),
+                    severity_number: Some(
+                        Info,
+                    ),
+                    body: Some(
+                        String(
+                            Owned(
+                                "root event",
+                            ),
+                        ),
+                    ),
+                    attributes: GrowableArray {
+                        inline: [
+                            Some(
+                                (
+                                    Static(
+                                        "code.filepath",
+                                    ),
+                                    String(
+                                        Static(
+                                            "src/bridges/tracing.rs",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "code.lineno",
+                                    ),
+                                    Int(
+                                        25,
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "code.namespace",
+                                    ),
+                                    String(
+                                        Static(
+                                            "logfire::bridges::tracing::tests",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.json_schema",
+                                    ),
+                                    String(
+                                        Static(
+                                            "{}",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.msg",
+                                    ),
+                                    String(
+                                        Owned(
+                                            "root event",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                        overflow: Some(
+                            [
+                                Some(
+                                    (
+                                        Static(
+                                            "thread.id",
+                                        ),
+                                        Int(
+                                            0,
+                                        ),
+                                    ),
+                                ),
+                                Some(
+                                    (
+                                        Static(
+                                            "thread.name",
+                                        ),
+                                        String(
+                                            Owned(
+                                                "bridges::tracing::tests::test_tracing_bridge",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ],
+                        ),
+                        count: 5,
+                    },
+                },
+                instrumentation: InstrumentationScope {
+                    name: "logfire",
+                    version: None,
+                    schema_url: None,
+                    attributes: [],
+                },
+                resource: Resource {
+                    inner: ResourceInner {
+                        attrs: {},
+                        schema_url: None,
+                    },
+                },
+            },
+            LogDataWithResource {
+                record: SdkLogRecord {
+                    event_name: None,
+                    target: None,
+                    timestamp: Some(
+                        SystemTime {
+                            tv_sec: 1,
+                            tv_nsec: 0,
+                        },
+                    ),
+                    observed_timestamp: Some(
+                        SystemTime {
+                            tv_sec: 1,
+                            tv_nsec: 0,
+                        },
+                    ),
+                    trace_context: Some(
+                        TraceContext {
+                            trace_id: 00000000000000000000000000000000,
+                            span_id: 0000000000000000,
+                            trace_flags: Some(
+                                TraceFlags(
+                                    0,
+                                ),
+                            ),
+                        },
+                    ),
+                    severity_text: Some(
+                        "INFO",
+                    ),
+                    severity_number: Some(
+                        Info,
+                    ),
+                    body: Some(
+                        String(
+                            Owned(
+                                "root event with value",
+                            ),
+                        ),
+                    ),
+                    attributes: GrowableArray {
+                        inline: [
+                            Some(
+                                (
+                                    Static(
+                                        "code.filepath",
+                                    ),
+                                    String(
+                                        Static(
+                                            "src/bridges/tracing.rs",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "code.lineno",
+                                    ),
+                                    Int(
+                                        26,
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "code.namespace",
+                                    ),
+                                    String(
+                                        Static(
+                                            "logfire::bridges::tracing::tests",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "field_value",
+                                    ),
+                                    String(
+                                        Owned(
+                                            "1",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.json_schema",
+                                    ),
+                                    String(
+                                        Static(
+                                            "{}",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                        overflow: Some(
+                            [
+                                Some(
+                                    (
+                                        Static(
+                                            "logfire.msg",
+                                        ),
+                                        String(
+                                            Owned(
+                                                "root event with value",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                Some(
+                                    (
+                                        Static(
+                                            "thread.id",
+                                        ),
+                                        Int(
+                                            0,
+                                        ),
+                                    ),
+                                ),
+                                Some(
+                                    (
+                                        Static(
+                                            "thread.name",
+                                        ),
+                                        String(
+                                            Owned(
+                                                "bridges::tracing::tests::test_tracing_bridge",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ],
+                        ),
+                        count: 5,
+                    },
+                },
+                instrumentation: InstrumentationScope {
+                    name: "logfire",
+                    version: None,
+                    schema_url: None,
+                    attributes: [],
+                },
+                resource: Resource {
+                    inner: ResourceInner {
+                        attrs: {},
+                        schema_url: None,
+                    },
+                },
+            },
+            LogDataWithResource {
+                record: SdkLogRecord {
+                    event_name: None,
+                    target: None,
+                    timestamp: Some(
+                        SystemTime {
+                            tv_sec: 2,
+                            tv_nsec: 0,
+                        },
+                    ),
+                    observed_timestamp: Some(
+                        SystemTime {
+                            tv_sec: 2,
+                            tv_nsec: 0,
+                        },
+                    ),
+                    trace_context: Some(
+                        TraceContext {
+                            trace_id: 000000000000000000000000000000f0,
+                            span_id: 00000000000000f0,
+                            trace_flags: Some(
+                                TraceFlags(
+                                    1,
+                                ),
+                            ),
+                        },
+                    ),
+                    severity_text: Some(
+                        "INFO",
+                    ),
+                    severity_number: Some(
+                        Info,
+                    ),
+                    body: Some(
+                        String(
+                            Owned(
+                                "hello world log",
+                            ),
+                        ),
+                    ),
+                    attributes: GrowableArray {
+                        inline: [
+                            Some(
+                                (
+                                    Static(
+                                        "code.filepath",
+                                    ),
+                                    String(
+                                        Static(
+                                            "src/bridges/tracing.rs",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "code.lineno",
+                                    ),
+                                    Int(
+                                        33,
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "code.namespace",
+                                    ),
+                                    String(
+                                        Static(
+                                            "logfire::bridges::tracing::tests",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.json_schema",
+                                    ),
+                                    String(
+                                        Static(
+                                            "{}",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.msg",
+                                    ),
+                                    String(
+                                        Owned(
+                                            "hello world log",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                        overflow: Some(
+                            [
+                                Some(
+                                    (
+                                        Static(
+                                            "thread.id",
+                                        ),
+                                        Int(
+                                            0,
+                                        ),
+                                    ),
+                                ),
+                                Some(
+                                    (
+                                        Static(
+                                            "thread.name",
+                                        ),
+                                        String(
+                                            Owned(
+                                                "bridges::tracing::tests::test_tracing_bridge",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ],
+                        ),
+                        count: 5,
+                    },
+                },
+                instrumentation: InstrumentationScope {
+                    name: "logfire",
+                    version: None,
+                    schema_url: None,
+                    attributes: [],
+                },
+                resource: Resource {
+                    inner: ResourceInner {
+                        attrs: {},
+                        schema_url: None,
+                    },
+                },
+            },
+            LogDataWithResource {
+                record: SdkLogRecord {
+                    event_name: None,
+                    target: None,
+                    timestamp: Some(
+                        SystemTime {
+                            tv_sec: 3,
+                            tv_nsec: 0,
+                        },
+                    ),
+                    observed_timestamp: Some(
+                        SystemTime {
+                            tv_sec: 3,
+                            tv_nsec: 0,
+                        },
+                    ),
+                    trace_context: Some(
+                        TraceContext {
+                            trace_id: 000000000000000000000000000000f0,
+                            span_id: 00000000000000f0,
+                            trace_flags: Some(
+                                TraceFlags(
+                                    1,
+                                ),
+                            ),
+                        },
+                    ),
+                    severity_text: Some(
+                        "INFO",
+                    ),
+                    severity_number: Some(
+                        Info,
+                    ),
+                    body: Some(
+                        String(
+                            Owned(
+                                "hello world log with value",
+                            ),
+                        ),
+                    ),
+                    attributes: GrowableArray {
+                        inline: [
+                            Some(
+                                (
+                                    Static(
+                                        "code.filepath",
+                                    ),
+                                    String(
+                                        Static(
+                                            "src/bridges/tracing.rs",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "code.lineno",
+                                    ),
+                                    Int(
+                                        34,
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "code.namespace",
+                                    ),
+                                    String(
+                                        Static(
+                                            "logfire::bridges::tracing::tests",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "field_value",
+                                    ),
+                                    String(
+                                        Owned(
+                                            "1",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                            Some(
+                                (
+                                    Static(
+                                        "logfire.json_schema",
+                                    ),
+                                    String(
+                                        Static(
+                                            "{}",
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ],
+                        overflow: Some(
+                            [
+                                Some(
+                                    (
+                                        Static(
+                                            "logfire.msg",
+                                        ),
+                                        String(
+                                            Owned(
+                                                "hello world log with value",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                Some(
+                                    (
+                                        Static(
+                                            "thread.id",
+                                        ),
+                                        Int(
+                                            0,
+                                        ),
+                                    ),
+                                ),
+                                Some(
+                                    (
+                                        Static(
+                                            "thread.name",
+                                        ),
+                                        String(
+                                            Owned(
+                                                "bridges::tracing::tests::test_tracing_bridge",
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ],
+                        ),
+                        count: 5,
+                    },
+                },
+                instrumentation: InstrumentationScope {
+                    name: "logfire",
+                    version: None,
+                    schema_url: None,
+                    attributes: [],
+                },
+                resource: Resource {
+                    inner: ResourceInner {
+                        attrs: {},
+                        schema_url: None,
+                    },
+                },
+            },
+        ]
+        "#);
     }
 
     #[test]
@@ -1792,6 +1969,8 @@ mod tests {
         [2m1970-01-01T00:00:00.000005Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000006Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log[0m
         [2m1970-01-01T00:00:00.000007Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log with value[0m [3mfield_value[0m=1
+        [2m1970-01-01T00:00:00.000008Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
+        [2m1970-01-01T00:00:00.000009Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
     }
 }

@@ -10,7 +10,7 @@ use opentelemetry_sdk::logs::SdkLogRecord;
 use opentelemetry_sdk::trace::SpanData;
 
 use crate::{
-    bridges::tracing::level_to_level_number,
+    bridges::tracing::tracing_level_to_severity,
     config::{ConsoleOptions, Target},
     internal::{constants::ATTRIBUTES_SPAN_TYPE_KEY, span_data_ext::SpanDataExt},
 };
@@ -232,7 +232,8 @@ impl ConsoleWriter {
                 }
                 "logfire.level_num" => {
                     if let Value::I64(level_num) = kv.value {
-                        if level_num < level_to_level_number(self.options.min_log_level) {
+                        if level_num < tracing_level_to_severity(self.options.min_log_level) as i64
+                        {
                             return Ok(());
                         }
                         level = Some(level_num);
@@ -428,7 +429,7 @@ mod tests {
         }))
         .unwrap_err();
 
-        guard.shutdown_handler.shutdown().unwrap();
+        drop(guard);
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -489,6 +490,8 @@ mod tests {
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
         [31m ERROR[0m [1mpanic: oh no![0m [3mbacktrace[0m=disabled backtrace
+        [34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
+        [34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
     }
 
@@ -534,6 +537,8 @@ mod tests {
         [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
         [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
         [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [1mpanic: oh no![0m [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000004Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
+        [2m1970-01-01T00:00:00.000005Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
     }
 
