@@ -11,7 +11,6 @@ use opentelemetry::{
     trace::TraceContextExt,
 };
 use opentelemetry_sdk::{logs::SdkLogger, trace::Tracer};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::__macros_impl::LogfireValue;
 
@@ -52,7 +51,7 @@ impl LogfireTracer {
     pub fn export_log(
         &self,
         name: &'static str,
-        parent_span: &tracing::Span,
+        parent_context: &opentelemetry::Context,
         message: String,
         severity: Severity,
         schema: &'static str,
@@ -139,9 +138,7 @@ impl LogfireTracer {
             log_record.add_attribute("logfire.null_args", AnyValue::ListAny(Box::new(null_args)));
         }
 
-        // Get trace context from parent span
-        let context = parent_span.context();
-        let span = context.span();
+        let span = parent_context.span();
         let span_context = span.span_context();
         log_record.set_trace_context(
             span_context.trace_id(),
