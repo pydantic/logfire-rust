@@ -21,7 +21,10 @@ use crate::{__macros_impl::LogfireValue, LogfireTracer};
 /// this layer.
 pub struct LogfireTracingLayer<S> {
     tracer: LogfireTracer,
+    /// This odd structure with two inner layers is deliberate; we don't want to send any events
+    /// to the `otel_layer` and we only send (some) events to the `metrics_layer`.
     otel_layer: tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
+    metrics_layer: tracing_opentelemetry::MetricsLayer<S>,
 }
 
 impl<S> LogfireTracingLayer<S>
@@ -34,7 +37,13 @@ where
             .with_error_records_to_exceptions(true)
             .with_tracer(tracer.inner.clone());
 
-        LogfireTracingLayer { tracer, otel_layer }
+        let metrics_layer = tracing_opentelemetry::MetricsLayer::new(tracer.meter_provider.clone());
+
+        LogfireTracingLayer {
+            tracer,
+            otel_layer,
+            metrics_layer,
+        }
     }
 }
 
@@ -50,6 +59,9 @@ where
     ) {
         // Delegate to OpenTelemetry layer first
         self.otel_layer.on_new_span(attrs, id, ctx.clone());
+
+        // Delegate to MetricsLayer as well
+        self.metrics_layer.on_new_span(attrs, id, ctx.clone());
 
         // Add Logfire-specific attributes
         let span = ctx.span(id).expect("span not found");
@@ -97,7 +109,22 @@ where
     ///
     /// Instead we need to handle them here and write them to the logfire writer.
     fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
-        // Don't delegate events to OpenTelemetry layer, we emit them as log spans instead.
+        let is_metrics_event = event.fields().any(|field| {
+            let name = field.name();
+
+            name.starts_with("counter.")
+                || name.starts_with("monotonic_counter.")
+                || name.starts_with("histogram.")
+                || name.starts_with("monotonic_histogram.")
+        });
+
+        // Allow the metrics layer to see all events, so it can record metrics as needed.
+        if is_metrics_event {
+            self.metrics_layer.on_event(event, ctx.clone());
+        }
+
+        // However we don't want to allow the opentelemetry layer to see events, it will record them
+        // as span events. Instead we handle them here and emit them as log spans.
         let event_span = ctx.event_span(event).and_then(|span| ctx.span(&span.id()));
         let mut event_span_extensions = event_span.as_ref().map(|s| s.extensions_mut());
 
@@ -162,6 +189,43 @@ where
         } else {
             unsafe { self.otel_layer.downcast_raw(id) }
         }
+    }
+
+    fn on_register_dispatch(&self, subscriber: &tracing::Dispatch) {
+        self.otel_layer.on_register_dispatch(subscriber);
+        self.metrics_layer.on_register_dispatch(subscriber);
+    }
+
+    fn on_layer(&mut self, subscriber: &mut S) {
+        self.otel_layer.on_layer(subscriber);
+        self.metrics_layer.on_layer(subscriber);
+    }
+
+    fn enabled(
+        &self,
+        metadata: &tracing::Metadata<'_>,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        self.otel_layer.enabled(metadata, ctx.clone()) || self.metrics_layer.enabled(metadata, ctx)
+    }
+
+    fn event_enabled(
+        &self,
+        event: &tracing::Event<'_>,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        self.otel_layer.event_enabled(event, ctx.clone())
+            || self.metrics_layer.event_enabled(event, ctx)
+    }
+
+    fn on_id_change(
+        &self,
+        old: &tracing::span::Id,
+        new: &tracing::span::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        self.otel_layer.on_id_change(old, new, ctx.clone());
+        self.metrics_layer.on_id_change(old, new, ctx);
     }
 }
 
@@ -1972,5 +2036,233 @@ mod tests {
         [2m1970-01-01T00:00:00.000008Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
         [2m1970-01-01T00:00:00.000009Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
+    }
+
+    #[tokio::test]
+    async fn test_tracing_metrics_layer() {
+        use crate::test_utils::make_deterministic_resource_metrics;
+        use opentelemetry_sdk::metrics::{
+            InMemoryMetricExporterBuilder, ManualReader, data::ResourceMetrics,
+            exporter::PushMetricExporter, reader::MetricReader,
+        };
+        use std::sync::Arc;
+
+        #[derive(Clone, Debug)]
+        struct SharedManualReader {
+            reader: Arc<ManualReader>,
+        }
+
+        impl SharedManualReader {
+            fn new(reader: ManualReader) -> Self {
+                Self {
+                    reader: Arc::new(reader),
+                }
+            }
+
+            async fn export<E: PushMetricExporter>(&self, exporter: &E) {
+                let mut metrics = ResourceMetrics::default();
+                self.reader.collect(&mut metrics).unwrap();
+                exporter.export(&mut metrics).await.unwrap();
+            }
+        }
+
+        impl MetricReader for SharedManualReader {
+            fn register_pipeline(
+                &self,
+                pipeline: std::sync::Weak<opentelemetry_sdk::metrics::Pipeline>,
+            ) {
+                self.reader.register_pipeline(pipeline);
+            }
+
+            fn collect(
+                &self,
+                rm: &mut opentelemetry_sdk::metrics::data::ResourceMetrics,
+            ) -> opentelemetry_sdk::error::OTelSdkResult {
+                self.reader.collect(rm)
+            }
+
+            fn force_flush(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+                self.reader.force_flush()
+            }
+
+            fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+                self.reader.shutdown()
+            }
+
+            fn shutdown_with_timeout(
+                &self,
+                timeout: std::time::Duration,
+            ) -> opentelemetry_sdk::error::OTelSdkResult {
+                self.reader.shutdown_with_timeout(timeout)
+            }
+
+            fn temporality(
+                &self,
+                kind: opentelemetry_sdk::metrics::InstrumentKind,
+            ) -> opentelemetry_sdk::metrics::Temporality {
+                self.reader.temporality(kind)
+            }
+        }
+
+        let mut exporter = InMemoryMetricExporterBuilder::new().build();
+
+        let reader = SharedManualReader::new(
+            ManualReader::builder()
+                .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
+                .build(),
+        );
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_metrics(Some(
+                crate::config::MetricsOptions::default().with_additional_reader(reader.clone()),
+            ))
+            .install_panic_handler()
+            .with_default_level_filter(LevelFilter::TRACE)
+            .with_advanced_options(
+                AdvancedOptions::default()
+                    .with_resource(
+                        opentelemetry_sdk::Resource::builder_empty()
+                            .with_service_name("test")
+                            .build(),
+                    )
+                    .with_id_generator(DeterministicIdGenerator::new()),
+            )
+            .finish()
+            .unwrap();
+
+        let guard = set_local_logfire(handler.clone());
+
+        tracing::info!(counter.test_counter = 1, "test counter event");
+        tracing::info!(histogram.test_histogram = 2.5, "test histogram event");
+        tracing::info!(
+            monotonic_counter.test_monotonic = 3,
+            "test monotonic counter event"
+        );
+
+        tracing::info!(counter.test_counter = 2, "test counter event");
+        tracing::info!(histogram.test_histogram = 3.5, "test histogram event");
+        tracing::info!(
+            monotonic_counter.test_monotonic = 4,
+            "test monotonic counter event"
+        );
+
+        reader.export(&mut exporter).await;
+
+        tracing::info!(counter.test_counter = 3, "test counter event");
+        tracing::info!(histogram.test_histogram = 4.5, "test histogram event");
+        tracing::info!(
+            monotonic_counter.test_monotonic = 5,
+            "test monotonic counter event"
+        );
+
+        reader.export(&mut exporter).await;
+
+        handler.shutdown().unwrap();
+
+        let metrics = exporter.get_finished_metrics().unwrap();
+        let metrics = make_deterministic_resource_metrics(metrics);
+
+        assert_debug_snapshot!(metrics, @r#"
+        [
+            DeterministicResourceMetrics {
+                resource: Resource {
+                    inner: ResourceInner {
+                        attrs: {
+                            Static(
+                                "service.name",
+                            ): String(
+                                Static(
+                                    "test",
+                                ),
+                            ),
+                        },
+                        schema_url: None,
+                    },
+                },
+                scope_metrics: [
+                    DeterministicScopeMetrics {
+                        scope: InstrumentationScope {
+                            name: "tracing/tracing-opentelemetry",
+                            version: Some(
+                                "0.31.0",
+                            ),
+                            schema_url: None,
+                            attributes: [],
+                        },
+                        metrics: [
+                            DeterministicMetric {
+                                name: "test_counter",
+                                values: [
+                                    3,
+                                ],
+                            },
+                            DeterministicMetric {
+                                name: "test_histogram",
+                                values: [
+                                    2,
+                                ],
+                            },
+                            DeterministicMetric {
+                                name: "test_monotonic",
+                                values: [
+                                    7,
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+            DeterministicResourceMetrics {
+                resource: Resource {
+                    inner: ResourceInner {
+                        attrs: {
+                            Static(
+                                "service.name",
+                            ): String(
+                                Static(
+                                    "test",
+                                ),
+                            ),
+                        },
+                        schema_url: None,
+                    },
+                },
+                scope_metrics: [
+                    DeterministicScopeMetrics {
+                        scope: InstrumentationScope {
+                            name: "tracing/tracing-opentelemetry",
+                            version: Some(
+                                "0.31.0",
+                            ),
+                            schema_url: None,
+                            attributes: [],
+                        },
+                        metrics: [
+                            DeterministicMetric {
+                                name: "test_counter",
+                                values: [
+                                    6,
+                                ],
+                            },
+                            DeterministicMetric {
+                                name: "test_histogram",
+                                values: [
+                                    1,
+                                ],
+                            },
+                            DeterministicMetric {
+                                name: "test_monotonic",
+                                values: [
+                                    5,
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+        ]
+        "#);
     }
 }
