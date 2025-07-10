@@ -97,3 +97,4 @@
 //! See [examples] subchapter of this documentation.
 
 pub mod examples;
+pub mod metrics;
