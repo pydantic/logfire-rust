@@ -528,6 +528,7 @@ impl LogfireConfigBuilder {
 
         let tracer = LogfireTracer {
             inner: tracer,
+            meter_provider: meter_provider.clone(),
             logger,
             handle_panics: self.install_panic_handler,
         };

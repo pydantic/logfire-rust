@@ -190,13 +190,39 @@ pub fn make_deterministic_resource_metrics(
                 .scope_metrics()
                 .map(|scope_metric| DeterministicScopeMetrics {
                     scope: scope_metric.scope().clone(),
-                    sum_metrics: scope_metric
+                    metrics: scope_metric
                         .metrics()
                         .filter_map(|metric| {
-                            if let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() {
-                                Some(sum.data_points().map(|dp| dp.value()).collect())
-                            } else {
-                                None
+                            let name = metric.name().to_string();
+                            match metric.data() {
+                                AggregatedMetrics::U64(MetricData::Sum(sum)) => {
+                                    Some(DeterministicMetric {
+                                        name,
+                                        values: sum
+                                            .data_points()
+                                            .map(|dp| dp.value() as u64)
+                                            .collect(),
+                                    })
+                                }
+                                AggregatedMetrics::I64(MetricData::Sum(sum)) => {
+                                    Some(DeterministicMetric {
+                                        name,
+                                        values: sum
+                                            .data_points()
+                                            .map(|dp| dp.value() as u64)
+                                            .collect(),
+                                    })
+                                }
+                                AggregatedMetrics::F64(MetricData::Histogram(histogram)) => {
+                                    Some(DeterministicMetric {
+                                        name,
+                                        values: histogram
+                                            .data_points()
+                                            .map(|dp| dp.count() as u64)
+                                            .collect(),
+                                    })
+                                }
+                                _ => None,
                             }
                         })
                         .collect(),
@@ -206,14 +232,20 @@ pub fn make_deterministic_resource_metrics(
         .collect()
 }
 
-/// A reproduction of the `ScopeMetrics` type from the otel sdk, narrowed to u64 sum metrics
+/// A reproduction of the `ScopeMetrics` type from the otel sdk, narrowed to support histogram and counter metrics
 ///
 /// This exists because the otel SDK (as of version 0.30) exposes no way to create a `ScopeMetrics`
 /// outside of the library.
 #[derive(Debug)]
 pub struct DeterministicScopeMetrics {
     scope: InstrumentationScope,
-    sum_metrics: Vec<Vec<u64>>,
+    metrics: Vec<DeterministicMetric>,
+}
+
+#[derive(Debug)]
+pub struct DeterministicMetric {
+    name: String,
+    values: Vec<u64>,
 }
 
 /// Deterministic resource metrics
