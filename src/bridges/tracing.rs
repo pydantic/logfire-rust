@@ -12,10 +12,8 @@ use tracing_subscriber::{Layer, registry::LookupSpan};
 
 use crate::{__macros_impl::LogfireValue, LogfireTracer};
 
-/// A `tracing` layer that bridges `tracing` spans to OpenTelemetry spans using the Logfire tracer.
-///
-/// This layer is a wrapper around `tracing_opentelemetry::OpenTelemetryLayer` that adds additional
-/// Logfire-specific metadata.
+/// A `tracing` layer that bridges `tracing` spans to OpenTelemetry spans using the Pydantic Logfire tracer.
+/// Pydantic Logfire-specific metadata.
 ///
 /// See [`ShutdownHandler::tracing_layer`][crate::ShutdownHandler::tracing_layer] for how to use
 /// this layer.

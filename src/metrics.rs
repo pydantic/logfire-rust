@@ -13,7 +13,7 @@ static METER: LazyLock<Meter> = LazyLock::new(|| opentelemetry::global::meter("l
 macro_rules! make_metric_doc {
     ($method: ident, $ty:ty, $var_name:literal, $usage:literal) => {
         concat!(
-"Wrapper for [`Meter::", stringify!($method), "`] using logfire's global meter.
+"Wrapper for [`Meter::", stringify!($method), "`] using Pydantic Logfire's global meter.
 
 # Examples
 
@@ -31,7 +31,7 @@ static ", $var_name, ": LazyLock<opentelemetry::metrics::", stringify!($ty), "> 
 });
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // ensure logfire is configured before accessing the metric for the first time
+    // ensure Pydantic Logfire is configured before accessing the metric for the first time
     let shutdown_handler = logfire::configure()
 #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
         .finish()?;
