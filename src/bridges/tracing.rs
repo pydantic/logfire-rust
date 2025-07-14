@@ -24,7 +24,7 @@ pub struct LogfireTracingLayer<S> {
     /// This odd structure with two inner layers is deliberate; we don't want to send any events
     /// to the `otel_layer` and we only send (some) events to the `metrics_layer`.
     otel_layer: tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
-    metrics_layer: tracing_opentelemetry::MetricsLayer<S>,
+    metrics_layer: Option<tracing_opentelemetry::MetricsLayer<S>>,
 }
 
 impl<S> LogfireTracingLayer<S>
@@ -32,12 +32,13 @@ where
     S: Subscriber + for<'span> LookupSpan<'span>,
 {
     /// Create a new `LogfireTracingLayer` with the given tracer.
-    pub(crate) fn new(tracer: LogfireTracer) -> Self {
+    pub(crate) fn new(tracer: LogfireTracer, enable_tracing_metrics: bool) -> Self {
         let otel_layer = tracing_opentelemetry::layer()
             .with_error_records_to_exceptions(true)
             .with_tracer(tracer.inner.clone());
 
-        let metrics_layer = tracing_opentelemetry::MetricsLayer::new(tracer.meter_provider.clone());
+        let metrics_layer = enable_tracing_metrics
+            .then(|| tracing_opentelemetry::MetricsLayer::new(tracer.meter_provider.clone()));
 
         LogfireTracingLayer {
             tracer,
@@ -109,14 +110,15 @@ where
     ///
     /// Instead we need to handle them here and write them to the logfire writer.
     fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
-        let is_metrics_event = event.fields().any(|field| {
-            let name = field.name();
+        let is_metrics_event = self.metrics_layer.is_some()
+            && event.fields().any(|field| {
+                let name = field.name();
 
-            name.starts_with("counter.")
-                || name.starts_with("monotonic_counter.")
-                || name.starts_with("histogram.")
-                || name.starts_with("monotonic_histogram.")
-        });
+                name.starts_with("counter.")
+                    || name.starts_with("monotonic_counter.")
+                    || name.starts_with("histogram.")
+                    || name.starts_with("monotonic_histogram.")
+            });
 
         // Allow the metrics layer to see all events, so it can record metrics as needed.
         if is_metrics_event {
@@ -2127,7 +2129,8 @@ mod tests {
                             .with_service_name("test")
                             .build(),
                     )
-                    .with_id_generator(DeterministicIdGenerator::new()),
+                    .with_id_generator(DeterministicIdGenerator::new())
+                    .with_tracing_metrics(true),
             )
             .finish()
             .unwrap();
