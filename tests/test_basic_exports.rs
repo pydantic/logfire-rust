@@ -1657,10 +1657,13 @@ async fn test_basic_metrics() {
                         schema_url: None,
                         attributes: [],
                     },
-                    sum_metrics: [
-                        [
-                            1,
-                        ],
+                    metrics: [
+                        DeterministicMetric {
+                            name: "basic_counter",
+                            values: [
+                                1,
+                            ],
+                        },
                     ],
                 },
             ],
@@ -1688,10 +1691,13 @@ async fn test_basic_metrics() {
                         schema_url: None,
                         attributes: [],
                     },
-                    sum_metrics: [
-                        [
-                            2,
-                        ],
+                    metrics: [
+                        DeterministicMetric {
+                            name: "basic_counter",
+                            values: [
+                                2,
+                            ],
+                        },
                     ],
                 },
             ],

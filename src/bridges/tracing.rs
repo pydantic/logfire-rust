@@ -2132,7 +2132,7 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = set_local_logfire(handler.clone());
+        let _guard = set_local_logfire(handler.clone());
 
         tracing::info!(counter.test_counter = 1, "test counter event");
         tracing::info!(histogram.test_histogram = 2.5, "test histogram event");
