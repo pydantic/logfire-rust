@@ -5,7 +5,7 @@
 
 //! # Rust SDK for Pydantic Logfire
 //!
-//! This SDK provides a first-class experience instrumenting Rust code for the Pydantic Logfire platform.
+//! From the team behind Pydantic Validation, **Pydantic Logfire** is an observability platform built on the same belief as our open source library — that the most powerful tools can be easy to use.
 //!
 //! The most important API is [`logfire::configure()`][configure], which is used to set up
 //! integrations with `tracing` and `log`, as well as exporters for `opentelemetry`. Code

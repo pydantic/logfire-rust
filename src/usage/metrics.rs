@@ -1,6 +1,6 @@
-//! # Exporting OpenTelemetry Metrics from Rust to Logfire
+//! # Exporting OpenTelemetry Metrics from Rust to Pydantic Logfire
 //!
-//! This guide shows how to export OpenTelemetry metrics from Rust applications to Logfire and use them for creating dashboards and monitoring.
+//! This guide shows how to export OpenTelemetry metrics from Rust applications to Pydantic Logfire and use them for creating dashboards and monitoring.
 //!
 //! ## Overview
 //!

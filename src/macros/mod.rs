@@ -6,7 +6,7 @@ pub mod __macros_impl;
 /// a smaller set of possible arguments and syntaxes.
 ///
 /// In exchange, the macro automatically adds metadata which leads the span and its fields
-/// to present nicely in the Logfire UI.
+/// to present nicely in the Pydantic Logfire UI.
 ///
 /// # Syntax
 ///
