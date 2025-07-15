@@ -10,13 +10,14 @@ use opentelemetry::{
     logs::{AnyValue, LogRecord, Logger, Severity},
     trace::TraceContextExt,
 };
-use opentelemetry_sdk::{logs::SdkLogger, trace::Tracer};
+use opentelemetry_sdk::{logs::SdkLogger, metrics::SdkMeterProvider, trace::Tracer};
 
 use crate::__macros_impl::LogfireValue;
 
 #[derive(Clone)]
 pub(crate) struct LogfireTracer {
     pub(crate) inner: Tracer,
+    pub(crate) meter_provider: SdkMeterProvider,
     pub(crate) logger: Arc<SdkLogger>,
     pub(crate) handle_panics: bool,
 }

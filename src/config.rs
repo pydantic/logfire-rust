@@ -188,15 +188,11 @@ impl std::fmt::Debug for Target {
 /// Options primarily used for testing by Logfire developers.
 #[derive(Default)]
 pub struct AdvancedOptions {
-    /// Root URL for the Logfire API.
     pub(crate) base_url: Option<String>,
-    /// Generator for trace and span IDs.
     pub(crate) id_generator: Option<BoxedIdGenerator>,
-    /// Resource to override default resource detection.
     pub(crate) resource: Option<opentelemetry_sdk::Resource>,
-
-    // Configuration for OpenTelemetry logging. This is experimental and may be removed.
     pub(crate) log_record_processors: Vec<BoxedLogProcessor>,
+    pub(crate) enable_tracing_metrics: bool,
     //
     //
     // TODO: arguments below supported by Python
@@ -230,7 +226,7 @@ impl AdvancedOptions {
         self
     }
 
-    /// Add a log processor to the list of log processors.
+    /// Add a log processor to the list of log processors. This is experimental and may be removed.
     #[must_use]
     pub fn with_log_processor<T: LogProcessor + Send + Sync + 'static>(
         mut self,
@@ -238,6 +234,13 @@ impl AdvancedOptions {
     ) -> Self {
         self.log_record_processors
             .push(BoxedLogProcessor::new(Box::new(processor)));
+        self
+    }
+
+    /// Support capturing tracing events as metrics as per [`tracing_opentelemetry::MetricsLayer`](https://docs.rs/tracing-opentelemetry/latest/tracing_opentelemetry/struct.MetricsLayer.html).
+    #[must_use]
+    pub fn with_tracing_metrics(mut self, enable: bool) -> Self {
+        self.enable_tracing_metrics = enable;
         self
     }
 }

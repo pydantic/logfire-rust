@@ -341,6 +341,7 @@ impl LogfireConfigBuilder {
             tracer_provider,
             meter_provider,
             logger_provider,
+            enable_tracing_metrics,
             ..
         } = self.build_parts(None)?;
 
@@ -369,6 +370,7 @@ impl LogfireConfigBuilder {
             subscriber,
             meter_provider,
             logger_provider,
+            enable_tracing_metrics,
         })
     }
 
@@ -528,11 +530,15 @@ impl LogfireConfigBuilder {
 
         let tracer = LogfireTracer {
             inner: tracer,
+            meter_provider: meter_provider.clone(),
             logger,
             handle_panics: self.install_panic_handler,
         };
 
-        let subscriber = subscriber.with(LogfireTracingLayer::new(tracer.clone()));
+        let subscriber = subscriber.with(LogfireTracingLayer::new(
+            tracer.clone(),
+            advanced_options.enable_tracing_metrics,
+        ));
 
         if self.install_panic_handler {
             install_panic_handler();
@@ -545,6 +551,7 @@ impl LogfireConfigBuilder {
             tracer_provider,
             meter_provider,
             logger_provider,
+            enable_tracing_metrics: advanced_options.enable_tracing_metrics,
             #[cfg(test)]
             send_to_logfire,
         })
@@ -563,6 +570,7 @@ pub struct ShutdownHandler {
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     meter_provider: SdkMeterProvider,
     logger_provider: SdkLoggerProvider,
+    enable_tracing_metrics: bool,
 }
 
 impl ShutdownHandler {
@@ -614,7 +622,7 @@ impl ShutdownHandler {
     where
         S: Subscriber + for<'span> LookupSpan<'span>,
     {
-        LogfireTracingLayer::new(self.tracer.clone())
+        LogfireTracingLayer::new(self.tracer.clone(), self.enable_tracing_metrics)
     }
 }
 
@@ -625,6 +633,7 @@ struct LogfireParts {
     tracer_provider: SdkTracerProvider,
     meter_provider: SdkMeterProvider,
     logger_provider: SdkLoggerProvider,
+    enable_tracing_metrics: bool,
     #[cfg(test)]
     send_to_logfire: bool,
 }

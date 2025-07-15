@@ -135,13 +135,12 @@
 //!
 //! ## Using Metrics in Logfire Dashboards
 //!
-//! Once your metrics are being exported to Logfire, you can create dashboards and alerts:
+//! Once your metrics are being exported to Logfire, you can create dashboards and alerts. To check metrics
+//! arriving in Logfire, you can use the following steps:
 //!
-//! ### 1. **View Metrics in Logfire**
-//!
-//! - Navigate to your Logfire project dashboard
-//! - Go to the ["Explore"](https://logfire.pydantic.dev/docs/guides/web-ui/explore/) view
-//! - Run `select * from metrics` to view all incoming metrics from your application
+//! 1. Navigate to your Logfire project dashboard
+//! 2. Go to the ["Explore"](https://logfire.pydantic.dev/docs/guides/web-ui/explore/) view
+//! 3. Run `select * from metrics` to view all incoming metrics from your application
 //!
 //! ## Best Practices
 //!
@@ -151,6 +150,18 @@
 //! 4. **Appropriate Units**: Specify units (seconds, bytes, requests) for better dashboard formatting
 //! 5. **Documentation**: Add descriptions to help with dashboard creation
 //! 6. **Label Cardinality**: Be careful with high-cardinality labels (e.g., user IDs) - prefer aggregated metrics
+//!
+//! ## `tracing-opentelemetry` metrics
+//!
+//! `tracing-opentelemetry` has its own
+//! [`MetricsLayer`](https://docs.rs/tracing-opentelemetry/latest/tracing_opentelemetry/struct.MetricsLayer.html) which
+//! can be used to automatically produce metrics from `tracing` events.
+//!
+//! Reporting metrics through this pattern adds a level of indirection compared to the direct use of the logfire metrics API described
+//! above. In some cases, however, this may be useful, or necessary if dependencies are emitting
+//! metrics in this form.
+//!
+//! This SDK provides a built-in way to handle these metrics via [`AdvancedOptions::with_tracing_metrics`][crate::config::AdvancedOptions::with_tracing_metrics].
 //!
 //! ## Troubleshooting
 //!
