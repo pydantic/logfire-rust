@@ -76,7 +76,7 @@ use std::sync::{Arc, Once};
 use std::{backtrace::Backtrace, env::VarError, time::Duration};
 
 use config::get_base_url_from_token;
-use opentelemetry::logs::LoggerProvider as _;
+use opentelemetry::logs::{LoggerProvider as _, Severity};
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
@@ -86,6 +86,7 @@ use thiserror::Error;
 use tracing::Subscriber;
 use tracing::level_filters::LevelFilter;
 use tracing::subscriber::DefaultGuard;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 
@@ -97,13 +98,14 @@ use crate::internal::exporters::console::{ConsoleWriter, create_console_processo
 use crate::internal::logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer};
 use crate::ulid_id_generator::UlidIdGenerator;
 
+mod macros;
+
 #[cfg(any(docsrs, doctest))]
 pub mod usage;
 
 mod bridges;
 pub mod config;
 pub mod exporters;
-mod macros;
 mod metrics;
 mod ulid_id_generator;
 
@@ -528,11 +530,19 @@ impl LogfireConfigBuilder {
 
         let logger = Arc::new(logger_provider.logger("logfire"));
 
+        let mut filter_builder = env_filter::Builder::new();
+        if let Ok(filter) = std::env::var("RUST_LOG") {
+            filter_builder.parse(&filter);
+        } else {
+            filter_builder.parse(&default_level_filter.to_string());
+        }
+
         let tracer = LogfireTracer {
             inner: tracer,
             meter_provider: meter_provider.clone(),
             logger,
             handle_panics: self.install_panic_handler,
+            filter: Arc::new(filter_builder.build()),
         };
 
         let subscriber = subscriber.with(LogfireTracingLayer::new(
@@ -641,34 +651,36 @@ struct LogfireParts {
 /// Install `handler` as part of a chain of panic handlers.
 fn install_panic_handler() {
     fn panic_hook(info: &PanicHookInfo) {
-        if LogfireTracer::try_with(|tracer| tracer.handle_panics) != Some(true) {
-            // this tracer is not handling panics
-            return;
-        }
+        LogfireTracer::try_with(|tracer| {
+            if !tracer.handle_panics {
+                // this tracer is not handling panics
+                return;
+            }
 
-        let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
-            s
-        } else if let Some(s) = info.payload().downcast_ref::<String>() {
-            s
-        } else {
-            ""
-        };
+            let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
+                s
+            } else if let Some(s) = info.payload().downcast_ref::<String>() {
+                s
+            } else {
+                ""
+            };
 
-        let location = info.location();
-        crate::macros::__macros_impl::export_log(
-            "panic",
-            &tracing::Span::current(),
-            format!("panic: {message}"),
-            tracing::Level::ERROR,
-            crate::__json_schema!(backtrace),
-            location.map(|l| Cow::Owned(l.file().to_string())),
-            location.map(std::panic::Location::line),
-            None,
-            [LogfireValue::new(
-                "backtrace",
-                Some(Backtrace::capture().to_string().into()),
-            )],
-        );
+            let location = info.location();
+            tracer.export_log(
+                "panic",
+                &tracing::Span::current().context(),
+                format!("panic: {message}"),
+                Severity::Error,
+                crate::__json_schema!(backtrace),
+                location.map(|l| Cow::Owned(l.file().to_string())),
+                location.map(std::panic::Location::line),
+                None,
+                [LogfireValue::new(
+                    "backtrace",
+                    Some(Backtrace::capture().to_string().into()),
+                )],
+            );
+        });
     }
 
     static INSTALLED: Once = Once::new();

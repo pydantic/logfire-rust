@@ -5,7 +5,10 @@
 
 use std::{borrow::Cow, marker::PhantomData, ops::Deref};
 
-use crate::{bridges::tracing::tracing_level_to_severity, internal::logfire_tracer::LogfireTracer};
+use crate::{
+    bridges::tracing::{tracing_level_to_log_level, tracing_level_to_severity},
+    internal::logfire_tracer::LogfireTracer,
+};
 use opentelemetry::{Key, Value};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
@@ -131,6 +134,19 @@ impl<T> FallbackToConvertValue<T> {
     }
 }
 
+#[must_use]
+pub fn enabled(level: tracing::Level, module_path: &'static str) -> bool {
+    LogfireTracer::try_with(|tracer| {
+        tracer.enabled(
+            &log::Metadata::builder()
+                .level(tracing_level_to_log_level(level))
+                .target(module_path)
+                .build(),
+        )
+    })
+    .unwrap_or(false)
+}
+
 #[expect(clippy::too_many_arguments)] // FIXME probably can group these
 pub fn export_log(
     name: &'static str,
@@ -238,7 +254,7 @@ macro_rules! __evaluate_arg {
 #[doc(hidden)]
 macro_rules! __log {
     (parent: $parent:expr, $level:expr, $format:expr, $($($path:ident).+ $(= $value:expr)?),*) => {
-        if tracing::span_enabled!($level) {
+        if $crate::__macros_impl::enabled($level, module_path!()) {
             // bind single ident args early to allow them in the format string
             // without multiple evaluation
             $crate::__bind_single_ident_args!($($($path).+ $(= $value)?),*);

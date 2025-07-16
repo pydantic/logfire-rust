@@ -7,35 +7,22 @@ use crate::internal::logfire_tracer::LogfireTracer;
 
 pub(crate) struct LogfireLogger {
     tracer: LogfireTracer,
-    filter: env_filter::Filter,
 }
 
 impl LogfireLogger {
     pub(crate) fn init(tracer: LogfireTracer) -> &'static Self {
         static LOGGER: OnceLock<LogfireLogger> = OnceLock::new();
-        LOGGER.get_or_init(move || {
-            let mut filter_builder = env_filter::Builder::new();
-            if let Ok(filter) = std::env::var("RUST_LOG") {
-                filter_builder.parse(&filter);
-            } else {
-                filter_builder.filter_level(log::LevelFilter::Info);
-            }
-
-            LogfireLogger {
-                tracer,
-                filter: filter_builder.build(),
-            }
-        })
+        LOGGER.get_or_init(move || LogfireLogger { tracer })
     }
 
     pub(crate) fn max_level(&self) -> LevelFilter {
-        self.filter.filter()
+        self.tracer.filter.filter()
     }
 }
 
 impl log::Log for LogfireLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        self.filter.enabled(metadata)
+        self.tracer.enabled(metadata)
     }
 
     fn log(&self, record: &Record) {
@@ -108,7 +95,6 @@ mod tests {
 
         let lf_logger = LogfireLogger {
             tracer: handler.tracer.clone(),
-            filter: env_filter::Builder::new().parse("trace").build(),
         };
 
         log::set_max_level(log::LevelFilter::Trace);
@@ -190,7 +176,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        28,
+                                        27,
                                     ),
                                 ),
                             ),
@@ -333,7 +319,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        29,
+                                        28,
                                     ),
                                 ),
                             ),
@@ -476,7 +462,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        32,
+                                        31,
                                     ),
                                 ),
                             ),
@@ -619,7 +605,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        33,
+                                        32,
                                     ),
                                 ),
                             ),
@@ -762,7 +748,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        34,
+                                        33,
                                     ),
                                 ),
                             ),
@@ -905,7 +891,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        35,
+                                        34,
                                     ),
                                 ),
                             ),
@@ -1048,7 +1034,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        36,
+                                        35,
                                     ),
                                 ),
                             ),
@@ -1155,7 +1141,6 @@ mod tests {
 
         let lf_logger = LogfireLogger {
             tracer: handler.tracer.clone(),
-            filter: env_filter::Builder::new().parse("trace").build(),
         };
 
         log::set_max_level(log::LevelFilter::Trace);

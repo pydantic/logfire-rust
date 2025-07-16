@@ -5,6 +5,8 @@ use std::{
     time::SystemTime,
 };
 
+use crate::__macros_impl::LogfireValue;
+use log::Metadata;
 use opentelemetry::{
     Array, Value,
     logs::{AnyValue, LogRecord, Logger, Severity},
@@ -12,14 +14,13 @@ use opentelemetry::{
 };
 use opentelemetry_sdk::{logs::SdkLogger, metrics::SdkMeterProvider, trace::Tracer};
 
-use crate::__macros_impl::LogfireValue;
-
 #[derive(Clone)]
 pub(crate) struct LogfireTracer {
     pub(crate) inner: Tracer,
     pub(crate) meter_provider: SdkMeterProvider,
     pub(crate) logger: Arc<SdkLogger>,
     pub(crate) handle_panics: bool,
+    pub(crate) filter: Arc<env_filter::Filter>,
 }
 
 // Global tracer configured in `logfire::configure()`
@@ -46,6 +47,10 @@ impl LogfireTracer {
         }
 
         GLOBAL_TRACER.get().map(f.expect("local tls not used"))
+    }
+
+    pub fn enabled(&self, metadata: &Metadata) -> bool {
+        self.filter.enabled(metadata)
     }
 
     #[expect(clippy::too_many_arguments)] // FIXME probably can group these

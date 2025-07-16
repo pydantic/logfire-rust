@@ -310,6 +310,16 @@ pub(crate) fn tracing_level_to_severity(level: tracing::Level) -> Severity {
     }
 }
 
+pub(crate) fn tracing_level_to_log_level(level: tracing::Level) -> log::Level {
+    match level {
+        tracing::Level::ERROR => log::Level::Error,
+        tracing::Level::WARN => log::Level::Warn,
+        tracing::Level::INFO => log::Level::Info,
+        tracing::Level::DEBUG => log::Level::Debug,
+        tracing::Level::TRACE => log::Level::Trace,
+    }
+}
+
 fn emit_event_as_log_span(
     tracer: &LogfireTracer,
     event: &tracing::Event<'_>,
@@ -2036,6 +2046,71 @@ mod tests {
         [2m1970-01-01T00:00:00.000008Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
         [2m1970-01-01T00:00:00.000009Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
+    }
+
+    #[test]
+    fn test_filtering_with_tracing_event_enabled() {
+        use std::sync::{Arc, Mutex};
+        use tracing::{Level, level_filters::LevelFilter};
+        use tracing_subscriber::{Layer, layer::SubscriberExt};
+
+        // Create a custom test that shows the difference between span_enabled! and event filtering
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let console_options = ConsoleOptions {
+            target: Target::Pipe(output.clone()),
+            ..ConsoleOptions::default().with_min_log_level(Level::TRACE)
+        };
+
+        // Set up logfire tracer for the layer
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(LevelFilter::INFO)
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(handler);
+
+        // Create the logfire tracing layer directly
+        let logfire_tracer = crate::LogfireTracer::try_with(|tracer| tracer.clone()).unwrap();
+        let logfire_layer = super::LogfireTracingLayer::new(logfire_tracer, false);
+
+        // Create a subscriber with a custom filter that allows spans but not events at TRACE level
+        let subscriber = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(std::io::stderr)
+                    .with_filter(LevelFilter::TRACE),
+            )
+            .with(logfire_layer);
+
+        tracing::subscriber::with_default(subscriber, || {
+            // The fmt layer with TRACE level should make it such that all events are being produced by tracing
+            assert!(tracing::span_enabled!(Level::TRACE));
+            assert!(tracing::event_enabled!(Level::TRACE));
+
+            // This TRACE log should be filtered out by the INFO filter in the logfire configuration
+            crate::trace!("This TRACE log should be filtered out");
+
+            // This INFO log should be emitted normally
+            crate::info!("This INFO log should be emitted");
+        });
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+
+        assert!(
+            !output.contains("This TRACE log should be filtered out"),
+            "TRACE log was emitted when it should have been filtered out."
+        );
+        assert!(
+            output.contains("This INFO log should be emitted"),
+            "INFO log was not emitted when it should have been."
+        );
     }
 
     #[tokio::test]
