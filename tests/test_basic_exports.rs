@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use insta::assert_debug_snapshot;
+use opentelemetry::KeyValue;
 use opentelemetry_sdk::{
     Resource,
     logs::{InMemoryLogExporter, SimpleLogProcessor},
@@ -49,7 +50,12 @@ fn test_basic_span() {
         .with_advanced_options(
             AdvancedOptions::default()
                 .with_id_generator(DeterministicIdGenerator::new())
-                .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
+                .with_log_processor(SimpleLogProcessor::new(log_exporter.clone()))
+                .with_resource(
+                    Resource::builder_empty()
+                        .with_attribute(KeyValue::new("resource.key", "value"))
+                        .build(),
+                ),
         )
         .finish()
         .unwrap();
@@ -120,7 +126,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        27,
+                        32,
                     ),
                 },
                 KeyValue {
@@ -246,7 +252,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        28,
+                        33,
                     ),
                 },
                 KeyValue {
@@ -402,7 +408,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        28,
+                        33,
                     ),
                 },
                 KeyValue {
@@ -564,7 +570,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        29,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -700,7 +706,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        29,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -842,7 +848,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        30,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -978,7 +984,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        30,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -1120,7 +1126,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        27,
+                        32,
                     ),
                 },
                 KeyValue {
@@ -1292,7 +1298,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    31,
+                                    36,
                                 ),
                             ),
                         ),
@@ -1459,7 +1465,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    32,
+                                    37,
                                 ),
                             ),
                         ),
