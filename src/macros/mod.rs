@@ -152,6 +152,19 @@ macro_rules! debug {
     };
 }
 
+/// Emit a log at the TRACE level.
+///
+/// See the [`log!`][macro@crate::log] macro for more details.
+#[macro_export]
+macro_rules! trace {
+    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(parent: $parent, tracing::Level::TRACE, $format, $($($path).+ $(= $value)?),*)
+    };
+    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
+        $crate::log!(tracing::Level::TRACE, $format, $($($path).+ $(= $value)?),*)
+    };
+}
+
 /// Export a log message at the specified level.
 ///
 /// # Syntax
@@ -254,4 +267,250 @@ macro_rules! log {
     ($level:expr, $format:expr  $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
         $crate::__macros_impl::log!(parent: tracing::Span::current(), $level, $format, $($($path).+ $(= $value)?),*)
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::{ConsoleOptions, Target};
+    use std::sync::{Arc, Mutex};
+    use tracing::Level;
+
+    #[test]
+    fn test_error_macro() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let console_options = ConsoleOptions {
+            target: Target::Pipe(output.clone()),
+            ..ConsoleOptions::default().with_min_log_level(Level::ERROR)
+        };
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(tracing::level_filters::LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(handler);
+
+        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+            crate::error!("Test error message");
+            crate::error!("Test error with value", field = 42);
+        });
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+
+        assert!(output.contains("Test error message"));
+        assert!(output.contains("Test error with value"));
+        assert!(output.contains("field") && output.contains("42"));
+    }
+
+    #[test]
+    fn test_warn_macro() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let console_options = ConsoleOptions {
+            target: Target::Pipe(output.clone()),
+            ..ConsoleOptions::default().with_min_log_level(Level::WARN)
+        };
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(tracing::level_filters::LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(handler);
+
+        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+            crate::warn!("Test warn message");
+            crate::warn!("Test warn with value", field = "test");
+        });
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+
+        assert!(output.contains("Test warn message"));
+        assert!(output.contains("Test warn with value"));
+        assert!(output.contains("field") && output.contains("test"));
+    }
+
+    #[test]
+    fn test_info_macro() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let console_options = ConsoleOptions {
+            target: Target::Pipe(output.clone()),
+            ..ConsoleOptions::default().with_min_log_level(Level::INFO)
+        };
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(tracing::level_filters::LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(handler);
+
+        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+            crate::info!("Test info message");
+            crate::info!("Test info with value", field = true);
+        });
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+
+        assert!(output.contains("Test info message"));
+        assert!(output.contains("Test info with value"));
+        assert!(output.contains("field") && output.contains("true"));
+    }
+
+    #[test]
+    fn test_debug_macro() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let console_options = ConsoleOptions {
+            target: Target::Pipe(output.clone()),
+            ..ConsoleOptions::default().with_min_log_level(Level::TRACE)
+        };
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(tracing::level_filters::LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(handler);
+
+        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+            crate::debug!("Test debug message");
+            crate::debug!("Test debug with value", field = 3.14);
+        });
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+
+        assert!(output.contains("Test debug message"));
+        assert!(output.contains("Test debug with value"));
+        assert!(output.contains("field") && output.contains("3.14"));
+    }
+
+    #[test]
+    fn test_trace_macro() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let console_options = ConsoleOptions {
+            target: Target::Pipe(output.clone()),
+            ..ConsoleOptions::default().with_min_log_level(Level::TRACE)
+        };
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(tracing::level_filters::LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(handler);
+
+        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+            crate::trace!("Test trace message");
+            crate::trace!("Test trace with value", field = "debug_info");
+        });
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+
+        assert!(output.contains("Test trace message"));
+        assert!(output.contains("Test trace with value"));
+        assert!(output.contains("field") && output.contains("debug_info"));
+    }
+
+    #[test]
+    fn test_log_macro_with_explicit_level() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let console_options = ConsoleOptions {
+            target: Target::Pipe(output.clone()),
+            ..ConsoleOptions::default().with_min_log_level(Level::INFO)
+        };
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(tracing::level_filters::LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(handler);
+
+        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+            crate::log!(Level::INFO, "Test log message");
+            crate::log!(Level::INFO, "Test log with value", field = "explicit");
+        });
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+
+        assert!(output.contains("Test log message"));
+        assert!(output.contains("Test log with value"));
+        assert!(output.contains("field") && output.contains("explicit"));
+    }
+
+    #[test]
+    fn test_macros_with_parent_span() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let console_options = ConsoleOptions {
+            target: Target::Pipe(output.clone()),
+            ..ConsoleOptions::default().with_min_log_level(Level::INFO)
+        };
+
+        let handler = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .install_panic_handler()
+            .with_default_level_filter(tracing::level_filters::LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(handler);
+
+        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+            let parent_span = crate::span!("parent span");
+            crate::info!(parent: &parent_span, "Test info with parent");
+            crate::error!(parent: &parent_span, "Test error with parent", field = "parent_test");
+        });
+
+        guard.shutdown_handler.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+
+        assert!(output.contains("Test info with parent"));
+        assert!(output.contains("Test error with parent"));
+        assert!(output.contains("field") && output.contains("parent_test"));
+    }
 }
