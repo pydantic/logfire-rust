@@ -405,14 +405,12 @@ impl MetricReader for BoxedMetricReader {
 
 /// Boxed log processor for dynamic dispatch
 #[derive(Debug)]
-pub(crate) struct BoxedLogProcessor {
-    inner: Box<dyn LogProcessor + Send + Sync>,
-}
+pub(crate) struct BoxedLogProcessor(Box<dyn LogProcessor + Send + Sync>);
 
 impl BoxedLogProcessor {
     /// Create a new boxed log processor.
     pub fn new(processor: Box<dyn LogProcessor + Send + Sync>) -> Self {
-        Self { inner: processor }
+        Self(processor)
     }
 }
 
@@ -422,15 +420,26 @@ impl LogProcessor for BoxedLogProcessor {
         log_record: &mut opentelemetry_sdk::logs::SdkLogRecord,
         instrumentation_scope: &opentelemetry::InstrumentationScope,
     ) {
-        self.inner.emit(log_record, instrumentation_scope);
+        self.0.emit(log_record, instrumentation_scope);
     }
 
     fn force_flush(&self) -> opentelemetry_sdk::error::OTelSdkResult {
-        self.inner.force_flush()
+        self.0.force_flush()
+    }
+
+    fn shutdown_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.0.shutdown_with_timeout(timeout)
     }
 
     fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
-        self.inner.shutdown()
+        self.0.shutdown()
+    }
+
+    fn set_resource(&mut self, resource: &opentelemetry_sdk::Resource) {
+        self.0.set_resource(resource);
     }
 }
 
