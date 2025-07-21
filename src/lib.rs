@@ -12,22 +12,25 @@
 //! instrumented using `tracing` and `log` will *just work* once this configuration is in place.
 //!
 //! This SDK also offers opinionated functions to instrument code following Logfire's design principles:
-//!   - [`logfire::info!()`][info], [`logfire::debug!()`][debug] and similar macros to log messages
+//!   - **traces**: [`logfire::span!()`][span] to create a span with structured data.
+//!   - **logs**: [`logfire::info!()`][info], [`logfire::debug!()`][debug] and similar macros to log messages
 //!     with structured data.
-//!   - [`logfire::span!()`][span] to create a span with structured data.
-//!   - [`logfire::u64_counter()`][u64_counter] and similar functions to create metrics.
+//!   - **metrics**: [`logfire::u64_counter()`][u64_counter] and similar functions.
 //!
-//! See also:
-//!  - The [integrations](#integrations) section below for more information on the relationship of
-//!    this SDK to other libraries.
-//!  - The [examples][usage::examples] subchapter of this documentation.
-//!  - The [Logfire documentation](https://logfire.pydantic.dev/docs/) for more information about Logfire in general.
-//!  - The [Logfire GitHub repository](https://github.com/pydantic/logfire) for the source of the documentation, the Python SDK and an issue tracker for general questions about Logfire.
+//! See the [Logfire documentation](https://logfire.pydantic.dev/docs/) for more information about
+//! Logfire in general, and the [Logfire GitHub repository](https://github.com/pydantic/logfire) for
+//! the source of that documentation, the Python SDK and an issue tracker for general questions
+//! about Logfire.
 //!
 //! # Usage
 //!
-//! See below for a quick summary of how to use this SDK. The [usage guide][usage] contains more detailed
-//! information about how to use this SDK to its full potential.
+//! The setup for this SDK is a quick three-step process:
+//!  1. Add the `logfire` crate to your `Cargo.toml`.
+//!  2. Call [`logfire::configure()`][configure] at the start of your program to set up the SDK.
+//!  3. Run your application with the [`LOGFIRE_TOKEN`] environment variable set to connect it to the Logfire platform.
+//!
+//! This process is demonstrated below. The [usage guide][usage] contains more detailed information about how to use this
+//! SDK to its full potential.
 //!
 //! ## Getting Started
 //!
@@ -57,7 +60,7 @@
 //! ## Configuration
 //!
 //! After adding basic setup as per above, the most two important environment variables are:
-//! - [`LOGFIRE_TOKEN`](https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens/) (required) - the token to send data to the Logfire platform
+//! - [`LOGFIRE_TOKEN`] (required) - the token to send data to the Logfire platform
 //! - [`RUST_LOG`](https://docs.rs/env_logger/latest/env_logger/#filtering-results) (optional) - the level of verbosity to send to the Logfire platform. By default
 //!   data is captured at `TRACE` level so that all data is available for you to analyze in the
 //!   Logfire platform. This format should match the format used by the [`env_logger`](https://docs.rs/env_logger/) crate.
@@ -68,6 +71,8 @@
 //! # Examples
 //!
 //! See [examples][usage::examples] subchapter of this documentation.
+//!
+//! [`LOGFIRE_TOKEN`]: https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens/
 
 use std::borrow::Cow;
 use std::collections::HashMap;
