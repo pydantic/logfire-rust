@@ -62,13 +62,15 @@ fn test_basic_span() {
 
     let guard = logfire::set_local_logfire(handler);
 
+    let value = 42;
+
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         tracing::subscriber::with_default(guard.subscriber(), || {
             let root = span!("root span").entered();
             let _ = span!("hello world span", attr = "x", dotted.attr = "y").entered();
             let _ = span!(level: Level::DEBUG, "debug span");
             let _ = span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
-            info!("hello world log", attr = "x", dotted.attr = "y");
+            info!("hello world log {value}", attr = "x", dotted.attr = "y");
             panic!("oh no!");
         });
     }))
@@ -126,7 +128,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        32,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -252,7 +254,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        33,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -408,7 +410,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        33,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -570,7 +572,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        34,
+                        36,
                     ),
                 },
                 KeyValue {
@@ -706,7 +708,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        34,
+                        36,
                     ),
                 },
                 KeyValue {
@@ -848,7 +850,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        35,
+                        37,
                     ),
                 },
                 KeyValue {
@@ -984,7 +986,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        35,
+                        37,
                     ),
                 },
                 KeyValue {
@@ -1126,7 +1128,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        32,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -1228,7 +1230,9 @@ fn test_basic_span() {
     [
         LogDataWithResource {
             record: SdkLogRecord {
-                event_name: None,
+                event_name: Some(
+                    "hello world log {value}",
+                ),
                 target: None,
                 timestamp: Some(
                     SystemTime {
@@ -1262,7 +1266,7 @@ fn test_basic_span() {
                 body: Some(
                     String(
                         Owned(
-                            "hello world log",
+                            "hello world log 42",
                         ),
                     ),
                 ),
@@ -1298,7 +1302,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    36,
+                                    38,
                                 ),
                             ),
                         ),
@@ -1337,18 +1341,6 @@ fn test_basic_span() {
                                     String(
                                         Static(
                                             "{\"type\":\"object\",\"properties\":{\"attr\":{},\"dotted.attr\":{}}}",
-                                        ),
-                                    ),
-                                ),
-                            ),
-                            Some(
-                                (
-                                    Static(
-                                        "logfire.msg",
-                                    ),
-                                    String(
-                                        Owned(
-                                            "hello world log",
                                         ),
                                     ),
                                 ),
@@ -1395,7 +1387,9 @@ fn test_basic_span() {
         },
         LogDataWithResource {
             record: SdkLogRecord {
-                event_name: None,
+                event_name: Some(
+                    "panic",
+                ),
                 target: None,
                 timestamp: Some(
                     SystemTime {
@@ -1465,7 +1459,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    37,
+                                    39,
                                 ),
                             ),
                         ),
@@ -1484,28 +1478,16 @@ fn test_basic_span() {
                         Some(
                             (
                                 Static(
-                                    "logfire.msg",
+                                    "thread.id",
                                 ),
-                                String(
-                                    Owned(
-                                        "panic: oh no!",
-                                    ),
+                                Int(
+                                    0,
                                 ),
                             ),
                         ),
                     ],
                     overflow: Some(
                         [
-                            Some(
-                                (
-                                    Static(
-                                        "thread.id",
-                                    ),
-                                    Int(
-                                        0,
-                                    ),
-                                ),
-                            ),
                             Some(
                                 (
                                     Static(

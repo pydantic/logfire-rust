@@ -88,7 +88,7 @@ impl LogfireTracer {
         log_record.set_event_name(name);
         log_record.set_timestamp(ts);
         log_record.set_observed_timestamp(ts);
-        log_record.set_body(message.clone().into());
+        log_record.set_body(message.into());
         log_record.set_severity_text(severity.name());
         log_record.set_severity_number(severity);
 
@@ -119,7 +119,6 @@ impl LogfireTracer {
             }
         }
 
-        log_record.add_attribute("logfire.msg", message);
         log_record.add_attribute("logfire.json_schema", schema);
         log_record.add_attribute("thread.id", THREAD_ID.with(|id| *id));
 
