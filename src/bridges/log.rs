@@ -118,7 +118,9 @@ mod tests {
         [
             LogDataWithResource {
                 record: SdkLogRecord {
-                    event_name: None,
+                    event_name: Some(
+                        "log message",
+                    ),
                     target: None,
                     timestamp: Some(
                         SystemTime {
@@ -207,28 +209,16 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "logfire.msg",
+                                        "thread.id",
                                     ),
-                                    String(
-                                        Owned(
-                                            "root event",
-                                        ),
+                                    Int(
+                                        0,
                                     ),
                                 ),
                             ),
                         ],
                         overflow: Some(
                             [
-                                Some(
-                                    (
-                                        Static(
-                                            "thread.id",
-                                        ),
-                                        Int(
-                                            0,
-                                        ),
-                                    ),
-                                ),
                                 Some(
                                     (
                                         Static(
@@ -261,7 +251,9 @@ mod tests {
             },
             LogDataWithResource {
                 record: SdkLogRecord {
-                    event_name: None,
+                    event_name: Some(
+                        "log message",
+                    ),
                     target: None,
                     timestamp: Some(
                         SystemTime {
@@ -350,28 +342,16 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "logfire.msg",
+                                        "thread.id",
                                     ),
-                                    String(
-                                        Owned(
-                                            "root event with target",
-                                        ),
+                                    Int(
+                                        0,
                                     ),
                                 ),
                             ),
                         ],
                         overflow: Some(
                             [
-                                Some(
-                                    (
-                                        Static(
-                                            "thread.id",
-                                        ),
-                                        Int(
-                                            0,
-                                        ),
-                                    ),
-                                ),
                                 Some(
                                     (
                                         Static(
@@ -404,7 +384,9 @@ mod tests {
             },
             LogDataWithResource {
                 record: SdkLogRecord {
-                    event_name: None,
+                    event_name: Some(
+                        "log message",
+                    ),
                     target: None,
                     timestamp: Some(
                         SystemTime {
@@ -493,28 +475,16 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "logfire.msg",
+                                        "thread.id",
                                     ),
-                                    String(
-                                        Owned(
-                                            "hello world log",
-                                        ),
+                                    Int(
+                                        0,
                                     ),
                                 ),
                             ),
                         ],
                         overflow: Some(
                             [
-                                Some(
-                                    (
-                                        Static(
-                                            "thread.id",
-                                        ),
-                                        Int(
-                                            0,
-                                        ),
-                                    ),
-                                ),
                                 Some(
                                     (
                                         Static(
@@ -547,7 +517,9 @@ mod tests {
             },
             LogDataWithResource {
                 record: SdkLogRecord {
-                    event_name: None,
+                    event_name: Some(
+                        "log message",
+                    ),
                     target: None,
                     timestamp: Some(
                         SystemTime {
@@ -636,28 +608,16 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "logfire.msg",
+                                        "thread.id",
                                     ),
-                                    String(
-                                        Owned(
-                                            "warning log",
-                                        ),
+                                    Int(
+                                        0,
                                     ),
                                 ),
                             ),
                         ],
                         overflow: Some(
                             [
-                                Some(
-                                    (
-                                        Static(
-                                            "thread.id",
-                                        ),
-                                        Int(
-                                            0,
-                                        ),
-                                    ),
-                                ),
                                 Some(
                                     (
                                         Static(
@@ -690,7 +650,9 @@ mod tests {
             },
             LogDataWithResource {
                 record: SdkLogRecord {
-                    event_name: None,
+                    event_name: Some(
+                        "log message",
+                    ),
                     target: None,
                     timestamp: Some(
                         SystemTime {
@@ -779,28 +741,16 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "logfire.msg",
+                                        "thread.id",
                                     ),
-                                    String(
-                                        Owned(
-                                            "error log",
-                                        ),
+                                    Int(
+                                        0,
                                     ),
                                 ),
                             ),
                         ],
                         overflow: Some(
                             [
-                                Some(
-                                    (
-                                        Static(
-                                            "thread.id",
-                                        ),
-                                        Int(
-                                            0,
-                                        ),
-                                    ),
-                                ),
                                 Some(
                                     (
                                         Static(
@@ -833,7 +783,9 @@ mod tests {
             },
             LogDataWithResource {
                 record: SdkLogRecord {
-                    event_name: None,
+                    event_name: Some(
+                        "log message",
+                    ),
                     target: None,
                     timestamp: Some(
                         SystemTime {
@@ -922,28 +874,16 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "logfire.msg",
+                                        "thread.id",
                                     ),
-                                    String(
-                                        Owned(
-                                            "debug log",
-                                        ),
+                                    Int(
+                                        0,
                                     ),
                                 ),
                             ),
                         ],
                         overflow: Some(
                             [
-                                Some(
-                                    (
-                                        Static(
-                                            "thread.id",
-                                        ),
-                                        Int(
-                                            0,
-                                        ),
-                                    ),
-                                ),
                                 Some(
                                     (
                                         Static(
@@ -976,7 +916,9 @@ mod tests {
             },
             LogDataWithResource {
                 record: SdkLogRecord {
-                    event_name: None,
+                    event_name: Some(
+                        "log message",
+                    ),
                     target: None,
                     timestamp: Some(
                         SystemTime {
@@ -1065,28 +1007,16 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "logfire.msg",
+                                        "thread.id",
                                     ),
-                                    String(
-                                        Owned(
-                                            "trace log",
-                                        ),
+                                    Int(
+                                        0,
                                     ),
                                 ),
                             ),
                         ],
                         overflow: Some(
                             [
-                                Some(
-                                    (
-                                        Static(
-                                            "thread.id",
-                                        ),
-                                        Int(
-                                            0,
-                                        ),
-                                    ),
-                                ),
                                 Some(
                                     (
                                         Static(

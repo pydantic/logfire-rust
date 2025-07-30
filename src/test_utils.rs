@@ -279,10 +279,8 @@ pub fn find_log<'a>(logs: &'a [LogDataWithResource], name: &str) -> &'a LogDataW
     logs.iter()
         .find(|log| {
             log.record
-                .attributes_iter()
-                .find(|(key, _)| key.as_str() == "logfire.msg")
-                .map(|(_, value)| format!("{:?}", value).contains(name))
-                .unwrap_or(false)
+                .event_name()
+                .is_some_and(|event_name| event_name == name)
         })
         .expect("log present")
 }
@@ -331,6 +329,10 @@ pub fn make_deterministic_logs(
                         .remap_timestamp(observed_timestamp),
                 );
             }
+            if let Some(event_name) = original_record.event_name() {
+                new_record.set_event_name(event_name);
+            }
+
             if let Some(trace_context) = original_record.trace_context() {
                 new_record.set_trace_context(
                     trace_context.trace_id,
