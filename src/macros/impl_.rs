@@ -161,7 +161,7 @@ pub fn export_log(
 ) {
     LogfireTracer::try_with(|tracer| {
         tracer.export_log(
-            name,
+            Some(name),
             &parent_span.context(),
             message,
             tracing_level_to_severity(level),
