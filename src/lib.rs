@@ -74,34 +74,40 @@
 //!
 //! [`LOGFIRE_TOKEN`]: https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens/
 
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::panic::PanicHookInfo;
-use std::sync::{Arc, Once};
-use std::{backtrace::Backtrace, env::VarError, time::Duration};
+use std::{
+    backtrace::Backtrace,
+    borrow::Cow,
+    collections::HashMap,
+    env::VarError,
+    panic::PanicHookInfo,
+    sync::{Arc, Once},
+    time::Duration,
+};
 
 use config::get_base_url_from_token;
-use opentelemetry::logs::{LoggerProvider as _, Severity};
-use opentelemetry::trace::TracerProvider;
-use opentelemetry_sdk::logs::{BatchLogProcessor, SdkLoggerProvider};
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
-use opentelemetry_sdk::trace::SdkTracerProvider;
-use opentelemetry_sdk::trace::{BatchConfigBuilder, BatchSpanProcessor, SpanProcessor};
-use thiserror::Error;
-use tracing::Subscriber;
-use tracing::level_filters::LevelFilter;
-use tracing::subscriber::DefaultGuard;
-use tracing_opentelemetry::OpenTelemetrySpanExt;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::registry::LookupSpan;
-
-use crate::__macros_impl::LogfireValue;
-use crate::config::{
-    AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire,
+use opentelemetry::{
+    logs::{LoggerProvider as _, Severity},
+    trace::TracerProvider,
 };
-use crate::internal::exporters::console::{ConsoleWriter, create_console_processors};
-use crate::internal::logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer};
-use crate::ulid_id_generator::UlidIdGenerator;
+use opentelemetry_sdk::{
+    logs::{BatchLogProcessor, SdkLoggerProvider},
+    metrics::{PeriodicReader, SdkMeterProvider},
+    trace::{BatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider, SpanProcessor},
+};
+use thiserror::Error;
+use tracing::{Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
+use tracing_subscriber::{layer::SubscriberExt, registry::LookupSpan};
+
+use crate::{
+    __macros_impl::LogfireValue,
+    config::{AdvancedOptions, BoxedSpanProcessor, ConsoleOptions, MetricsOptions, SendToLogfire},
+    internal::{
+        exporters::console::{ConsoleWriter, create_console_processors},
+        logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer},
+    },
+    ulid_id_generator::UlidIdGenerator,
+};
 
 mod macros;
 
@@ -114,9 +120,10 @@ pub mod exporters;
 mod metrics;
 mod ulid_id_generator;
 
-pub use crate::bridges::tracing::LogfireTracingLayer;
 pub use macros::*;
 pub use metrics::*;
+
+pub use crate::bridges::tracing::LogfireTracingLayer;
 
 mod internal;
 
@@ -586,6 +593,15 @@ pub struct ShutdownHandler {
     meter_provider: SdkMeterProvider,
     logger_provider: SdkLoggerProvider,
     enable_tracing_metrics: bool,
+}
+
+#[allow(clippy::print_stderr)]
+impl Drop for ShutdownHandler {
+    fn drop(&mut self) {
+        if let Err(error) = self.shutdown() {
+            eprintln!("failed to shutdown logfire cleanly: {error:#?}");
+        }
+    }
 }
 
 impl ShutdownHandler {
