@@ -1387,9 +1387,7 @@ fn test_basic_span() {
         },
         LogDataWithResource {
             record: SdkLogRecord {
-                event_name: Some(
-                    "panic",
-                ),
+                event_name: None,
                 target: None,
                 timestamp: Some(
                     SystemTime {

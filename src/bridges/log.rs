@@ -28,7 +28,7 @@ impl log::Log for LogfireLogger {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             self.tracer.export_log(
-                "log message",
+                record.args().as_str(),
                 &tracing::Span::current().context(),
                 record.args().to_string(),
                 level_to_severity(record.level()),
@@ -119,7 +119,7 @@ mod tests {
             LogDataWithResource {
                 record: SdkLogRecord {
                     event_name: Some(
-                        "log message",
+                        "root event",
                     ),
                     target: None,
                     timestamp: Some(
@@ -252,7 +252,7 @@ mod tests {
             LogDataWithResource {
                 record: SdkLogRecord {
                     event_name: Some(
-                        "log message",
+                        "root event with target",
                     ),
                     target: None,
                     timestamp: Some(
@@ -385,7 +385,7 @@ mod tests {
             LogDataWithResource {
                 record: SdkLogRecord {
                     event_name: Some(
-                        "log message",
+                        "hello world log",
                     ),
                     target: None,
                     timestamp: Some(
@@ -518,7 +518,7 @@ mod tests {
             LogDataWithResource {
                 record: SdkLogRecord {
                     event_name: Some(
-                        "log message",
+                        "warning log",
                     ),
                     target: None,
                     timestamp: Some(
@@ -651,7 +651,7 @@ mod tests {
             LogDataWithResource {
                 record: SdkLogRecord {
                     event_name: Some(
-                        "log message",
+                        "error log",
                     ),
                     target: None,
                     timestamp: Some(
@@ -784,7 +784,7 @@ mod tests {
             LogDataWithResource {
                 record: SdkLogRecord {
                     event_name: Some(
-                        "log message",
+                        "debug log",
                     ),
                     target: None,
                     timestamp: Some(
@@ -917,7 +917,7 @@ mod tests {
             LogDataWithResource {
                 record: SdkLogRecord {
                     event_name: Some(
-                        "log message",
+                        "trace log",
                     ),
                     target: None,
                     timestamp: Some(

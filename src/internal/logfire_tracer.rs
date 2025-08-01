@@ -56,7 +56,7 @@ impl LogfireTracer {
     #[expect(clippy::too_many_arguments)] // FIXME probably can group these
     pub fn export_log(
         &self,
-        name: &'static str,
+        name: Option<&'static str>,
         parent_context: &opentelemetry::Context,
         message: String,
         severity: Severity,
@@ -85,7 +85,10 @@ impl LogfireTracer {
 
         let ts = SystemTime::now();
 
-        log_record.set_event_name(name);
+        if let Some(name) = name {
+            log_record.set_event_name(name);
+        }
+
         log_record.set_timestamp(ts);
         log_record.set_observed_timestamp(ts);
         log_record.set_body(message.into());

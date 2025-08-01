@@ -347,7 +347,7 @@ fn emit_event_as_log_span(
         .collect();
 
     tracer.export_log(
-        event.metadata().name(),
+        Some(event.metadata().name()),
         parent_context,
         message,
         tracing_level_to_severity(*event.metadata().level()),
