@@ -430,21 +430,31 @@ impl LogfireConfigBuilder {
 
         let mut http_headers: Option<HashMap<String, String>> = None;
 
+        let mut base_url = advanced_options.base_url;
+        if base_url.is_none() {
+            base_url = get_optional_env("LOGFIRE_BASE_URL", env)?;
+        }
         let logfire_base_url = if send_to_logfire {
-            let Some(token) = token else {
+            if let Some(token) = token {
+                http_headers
+                    .get_or_insert_default()
+                    .insert("Authorization".to_string(), format!("Bearer {token}"));
+
+                Some(
+                    base_url
+                        .as_deref()
+                        .unwrap_or_else(|| get_base_url_from_token(&token)),
+                )
+            } else if base_url
+                .as_deref()
+                .is_some_and(|url| url.starts_with("grpc://"))
+            {
+                // For gRPC endpoints, we allow there to be no token (this allows for the
+                // possibility that logfire SDK is sending via an otel collector)
+                base_url.as_deref()
+            } else {
                 return Err(ConfigureError::TokenRequired);
-            };
-
-            http_headers
-                .get_or_insert_default()
-                .insert("Authorization".to_string(), format!("Bearer {token}"));
-
-            Some(
-                advanced_options
-                    .base_url
-                    .as_deref()
-                    .unwrap_or_else(|| get_base_url_from_token(&token)),
-            )
+            }
         } else {
             None
         };
