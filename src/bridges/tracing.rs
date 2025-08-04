@@ -10,12 +10,12 @@ use tracing::{Subscriber, field::Visit};
 use tracing_opentelemetry::{OtelData, PreSampledTracer};
 use tracing_subscriber::{Layer, registry::LookupSpan};
 
-use crate::{__macros_impl::LogfireValue, LogfireTracer};
+use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer};
 
 /// A `tracing` layer that bridges `tracing` spans to OpenTelemetry spans using the Pydantic Logfire tracer.
 /// Pydantic Logfire-specific metadata.
 ///
-/// See [`ShutdownHandler::tracing_layer`][crate::ShutdownHandler::tracing_layer] for how to use
+/// See [`Logfire::tracing_layer`][crate::Logfire::tracing_layer] for how to use
 /// this layer.
 pub struct LogfireTracingLayer<S> {
     tracer: LogfireTracer,
@@ -411,7 +411,7 @@ mod tests {
         let exporter = InMemorySpanExporterBuilder::new().build();
         let log_exporter = InMemoryLogExporter::default();
 
-        let handler =
+        let logfire =
             crate::configure()
                 .local()
                 .send_to_logfire(false)
@@ -428,7 +428,7 @@ mod tests {
                 .finish()
                 .unwrap();
 
-        let guard = set_local_logfire(handler);
+        let guard = set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             tracing::info!("root event"); // FIXME: this event is not emitted
@@ -1964,7 +1964,7 @@ mod tests {
             ..ConsoleOptions::default().with_min_log_level(Level::TRACE)
         };
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options.clone()))
@@ -1973,7 +1973,7 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = crate::set_local_logfire(handler);
+        let guard = crate::set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             tracing::info!("root event");
@@ -1988,7 +1988,7 @@ mod tests {
             tracing::info!(name: "hello world log with value", field_value = 1);
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -2003,8 +2003,6 @@ mod tests {
         [2m1970-01-01T00:00:00.000005Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000006Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log[0m
         [2m1970-01-01T00:00:00.000007Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log with value[0m [3mfield_value[0m=1
-        [2m1970-01-01T00:00:00.000008Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
-        [2m1970-01-01T00:00:00.000009Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
     }
 
@@ -2022,7 +2020,7 @@ mod tests {
         };
 
         // Set up logfire tracer for the layer
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -2031,11 +2029,8 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = crate::set_local_logfire(handler);
-
-        // Create the logfire tracing layer directly
-        let logfire_tracer = crate::LogfireTracer::try_with(|tracer| tracer.clone()).unwrap();
-        let logfire_layer = super::LogfireTracingLayer::new(logfire_tracer, false);
+        let logfire_layer = logfire.tracing_layer();
+        let guard = crate::set_local_logfire(logfire);
 
         // Create a subscriber with a custom filter that allows spans but not events at TRACE level
         let subscriber = tracing_subscriber::registry()
@@ -2058,7 +2053,7 @@ mod tests {
             crate::info!("This INFO log should be emitted");
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -2147,7 +2142,7 @@ mod tests {
                 .build(),
         );
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_metrics(Some(
@@ -2168,7 +2163,7 @@ mod tests {
             .finish()
             .unwrap();
 
-        let _guard = set_local_logfire(handler.clone());
+        let guard = set_local_logfire(logfire);
 
         tracing::info!(counter.test_counter = 1, "test counter event");
         tracing::info!(histogram.test_histogram = 2.5, "test histogram event");
@@ -2195,7 +2190,7 @@ mod tests {
 
         reader.export(&mut exporter).await;
 
-        handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let metrics = exporter.get_finished_metrics().unwrap();
         let metrics = make_deterministic_resource_metrics(metrics);

@@ -112,7 +112,7 @@ mod tests {
             let _debug = crate::span!(level: Level::DEBUG, "debug span").entered();
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let mut spans = exporter.get_finished_spans().unwrap();
         spans.sort_unstable_by(|a, b| a.name.cmp(&b.name));

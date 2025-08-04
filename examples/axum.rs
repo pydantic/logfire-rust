@@ -59,7 +59,8 @@ struct CreateUserRequest {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize Logfire
-    let shutdown_handler = logfire::configure().install_panic_handler().finish()?;
+    let logfire = logfire::configure().install_panic_handler().finish()?;
+    let _guard = logfire.shutdown_guard();
 
     logfire::info!("Starting Axum server with Logfire integration");
 
@@ -72,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     axum::serve(listener, app).await?;
 
-    shutdown_handler.shutdown()?;
+    // Shutdown handled automatically by the guard
 
     Ok(())
 }

@@ -15,7 +15,8 @@ static FILES_COUNTER: LazyLock<Counter<u64>> = LazyLock::new(|| {
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() -> Result<()> {
-    let shutdown_handler = logfire::configure().install_panic_handler().finish()?;
+    let logfire = logfire::configure().install_panic_handler().finish()?;
+    let _guard = logfire.shutdown_guard();
 
     let mut total_size = 0u64;
 
@@ -53,6 +54,5 @@ fn main() -> Result<()> {
         size = total_size as i64
     );
 
-    shutdown_handler.shutdown()?;
     Ok(())
 }

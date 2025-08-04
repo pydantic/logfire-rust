@@ -12,7 +12,7 @@ use tracing::Level;
 #[test]
 fn test_log_macro_attributes() {
     let log_exporter = InMemoryLogExporter::default();
-    let handler = logfire::configure()
+    let logfire = logfire::configure()
         .local()
         .send_to_logfire(false)
         .with_advanced_options(
@@ -21,7 +21,7 @@ fn test_log_macro_attributes() {
         )
         .finish()
         .unwrap();
-    let guard = logfire::set_local_logfire(handler);
+    let guard = logfire::set_local_logfire(logfire);
 
     tracing::subscriber::with_default(guard.subscriber(), || {
         let _ = log!(Level::INFO, "string_attr_log", foo = "bar");
@@ -96,7 +96,7 @@ fn test_log_macro_shorthand_ident() {
     };
 
     let log_exporter = InMemoryLogExporter::default();
-    let handler = logfire::configure()
+    let logfire = logfire::configure()
         .local()
         .send_to_logfire(false)
         .with_advanced_options(
@@ -106,7 +106,7 @@ fn test_log_macro_shorthand_ident() {
         .finish()
         .unwrap();
 
-    let guard = logfire::set_local_logfire(handler);
+    let guard = logfire::set_local_logfire(logfire);
     tracing::subscriber::with_default(guard.subscriber(), || {
         let _ = log!(Level::INFO, "dotted_attr_log", dotted.key);
         let _ = log!(Level::INFO, "int_attr_log", int_val);

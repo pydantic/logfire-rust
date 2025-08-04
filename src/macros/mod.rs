@@ -283,7 +283,7 @@ mod tests {
             ..ConsoleOptions::default().with_min_log_level(Level::ERROR)
         };
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -292,14 +292,14 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = crate::set_local_logfire(handler);
+        let guard = crate::set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             crate::error!("Test error message");
             crate::error!("Test error with value", field = 42);
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -317,7 +317,7 @@ mod tests {
             ..ConsoleOptions::default().with_min_log_level(Level::WARN)
         };
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -326,14 +326,14 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = crate::set_local_logfire(handler);
+        let guard = crate::set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             crate::warn!("Test warn message");
             crate::warn!("Test warn with value", field = "test");
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -351,7 +351,7 @@ mod tests {
             ..ConsoleOptions::default().with_min_log_level(Level::INFO)
         };
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -360,14 +360,14 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = crate::set_local_logfire(handler);
+        let guard = crate::set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             crate::info!("Test info message");
             crate::info!("Test info with value", field = true);
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -385,7 +385,7 @@ mod tests {
             ..ConsoleOptions::default().with_min_log_level(Level::TRACE)
         };
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -394,14 +394,14 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = crate::set_local_logfire(handler);
+        let guard = crate::set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             crate::debug!("Test debug message");
             crate::debug!("Test debug with value", field = 3.14);
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -419,7 +419,7 @@ mod tests {
             ..ConsoleOptions::default().with_min_log_level(Level::TRACE)
         };
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -428,14 +428,14 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = crate::set_local_logfire(handler);
+        let guard = crate::set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             crate::trace!("Test trace message");
             crate::trace!("Test trace with value", field = "debug_info");
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -453,7 +453,7 @@ mod tests {
             ..ConsoleOptions::default().with_min_log_level(Level::INFO)
         };
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -462,14 +462,14 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = crate::set_local_logfire(handler);
+        let guard = crate::set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             crate::log!(Level::INFO, "Test log message");
             crate::log!(Level::INFO, "Test log with value", field = "explicit");
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -487,7 +487,7 @@ mod tests {
             ..ConsoleOptions::default().with_min_log_level(Level::INFO)
         };
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -496,7 +496,7 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = crate::set_local_logfire(handler);
+        let guard = crate::set_local_logfire(logfire.clone());
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             let parent_span = crate::span!("parent span");
@@ -504,7 +504,7 @@ mod tests {
             crate::error!(parent: &parent_span, "Test error with parent", field = "parent_test");
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();

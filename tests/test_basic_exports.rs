@@ -37,7 +37,7 @@ fn test_basic_span() {
     let exporter = InMemorySpanExporterBuilder::new().build();
     let log_exporter = InMemoryLogExporter::default();
 
-    let handler = logfire::configure()
+    let logfire = logfire::configure()
         .local()
         .send_to_logfire(false)
         .with_additional_span_processor(SimpleSpanProcessor::new(DeterministicExporter::new(
@@ -60,7 +60,7 @@ fn test_basic_span() {
         .finish()
         .unwrap();
 
-    let guard = logfire::set_local_logfire(handler);
+    let guard = logfire::set_local_logfire(logfire);
 
     let value = 42;
 
@@ -1584,7 +1584,7 @@ async fn test_basic_metrics() {
             .build(),
     );
 
-    let handler = logfire::configure()
+    let logfire = logfire::configure()
         .send_to_logfire(false)
         .with_metrics(Some(
             MetricsOptions::default().with_additional_reader(reader.clone()),
@@ -1596,7 +1596,7 @@ async fn test_basic_metrics() {
         .finish()
         .unwrap();
 
-    let guard = logfire::set_local_logfire(handler.clone());
+    let guard = logfire::set_local_logfire(logfire.clone());
 
     use opentelemetry::metrics::MeterProvider;
 
@@ -1612,7 +1612,7 @@ async fn test_basic_metrics() {
     counter.add(2, &[]);
     reader.export(&mut exporter).await;
 
-    handler.shutdown().unwrap();
+    logfire.shutdown().unwrap();
 
     let metrics = exporter.get_finished_metrics().unwrap();
 

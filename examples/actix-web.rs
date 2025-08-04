@@ -49,10 +49,11 @@ struct CreateUserRequest {
 #[actix_web::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize Logfire
-    let shutdown_handler = logfire::configure()
+    let logfire = logfire::configure()
         .install_panic_handler()
         .finish()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let _guard = logfire.shutdown_guard();
 
     logfire::info!("Starting Actix Web server with Logfire integration");
 
@@ -72,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .run()
     .await?;
 
-    shutdown_handler.shutdown()?;
+    // Shutdown handled automatically by the guard
 
     Ok(())
 }
