@@ -1,6 +1,6 @@
 //! Configuration options for the Logfire SDK.
 //!
-//! See [`LogfireConfigBuilder`][crate::LogfireConfigBuilder] for documentation of all these options.
+//! See [`LogfireConfigBuilder`] for documentation of all these options.
 
 use std::{
     fmt::Display,
@@ -15,8 +15,131 @@ use opentelemetry_sdk::{
 };
 use regex::Regex;
 
-use crate::ConfigureError;
-use tracing::Level;
+use crate::{ConfigureError, logfire::Logfire};
+use tracing::{Level, level_filters::LevelFilter};
+
+/// Builder for logfire configuration, returned from [`logfire::configure()`][crate::configure].
+#[derive(Default)]
+#[must_use = "call `.finish()` to complete logfire configuration."]
+pub struct LogfireConfigBuilder {
+    pub(crate) local: bool,
+    pub(crate) send_to_logfire: Option<SendToLogfire>,
+    pub(crate) token: Option<String>,
+    // service_name: Option<String>,
+    // service_version: Option<String>,
+    // environment: Option<String>,
+    pub(crate) console_options: Option<ConsoleOptions>,
+
+    // config_dir: Option<PathBuf>,
+    // data_dir: Option<Path>,
+
+    // TODO: change to match Python SDK
+    pub(crate) additional_span_processors: Vec<BoxedSpanProcessor>,
+    // tracer_provider: Option<SdkTracerProvider>,
+
+    // TODO: advanced Python options not yet supported by the Rust SDK
+    // scrubbing: ScrubbingOptions | Literal[False] | None = None,
+    // inspect_arguments: bool | None = None,
+    // sampling: SamplingOptions | None = None,
+    // code_source: CodeSource | None = None,
+    // distributed_tracing: bool | None = None,
+    pub(crate) advanced: Option<AdvancedOptions>,
+    pub(crate) metrics: Option<MetricsOptions>,
+
+    // Rust specific options
+    pub(crate) install_panic_handler: bool,
+    pub(crate) default_level_filter: Option<LevelFilter>,
+}
+
+impl LogfireConfigBuilder {
+    /// Call to configure Logfire for local use only.
+    ///
+    /// This prevents the configured `Logfire` from setting global `tracing`, `log` and `opentelemetry` state.
+    #[doc(hidden)] // FIXME make `LocalLogfireGuard` properly public
+    pub fn local(mut self) -> Self {
+        self.local = true;
+        self
+    }
+
+    /// Call to install a hook to log panics.
+    ///
+    /// Any existing panic hook will be preserved and called after the logfire panic hook.
+    pub fn install_panic_handler(mut self) -> Self {
+        self.install_panic_handler = true;
+        self
+    }
+
+    /// Whether to send data to the Logfire platform.
+    ///
+    /// Defaults to the value of `LOGFIRE_SEND_TO_LOGFIRE` if set, otherwise `Yes`.
+    pub fn send_to_logfire<T: Into<SendToLogfire>>(mut self, send_to_logfire: T) -> Self {
+        self.send_to_logfire = Some(send_to_logfire.into());
+        self
+    }
+
+    /// The token to use for the Logfire platform.
+    ///
+    /// Defaults to the value of `LOGFIRE_TOKEN` if set.
+    pub fn with_token<T: Into<String>>(mut self, token: T) -> Self {
+        self.token = Some(token.into());
+        self
+    }
+
+    /// Sets console options. Set to `None` to disable console logging.
+    ///
+    /// If not set, will use `ConsoleOptions::default()`.
+    pub fn with_console(mut self, console_options: Option<ConsoleOptions>) -> Self {
+        self.console_options = console_options;
+        self
+    }
+
+    /// Override the filter used for traces and logs.
+    ///
+    /// By default this is set to `LevelFilter::TRACE` if sending to logfire, or `LevelFilter::INFO` if not.
+    ///
+    /// The `RUST_LOG` environment variable will override this.
+    pub fn with_default_level_filter(mut self, default_level_filter: LevelFilter) -> Self {
+        self.default_level_filter = Some(default_level_filter);
+        self
+    }
+
+    /// Add an additional span processor to process spans alongside the main logfire exporter.
+    ///
+    /// To disable the main logfire exporter, set `send_to_logfire` to `false`.
+    pub fn with_additional_span_processor<T: SpanProcessor + 'static>(
+        mut self,
+        span_processor: T,
+    ) -> Self {
+        self.additional_span_processors
+            .push(BoxedSpanProcessor::new(Box::new(span_processor)));
+        self
+    }
+
+    /// Configure [advanced options](crate::config::AdvancedOptions).
+    pub fn with_advanced_options(mut self, advanced: AdvancedOptions) -> Self {
+        self.advanced = Some(advanced);
+        self
+    }
+
+    /// Configure [metrics options](crate::config::MetricsOptions).
+    ///
+    /// Set to `None` to disable metrics.
+    pub fn with_metrics(mut self, metrics: Option<MetricsOptions>) -> Self {
+        self.metrics = metrics;
+        self
+    }
+
+    /// Finish configuring Logfire.
+    ///
+    /// Because this configures global state for the opentelemetry SDK, this can typically only ever be called once per program.
+    ///
+    /// # Errors
+    ///
+    /// See [`ConfigureError`] for possible errors.
+    pub fn finish(self) -> Result<Logfire, ConfigureError> {
+        Logfire::from_config_builder(self)
+    }
+}
 
 /// Whether to send logs to Logfire.
 #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]

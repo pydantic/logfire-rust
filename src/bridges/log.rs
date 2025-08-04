@@ -78,7 +78,7 @@ mod tests {
 
         let log_exporter = InMemoryLogExporter::default();
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .install_panic_handler()
@@ -94,11 +94,11 @@ mod tests {
             .unwrap();
 
         let lf_logger = LogfireLogger {
-            tracer: handler.tracer.clone(),
+            tracer: logfire.tracer.clone(),
         };
 
         log::set_max_level(log::LevelFilter::Trace);
-        let guard = set_local_logfire(handler);
+        let guard = set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             log::info!(logger: lf_logger, "root event");
@@ -1060,7 +1060,7 @@ mod tests {
             ..ConsoleOptions::default().with_min_log_level(tracing::Level::TRACE)
         };
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options.clone()))
@@ -1070,11 +1070,11 @@ mod tests {
             .unwrap();
 
         let lf_logger = LogfireLogger {
-            tracer: handler.tracer.clone(),
+            tracer: logfire.tracer.clone(),
         };
 
         log::set_max_level(log::LevelFilter::Trace);
-        let guard = crate::set_local_logfire(handler);
+        let guard = crate::set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
             log::info!(logger: lf_logger, "root event");
@@ -1087,7 +1087,7 @@ mod tests {
             log::trace!(logger: lf_logger, "trace log");
         });
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -1101,8 +1101,6 @@ mod tests {
         [2m1970-01-01T00:00:00.000004Z[0m[33m  WARN[0m [2;3mlogfire::bridges::log::tests[0m [1mwarning log[0m
         [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire::bridges::log::tests[0m [1merror log[0m
         [2m1970-01-01T00:00:00.000006Z[0m[35m TRACE[0m [2;3mlogfire::bridges::log::tests[0m [1mtrace log[0m
-        [2m1970-01-01T00:00:00.000007Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
-        [2m1970-01-01T00:00:00.000008Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
     }
 }

@@ -406,7 +406,7 @@ mod tests {
             .with_target(Target::Pipe(output.clone()))
             .with_min_log_level(Level::TRACE);
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -415,7 +415,7 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = set_local_logfire(handler);
+        let guard = set_local_logfire(logfire);
 
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             tracing::subscriber::with_default(guard.subscriber().clone(), || {
@@ -429,7 +429,7 @@ mod tests {
         }))
         .unwrap_err();
 
-        drop(guard);
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -454,7 +454,7 @@ mod tests {
             .with_include_timestamps(false)
             .with_min_log_level(Level::TRACE);
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -463,7 +463,7 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = set_local_logfire(handler);
+        let guard = set_local_logfire(logfire);
 
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             tracing::subscriber::with_default(guard.subscriber().clone(), || {
@@ -477,7 +477,7 @@ mod tests {
         }))
         .unwrap_err();
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -490,8 +490,6 @@ mod tests {
         [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
         [31m ERROR[0m [1mpanic: oh no![0m [3mbacktrace[0m=disabled backtrace
-        [34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
-        [34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
     }
 
@@ -503,7 +501,7 @@ mod tests {
             .with_target(Target::Pipe(output.clone()))
             .with_min_log_level(Level::INFO);
 
-        let handler = crate::configure()
+        let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
@@ -512,7 +510,7 @@ mod tests {
             .finish()
             .unwrap();
 
-        let guard = set_local_logfire(handler);
+        let guard = set_local_logfire(logfire);
 
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             tracing::subscriber::with_default(guard.subscriber().clone(), || {
@@ -526,7 +524,7 @@ mod tests {
         }))
         .unwrap_err();
 
-        guard.shutdown_handler.shutdown().unwrap();
+        guard.shutdown().unwrap();
 
         let output = output.lock().unwrap();
         let output = std::str::from_utf8(&output).unwrap();
@@ -537,8 +535,6 @@ mod tests {
         [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
         [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
         [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [1mpanic: oh no![0m [3mbacktrace[0m=disabled backtrace
-        [2m1970-01-01T00:00:00.000004Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::metrics::meter_provider[0m [1mUser initiated shutdown of MeterProvider.[0m [3mname[0m=MeterProvider.Shutdown
-        [2m1970-01-01T00:00:00.000005Z[0m[34m DEBUG[0m [2;3mopentelemetry_sdk::logs::logger_provider[0m [1m[0m [3mname[0m=LoggerProvider.ShutdownInvokedByUser
         ");
     }
 

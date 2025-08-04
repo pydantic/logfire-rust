@@ -11,7 +11,7 @@ use test_utils::{find_attr, find_span};
 #[test]
 fn test_span_macro_attributes() {
     let exporter = InMemorySpanExporterBuilder::new().build();
-    let handler = logfire::configure()
+    let logfire = logfire::configure()
         .local()
         .send_to_logfire(false)
         .with_additional_span_processor(opentelemetry_sdk::trace::SimpleSpanProcessor::new(
@@ -19,7 +19,7 @@ fn test_span_macro_attributes() {
         ))
         .finish()
         .unwrap();
-    let guard = logfire::set_local_logfire(handler);
+    let guard = logfire::set_local_logfire(logfire);
 
     tracing::subscriber::with_default(guard.subscriber(), || {
         let _ = span!("string_attr_span", foo = "bar");
@@ -87,7 +87,7 @@ fn test_span_macro_shorthand_ident() {
     };
 
     let exporter = InMemorySpanExporterBuilder::new().build();
-    let handler = logfire::configure()
+    let logfire = logfire::configure()
         .local()
         .send_to_logfire(false)
         .with_additional_span_processor(opentelemetry_sdk::trace::SimpleSpanProcessor::new(
@@ -95,7 +95,7 @@ fn test_span_macro_shorthand_ident() {
         ))
         .finish()
         .unwrap();
-    let guard = logfire::set_local_logfire(handler);
+    let guard = logfire::set_local_logfire(logfire);
     tracing::subscriber::with_default(guard.subscriber(), || {
         let _ = span!("dotted_attr_span", dotted.key);
         let _ = span!("int_attr_span", int_val);

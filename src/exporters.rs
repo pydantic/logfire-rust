@@ -8,7 +8,7 @@ use opentelemetry_sdk::{
 };
 
 use crate::{
-    ConfigureError, get_optional_env,
+    ConfigureError, internal::env::get_optional_env,
     internal::exporters::remove_pending::RemovePendingSpansExporter,
 };
 
