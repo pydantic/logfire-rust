@@ -346,8 +346,19 @@ fn emit_event_as_log_span(
         })
         .collect();
 
+    // the default tracing event name is "event <file>:<line>", which is rather ugly in logfire,
+    // so we only include manually set names and otherwise will let logfire populate from any
+    // message (which hopefully exists).
+    let name = Some(event.metadata().name()).filter(|&n| {
+        n != format!(
+            "event {}:{}",
+            event.metadata().file().unwrap_or(""),
+            event.metadata().line().unwrap_or(0)
+        )
+    });
+
     tracer.export_log(
-        Some(event.metadata().name()),
+        name,
         parent_context,
         message,
         tracing_level_to_severity(*event.metadata().level()),
@@ -431,8 +442,8 @@ mod tests {
         let guard = set_local_logfire(logfire);
 
         tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            tracing::info!("root event"); // FIXME: this event is not emitted
-            tracing::info!(name: "root event with value", field_value = 1); // FIXME: this event is not emitted
+            tracing::info!("root event");
+            tracing::info!(name: "root event with value", field_value = 1);
 
             let root = tracing::span!(Level::INFO, "root span").entered();
             let _ = tracing::span!(Level::INFO, "hello world span").entered();
@@ -1397,9 +1408,7 @@ mod tests {
         [
             LogDataWithResource {
                 record: SdkLogRecord {
-                    event_name: Some(
-                        "event src/bridges/tracing.rs:434",
-                    ),
+                    event_name: None,
                     target: None,
                     timestamp: Some(
                         SystemTime {
@@ -1675,9 +1684,7 @@ mod tests {
             },
             LogDataWithResource {
                 record: SdkLogRecord {
-                    event_name: Some(
-                        "event src/bridges/tracing.rs:442",
-                    ),
+                    event_name: None,
                     target: None,
                     timestamp: Some(
                         SystemTime {
