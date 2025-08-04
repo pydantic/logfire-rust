@@ -688,7 +688,7 @@ fn install_panic_handler() {
 
             let location = info.location();
             tracer.export_log(
-                "panic",
+                None,
                 &tracing::Span::current().context(),
                 format!("panic: {message}"),
                 Severity::Error,
