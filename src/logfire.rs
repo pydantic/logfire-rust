@@ -202,8 +202,8 @@ impl Logfire {
                 tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
         }
 
-        if let Some(resource) = advanced_options.resource.clone() {
-            tracer_provider_builder = tracer_provider_builder.with_resource(resource);
+        for resource in &advanced_options.resources {
+            tracer_provider_builder = tracer_provider_builder.with_resource(resource.clone());
         }
 
         let mut http_headers: Option<HashMap<String, String>> = None;
@@ -292,8 +292,8 @@ impl Logfire {
             }
         }
 
-        if let Some(resource) = advanced_options.resource.clone() {
-            meter_provider_builder = meter_provider_builder.with_resource(resource);
+        for resource in &advanced_options.resources {
+            meter_provider_builder = meter_provider_builder.with_resource(resource.clone());
         }
 
         let meter_provider = meter_provider_builder.build();
@@ -312,7 +312,7 @@ impl Logfire {
             logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
         }
 
-        if let Some(resource) = advanced_options.resource {
+        for resource in advanced_options.resources {
             logger_provider_builder = logger_provider_builder.with_resource(resource);
         }
 
@@ -522,8 +522,9 @@ mod tests {
         time::Duration,
     };
 
-    use crate::{ConfigureError, Logfire, config::SendToLogfire, configure};
     use opentelemetry_sdk::trace::{SpanData, SpanProcessor};
+
+    use crate::{ConfigureError, Logfire, config::SendToLogfire, configure};
 
     #[test]
     fn test_send_to_logfire() {
@@ -621,7 +622,7 @@ mod tests {
                     shutdown_called: shutdown_called.clone(),
                 })
                 .finish()
-                .unwrap();
+                .expect("failed to configure logfire");
 
             let _guard = logfire.shutdown_guard();
 
@@ -644,7 +645,7 @@ mod tests {
                 shutdown_called: shutdown_called.clone(),
             })
             .finish()
-            .unwrap();
+            .expect("failed to configure logfire");
 
         // Having multiple shutdown guards should not cause issues when they are dropped
         {
@@ -670,7 +671,7 @@ mod tests {
                 shutdown_called: shutdown_called.clone(),
             })
             .finish()
-            .unwrap();
+            .expect("failed to configure logfire");
 
         // Not shutdown yet
         assert!(!shutdown_called.load(Ordering::Relaxed));
@@ -683,14 +684,19 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     #[should_panic(expected = "OtelError(AlreadyShutdown)")]
     fn test_multiple_shutdown_calls() {
-        let logfire = configure().local().send_to_logfire(false).finish().unwrap();
+        let logfire = configure()
+            .local()
+            .send_to_logfire(false)
+            .finish()
+            .expect("failed to configure logfire");
 
-        // First shutdown call should succeed
+        // First `shutdown` call should succeed
         logfire.shutdown().expect("first shutdown should succeed");
 
-        // Second shutdown will fail
+        // Second `shutdown` call should fail
         logfire.shutdown().unwrap();
     }
 }

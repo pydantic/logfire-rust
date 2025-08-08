@@ -14,9 +14,9 @@ use opentelemetry_sdk::{
     trace::{IdGenerator, SpanProcessor},
 };
 use regex::Regex;
+use tracing::{Level, level_filters::LevelFilter};
 
 use crate::{ConfigureError, logfire::Logfire};
-use tracing::{Level, level_filters::LevelFilter};
 
 /// Builder for logfire configuration, returned from [`logfire::configure()`][crate::configure].
 #[derive(Default)]
@@ -292,7 +292,7 @@ pub enum Target {
     /// from a different source.)
     ///
     /// The use of a `Mutex` might not be great for performance due to repeated
-    /// locking, however performance sensitive use cases might want to just use
+    /// locking, however; performance-sensitive use cases might want to just use
     /// stderr (which does lock but is probably better optimized) or not use
     /// console output at all.
     Pipe(Arc<Mutex<dyn std::io::Write + Send + 'static>>),
@@ -313,7 +313,7 @@ impl std::fmt::Debug for Target {
 pub struct AdvancedOptions {
     pub(crate) base_url: Option<String>,
     pub(crate) id_generator: Option<BoxedIdGenerator>,
-    pub(crate) resource: Option<opentelemetry_sdk::Resource>,
+    pub(crate) resources: Vec<opentelemetry_sdk::Resource>,
     pub(crate) log_record_processors: Vec<BoxedLogProcessor>,
     pub(crate) enable_tracing_metrics: bool,
     //
@@ -342,10 +342,11 @@ impl AdvancedOptions {
         self
     }
 
-    /// Set the resource; overrides default resource detection.
+    /// Add a [`Resource`](opentelemetry_sdk::Resource) to the tracer, meter,
+    /// and logging providers constructed by logfire.
     #[must_use]
     pub fn with_resource(mut self, resource: opentelemetry_sdk::Resource) -> Self {
-        self.resource = Some(resource);
+        self.resources.push(resource);
         self
     }
 
