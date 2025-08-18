@@ -811,7 +811,10 @@ mod tests {
         std::fs::write(&credentials_path, CREDENTIALS_JSON).unwrap();
 
         // Test that credentials are loaded when using with_data_dir
-        let config = crate::configure().local().with_data_dir(temp_dir.path());
+        let config = crate::configure()
+            .local()
+            .send_to_logfire(SendToLogfire::IfTokenPresent)
+            .with_data_dir(temp_dir.path());
 
         let md = Logfire::build_parts(config, None).unwrap().metadata;
 
