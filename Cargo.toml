@@ -31,6 +31,7 @@ tracing-opentelemetry = "0.31"
 thiserror = "2"
 
 serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
 nu-ansi-term = "0.50.1"
 chrono = "0.4.39"
 regex = "1.11.1"
@@ -53,10 +54,11 @@ opentelemetry-instrumentation-actix-web = { version = "0.22", features = ["metri
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 futures-util = "0.3"
+tempfile = "3.20.0"
 
 [features]
-default = ["export-http-protobuf"]
-serde = ["dep:serde"]
+default = ["data-dir", "export-http-protobuf"]
+data-dir = ["dep:serde", "dep:serde_json"]
 export-grpc = ["opentelemetry-otlp/grpc-tonic", "opentelemetry-otlp/tls", "dep:http", "dep:tonic"]
 export-http-protobuf = ["opentelemetry-otlp/http-proto", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
 export-http-json = ["opentelemetry-otlp/http-json", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
