@@ -73,6 +73,18 @@ async fn test_http_protobuf_export() {
                     Resource {
                         attributes: [
                             KeyValue {
+                                key: "service.name",
+                                value: Some(
+                                    AnyValue {
+                                        value: Some(
+                                            StringValue(
+                                                "unknown_service",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            },
+                            KeyValue {
                                 key: "telemetry.sdk.language",
                                 value: Some(
                                     AnyValue {
@@ -103,18 +115,6 @@ async fn test_http_protobuf_export() {
                                         value: Some(
                                             StringValue(
                                                 "0.30.0",
-                                            ),
-                                        ),
-                                    },
-                                ),
-                            },
-                            KeyValue {
-                                key: "service.name",
-                                value: Some(
-                                    AnyValue {
-                                        value: Some(
-                                            StringValue(
-                                                "unknown_service",
                                             ),
                                         ),
                                     },
@@ -389,6 +389,18 @@ async fn test_http_json_export() {
                     Resource {
                         attributes: [
                             KeyValue {
+                                key: "service.name",
+                                value: Some(
+                                    AnyValue {
+                                        value: Some(
+                                            StringValue(
+                                                "unknown_service",
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            },
+                            KeyValue {
                                 key: "telemetry.sdk.language",
                                 value: Some(
                                     AnyValue {
@@ -419,18 +431,6 @@ async fn test_http_json_export() {
                                         value: Some(
                                             StringValue(
                                                 "0.30.0",
-                                            ),
-                                        ),
-                                    },
-                                ),
-                            },
-                            KeyValue {
-                                key: "service.name",
-                                value: Some(
-                                    AnyValue {
-                                        value: Some(
-                                            StringValue(
-                                                "unknown_service",
                                             ),
                                         ),
                                     },

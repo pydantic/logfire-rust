@@ -407,7 +407,17 @@ pub fn make_trace_request_deterministic(req: &mut ExportTraceServiceRequest) {
     let mut timestamp_remap = TimestampRemapper::new();
 
     for resource_span in &mut req.resource_spans {
+        if let Some(resource) = &mut resource_span.resource {
+            // Sort attributes by key
+            resource.attributes.sort_by_key(|attr| attr.key.clone());
+        }
+
         for scope_span in &mut resource_span.scope_spans {
+            if let Some(scope) = &mut scope_span.scope {
+                // Sort attributes by key
+                scope.attributes.sort_by_key(|attr| attr.key.clone());
+            }
+
             for span in &mut scope_span.spans {
                 // Set start/end timestamps to deterministic values
                 span.start_time_unix_nano =
