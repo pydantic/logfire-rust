@@ -7,6 +7,9 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "data-dir")]
+use std::path::{Path, PathBuf};
+
 use opentelemetry::{
     logs::{LoggerProvider as _, Severity},
     trace::TracerProvider,
@@ -166,6 +169,46 @@ impl Logfire {
         })
     }
 
+    /// Load token from credentials file if available.
+    #[cfg(feature = "data-dir")]
+    fn load_token_from_credentials_file(
+        data_dir: Option<&Path>,
+        env: Option<&HashMap<String, String>>,
+    ) -> Result<Option<LogfireCredentials>, ConfigureError> {
+        // Determine credentials directory
+        let credentials_dir = if let Some(dir) = data_dir {
+            Cow::Borrowed(dir)
+        } else if let Some(dir) = get_optional_env("LOGFIRE_CREDENTIALS_DIR", env)? {
+            Cow::Owned(PathBuf::from(dir))
+        } else {
+            // Default to .logfire in current directory
+            Cow::Borrowed(Path::new(".logfire"))
+        };
+
+        let credentials_path = credentials_dir.join("logfire_credentials.json");
+
+        // Return None if file doesn't exist (not an error)
+        if !credentials_path.exists() {
+            return Ok(None);
+        }
+
+        // Read and parse credentials file
+        let contents = std::fs::read_to_string(&credentials_path).map_err(|e| {
+            ConfigureError::CredentialFileError {
+                path: credentials_path.clone(),
+                error: e.to_string(),
+            }
+        })?;
+
+        match serde_json::from_str(&contents) {
+            Ok(credentials) => Ok(Some(credentials)),
+            Err(e) => Err(ConfigureError::CredentialFileError {
+                path: credentials_path.clone(),
+                error: format!("JSON parse error: {e}"),
+            }),
+        }
+    }
+
     #[expect(clippy::too_many_lines)]
     fn build_parts(
         config: LogfireConfigBuilder,
@@ -174,6 +217,25 @@ impl Logfire {
         let mut token = config.token;
         if token.is_none() {
             token = get_optional_env("LOGFIRE_TOKEN", env)?;
+        }
+
+        #[cfg_attr(
+            not(feature = "data-dir"),
+            expect(unused_mut, reason = "only mutated on data-dir feature")
+        )]
+        let mut advanced_options = config.advanced.unwrap_or_default();
+
+        // Try loading from credentials file if still no token
+        #[cfg(feature = "data-dir")]
+        if token.is_none() {
+            if let Some(credentials) =
+                Self::load_token_from_credentials_file(config.data_dir.as_deref(), env)?
+            {
+                token = Some(credentials.token);
+                advanced_options.base_url = advanced_options
+                    .base_url
+                    .or(Some(credentials.logfire_api_url));
+            }
         }
 
         let send_to_logfire = match config.send_to_logfire {
@@ -189,8 +251,6 @@ impl Logfire {
             SendToLogfire::IfTokenPresent => token.is_some(),
             SendToLogfire::No => false,
         };
-
-        let advanced_options = config.advanced.unwrap_or_default();
 
         let mut tracer_provider_builder = SdkTracerProvider::builder();
         let mut logger_provider_builder = SdkLoggerProvider::builder();
@@ -209,7 +269,7 @@ impl Logfire {
         let mut http_headers: Option<HashMap<String, String>> = None;
 
         let logfire_base_url = if send_to_logfire {
-            let Some(token) = token else {
+            let Some(token) = &token else {
                 return Err(ConfigureError::TokenRequired);
             };
 
@@ -221,7 +281,7 @@ impl Logfire {
                 advanced_options
                     .base_url
                     .as_deref()
-                    .unwrap_or_else(|| get_base_url_from_token(&token)),
+                    .unwrap_or_else(|| get_base_url_from_token(token)),
             )
         } else {
             None
@@ -353,7 +413,11 @@ impl Logfire {
             logger_provider,
             enable_tracing_metrics: advanced_options.enable_tracing_metrics,
             #[cfg(test)]
-            send_to_logfire,
+            metadata: TestMetadata {
+                send_to_logfire,
+                logfire_token: token,
+                logfire_base_url: logfire_base_url.map(str::to_string),
+            },
         })
     }
 }
@@ -405,7 +469,14 @@ struct LogfireParts {
     logger_provider: SdkLoggerProvider,
     enable_tracing_metrics: bool,
     #[cfg(test)]
+    metadata: TestMetadata,
+}
+
+#[cfg(test)]
+struct TestMetadata {
     send_to_logfire: bool,
+    logfire_token: Option<String>,
+    logfire_base_url: Option<String>,
 }
 
 /// Install `handler` as part of a chain of panic handlers.
@@ -512,6 +583,18 @@ pub fn set_local_logfire(logfire: Logfire) -> LocalLogfireGuard {
     }
 }
 
+/// Credentials stored in `logfire_credentials.json` files
+#[cfg(feature = "data-dir")]
+#[derive(serde::Deserialize)]
+struct LogfireCredentials {
+    token: String,
+    #[expect(dead_code, reason = "not used for now")]
+    project_name: String,
+    #[expect(dead_code, reason = "not used for now")]
+    project_url: String,
+    logfire_api_url: String,
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -571,15 +654,26 @@ mod tests {
                 Ok(false),
             ),
         ] {
-            let env = env.into_iter().map(|(k, v)| (k.into(), v.into())).collect();
+            let env: std::collections::HashMap<String, String> =
+                env.into_iter().map(|(k, v)| (k.into(), v.into())).collect();
 
             let mut config = crate::configure();
             if let Some(value) = setting {
                 config = config.send_to_logfire(value);
             }
 
-            let result =
-                Logfire::build_parts(config, Some(&env)).map(|parts| parts.send_to_logfire);
+            let md = Logfire::build_parts(config, Some(&env)).map(|parts| parts.metadata);
+
+            if let Ok(md) = &md {
+                assert!(!md.send_to_logfire || md.logfire_token.is_some());
+                assert!(
+                    !md.send_to_logfire
+                        || md.logfire_base_url.as_deref()
+                            == Some("https://logfire-us.pydantic.dev")
+                );
+            }
+
+            let result = md.as_ref().map(|md| md.send_to_logfire);
 
             match (expected, result) {
                 (Ok(exp), Ok(actual)) => assert_eq!(exp, actual),
@@ -698,5 +792,120 @@ mod tests {
 
         // Second `shutdown` call should fail
         logfire.shutdown().unwrap();
+    }
+
+    #[test]
+    #[cfg(feature = "data-dir")]
+    fn test_credentials_file_loading() {
+        const CREDENTIALS_JSON: &str = r#"{
+    "token": "test_token_123",
+    "project_name": "test-project",
+    "project_url": "https://logfire-eu.pydantic.dev/test-org/test-project",
+    "logfire_api_url": "https://test-api-url.com"
+}"#;
+
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+
+        // Write credentials file
+        let credentials_path = temp_dir.path().join("logfire_credentials.json");
+        std::fs::write(&credentials_path, CREDENTIALS_JSON).unwrap();
+
+        // Test that credentials are loaded when using with_data_dir
+        let config = crate::configure()
+            .local()
+            .send_to_logfire(SendToLogfire::IfTokenPresent)
+            .with_data_dir(temp_dir.path());
+
+        let md = Logfire::build_parts(config, None).unwrap().metadata;
+
+        assert_eq!(md.send_to_logfire, true);
+        assert_eq!(md.logfire_token.as_deref(), Some("test_token_123"));
+        assert_eq!(
+            md.logfire_base_url.as_deref(),
+            Some("https://test-api-url.com")
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "data-dir")]
+    fn test_credentials_file_loading_env_var() {
+        const CREDENTIALS_JSON: &str = r#"{
+    "token": "test_token_123",
+    "project_name": "test-project",
+    "project_url": "https://logfire-eu.pydantic.dev/test-org/test-project",
+    "logfire_api_url": "https://test-api-url.com"
+}"#;
+
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+
+        // Write credentials file
+        let credentials_path = temp_dir.path().join("logfire_credentials.json");
+        std::fs::write(&credentials_path, CREDENTIALS_JSON).unwrap();
+
+        // Test that credentials are loaded when using with_data_dir
+        let config = crate::configure().local();
+
+        let env: std::collections::HashMap<String, String> = [(
+            "LOGFIRE_CREDENTIALS_DIR".to_string(),
+            temp_dir.path().display().to_string(),
+        )]
+        .into_iter()
+        .collect();
+
+        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+
+        assert_eq!(md.send_to_logfire, true);
+        assert_eq!(md.logfire_token.as_deref(), Some("test_token_123"));
+        assert_eq!(
+            md.logfire_base_url.as_deref(),
+            Some("https://test-api-url.com")
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "data-dir")]
+    fn test_credentials_file_error_handling() {
+        // Create a temporary directory using tempfile
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let credentials_path = temp_dir.path().join("logfire_credentials.json");
+
+        // Test with invalid JSON
+        std::fs::write(&credentials_path, "invalid json").unwrap();
+
+        let result = crate::configure()
+            .local()
+            .send_to_logfire(true) // This should require a token
+            .with_data_dir(temp_dir.path())
+            .finish();
+
+        // Should get a credential file error due to invalid JSON
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(matches!(
+                e,
+                crate::ConfigureError::CredentialFileError { .. }
+            ));
+        }
+        // temp_dir is cleaned up automatically
+    }
+
+    #[test]
+    #[cfg(feature = "data-dir")]
+    fn test_no_credentials_file_fallback() {
+        // Create a temporary directory without any credentials file using tempfile
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+
+        let result = crate::configure()
+            .local()
+            .send_to_logfire(true) // This should require a token
+            .with_data_dir(temp_dir.path())
+            .finish();
+
+        // Should get TokenRequired error since no credentials file exists
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(matches!(e, crate::ConfigureError::TokenRequired));
+        }
+        // temp_dir is cleaned up automatically
     }
 }
