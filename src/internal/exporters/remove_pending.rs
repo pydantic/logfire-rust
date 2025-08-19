@@ -19,6 +19,7 @@ impl<Inner> RemovePendingSpansExporter<Inner> {
 impl<Inner: SpanExporter> SpanExporter for RemovePendingSpansExporter<Inner> {
     async fn export(&self, mut spans: Vec<SpanData>) -> OTelSdkResult {
         let mut spans_by_id = HashMap::new();
+        dbg!(&spans);
 
         spans = spans
             .into_iter()
