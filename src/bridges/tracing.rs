@@ -441,7 +441,7 @@ mod tests {
 
         let guard = set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+        {
             tracing::info!("root event");
             tracing::info!(name: "root event with value", field_value = 1);
 
@@ -452,8 +452,9 @@ mod tests {
 
             tracing::info!("hello world log");
             tracing::info!(name: "hello world log with value", field_value = 1);
-        });
+        }
 
+        guard.shutdown().unwrap();
         let spans = exporter.get_finished_spans().unwrap();
         assert_debug_snapshot!(spans, @r#"
         [
@@ -1982,7 +1983,7 @@ mod tests {
 
         let guard = crate::set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+        {
             tracing::info!("root event");
             tracing::info!(name: "root event with value", field_value = 1);
 
@@ -1993,7 +1994,7 @@ mod tests {
 
             tracing::info!("hello world log");
             tracing::info!(name: "hello world log with value", field_value = 1);
-        });
+        }
 
         guard.shutdown().unwrap();
 

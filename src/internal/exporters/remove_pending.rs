@@ -106,15 +106,15 @@ mod tests {
 
         let guard = set_local_logfire(guard);
 
-        tracing::subscriber::with_default(guard.subscriber(), || {
+        {
             let _root = crate::span!("root span").entered();
             let _hello = crate::span!("hello world span").entered();
             let _debug = crate::span!(level: Level::DEBUG, "debug span").entered();
-        });
+        }
 
         guard.shutdown().unwrap();
-
         let mut spans = exporter.get_finished_spans().unwrap();
+
         spans.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         let spans = spans
             .iter()

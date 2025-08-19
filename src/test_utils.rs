@@ -256,6 +256,7 @@ pub struct DeterministicResourceMetrics {
 }
 
 /// Find a span by name in a slice of SpanData.
+#[track_caller]
 pub fn find_span<'a>(
     spans: &'a [opentelemetry_sdk::trace::SpanData],
     name: &str,

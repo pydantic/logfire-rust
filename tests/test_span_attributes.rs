@@ -21,14 +21,14 @@ fn test_span_macro_attributes() {
         .unwrap();
     let guard = logfire::set_local_logfire(logfire);
 
-    tracing::subscriber::with_default(guard.subscriber(), || {
-        let _ = span!("string_attr_span", foo = "bar");
-        let _ = span!("int_attr_span", num = 42);
-        let _ = span!("bool_attr_span", flag = true);
-        let _ = span!("dotted_attr_span", dotted.key = "value");
-        let _ = span!("multi_attr_span", a = 1, b = "two", c = false, d.e = 3);
-    });
+    let _ = span!("string_attr_span", foo = "bar");
+    let _ = span!("int_attr_span", num = 42);
+    let _ = span!("bool_attr_span", flag = true);
+    let _ = span!("dotted_attr_span", dotted.key = "value");
+    let _ = span!("multi_attr_span", a = 1, b = "two", c = false, d.e = 3);
+
     let spans = exporter.get_finished_spans().unwrap();
+    guard.shutdown().unwrap();
 
     // String attribute
     let span = find_span(&spans, "string_attr_span");
@@ -95,15 +95,16 @@ fn test_span_macro_shorthand_ident() {
         ))
         .finish()
         .unwrap();
+
     let guard = logfire::set_local_logfire(logfire);
-    tracing::subscriber::with_default(guard.subscriber(), || {
-        let _ = span!("dotted_attr_span", dotted.key);
-        let _ = span!("int_attr_span", int_val);
-        let _ = span!("bool_attr_span", bool_val);
-        let _ = span!("multi_attr_span", multi.a, multi.b, multi.c, multi.d_e);
-    });
+
+    let _ = span!("dotted_attr_span", dotted.key);
+    let _ = span!("int_attr_span", int_val);
+    let _ = span!("bool_attr_span", bool_val);
+    let _ = span!("multi_attr_span", multi.a, multi.b, multi.c, multi.d_e);
 
     let spans = exporter.get_finished_spans().unwrap();
+    guard.shutdown().unwrap();
 
     // Dotted key attribute
     let span = find_span(&spans, "dotted_attr_span");
