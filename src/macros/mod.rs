@@ -294,10 +294,8 @@ mod tests {
 
         let guard = crate::set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            crate::error!("Test error message");
-            crate::error!("Test error with value", field = 42);
-        });
+        crate::error!("Test error message");
+        crate::error!("Test error with value", field = 42);
 
         guard.shutdown().unwrap();
 
@@ -328,10 +326,8 @@ mod tests {
 
         let guard = crate::set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            crate::warn!("Test warn message");
-            crate::warn!("Test warn with value", field = "test");
-        });
+        crate::warn!("Test warn message");
+        crate::warn!("Test warn with value", field = "test");
 
         guard.shutdown().unwrap();
 
@@ -362,10 +358,8 @@ mod tests {
 
         let guard = crate::set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            crate::info!("Test info message");
-            crate::info!("Test info with value", field = true);
-        });
+        crate::info!("Test info message");
+        crate::info!("Test info with value", field = true);
 
         guard.shutdown().unwrap();
 
@@ -396,10 +390,8 @@ mod tests {
 
         let guard = crate::set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            crate::debug!("Test debug message");
-            crate::debug!("Test debug with value", field = 3.14);
-        });
+        crate::debug!("Test debug message");
+        crate::debug!("Test debug with value", field = 3.14);
 
         guard.shutdown().unwrap();
 
@@ -430,10 +422,8 @@ mod tests {
 
         let guard = crate::set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            crate::trace!("Test trace message");
-            crate::trace!("Test trace with value", field = "debug_info");
-        });
+        crate::trace!("Test trace message");
+        crate::trace!("Test trace with value", field = "debug_info");
 
         guard.shutdown().unwrap();
 
@@ -464,10 +454,8 @@ mod tests {
 
         let guard = crate::set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            crate::log!(Level::INFO, "Test log message");
-            crate::log!(Level::INFO, "Test log with value", field = "explicit");
-        });
+        crate::log!(Level::INFO, "Test log message");
+        crate::log!(Level::INFO, "Test log with value", field = "explicit");
 
         guard.shutdown().unwrap();
 
@@ -498,11 +486,9 @@ mod tests {
 
         let guard = crate::set_local_logfire(logfire.clone());
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            let parent_span = crate::span!("parent span");
-            crate::info!(parent: &parent_span, "Test info with parent");
-            crate::error!(parent: &parent_span, "Test error with parent", field = "parent_test");
-        });
+        let parent_span = crate::span!("parent span");
+        crate::info!(parent: &parent_span, "Test info with parent");
+        crate::error!(parent: &parent_span, "Test error with parent", field = "parent_test");
 
         guard.shutdown().unwrap();
 

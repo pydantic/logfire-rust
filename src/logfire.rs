@@ -536,12 +536,6 @@ pub struct LocalLogfireGuard {
 }
 
 impl LocalLogfireGuard {
-    /// Get the current tracer.
-    #[must_use]
-    pub fn subscriber(&self) -> Arc<dyn Subscriber + Send + Sync> {
-        self.logfire.subscriber.clone()
-    }
-
     /// Get the current meter provider
     #[must_use]
     pub fn meter_provider(&self) -> &SdkMeterProvider {

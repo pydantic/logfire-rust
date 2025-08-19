@@ -65,16 +65,16 @@ fn test_basic_span() {
     let value = 42;
 
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        tracing::subscriber::with_default(guard.subscriber(), || {
-            let root = span!("root span").entered();
-            let _ = span!("hello world span", attr = "x", dotted.attr = "y").entered();
-            let _ = span!(level: Level::DEBUG, "debug span");
-            let _ = span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
-            info!("hello world log {value}", attr = "x", dotted.attr = "y");
-            panic!("oh no!");
-        });
+        let root = span!("root span").entered();
+        let _ = span!("hello world span", attr = "x", dotted.attr = "y").entered();
+        let _ = span!(level: Level::DEBUG, "debug span");
+        let _ = span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
+        info!("hello world log {value}", attr = "x", dotted.attr = "y");
+        panic!("oh no!");
     }))
     .unwrap_err();
+
+    guard.shutdown().unwrap();
 
     let spans = exporter.get_finished_spans().unwrap();
     assert_debug_snapshot!(spans, @r#"
@@ -128,7 +128,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        34,
+                        33,
                     ),
                 },
                 KeyValue {
@@ -254,7 +254,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        35,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -410,7 +410,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        35,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -572,7 +572,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        36,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -708,7 +708,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        36,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -850,7 +850,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        37,
+                        36,
                     ),
                 },
                 KeyValue {
@@ -986,7 +986,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        37,
+                        36,
                     ),
                 },
                 KeyValue {
@@ -1128,7 +1128,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        34,
+                        33,
                     ),
                 },
                 KeyValue {
@@ -1302,7 +1302,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    38,
+                                    37,
                                 ),
                             ),
                         ),
@@ -1457,7 +1457,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    39,
+                                    38,
                                 ),
                             ),
                         ),

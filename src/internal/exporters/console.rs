@@ -418,14 +418,13 @@ mod tests {
         let guard = set_local_logfire(logfire);
 
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            tracing::subscriber::with_default(guard.subscriber().clone(), || {
-                let root = crate::span!("root span").entered();
-                let _ = crate::span!("hello world span").entered();
-                let _ = crate::span!(level: Level::DEBUG, "debug span");
-                let _ = crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
-                crate::info!("hello world log");
-                panic!("oh no!");
-            });
+            let root = crate::span!("root span").entered();
+            let _ = crate::span!("hello world span").entered();
+            let _ = crate::span!(level: Level::DEBUG, "debug span");
+            let _ =
+                crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
+            crate::info!("hello world log");
+            panic!("oh no!");
         }))
         .unwrap_err();
 
@@ -466,14 +465,13 @@ mod tests {
         let guard = set_local_logfire(logfire);
 
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            tracing::subscriber::with_default(guard.subscriber().clone(), || {
-                let root = crate::span!("root span").entered();
-                let _ = crate::span!("hello world span").entered();
-                let _ = crate::span!(level: Level::DEBUG, "debug span");
-                let _ = crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
-                crate::info!("hello world log");
-                panic!("oh no!");
-            });
+            let root = crate::span!("root span").entered();
+            let _ = crate::span!("hello world span").entered();
+            let _ = crate::span!(level: Level::DEBUG, "debug span");
+            let _ =
+                crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
+            crate::info!("hello world log");
+            panic!("oh no!");
         }))
         .unwrap_err();
 
@@ -513,14 +511,13 @@ mod tests {
         let guard = set_local_logfire(logfire);
 
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            tracing::subscriber::with_default(guard.subscriber().clone(), || {
-                let root = crate::span!("root span").entered();
-                let _ = crate::span!("hello world span").entered();
-                let _ = crate::span!(level: Level::DEBUG, "debug span");
-                let _ = crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
-                crate::info!("hello world log");
-                panic!("oh no!");
-            });
+            let root = crate::span!("root span").entered();
+            let _ = crate::span!("hello world span").entered();
+            let _ = crate::span!(level: Level::DEBUG, "debug span");
+            let _ =
+                crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
+            crate::info!("hello world log");
+            panic!("oh no!");
         }))
         .unwrap_err();
 

@@ -23,20 +23,20 @@ fn test_log_macro_attributes() {
         .unwrap();
     let guard = logfire::set_local_logfire(logfire);
 
-    tracing::subscriber::with_default(guard.subscriber(), || {
-        let _ = log!(Level::INFO, "string_attr_log", foo = "bar");
-        let _ = log!(Level::INFO, "int_attr_log", num = 42);
-        let _ = log!(Level::INFO, "bool_attr_log", flag = true);
-        let _ = log!(Level::INFO, "dotted_attr_log", dotted.key = "value");
-        let _ = log!(
-            Level::INFO,
-            "multi_attr_log",
-            a = 1,
-            b = "two",
-            c = false,
-            d.e = 3
-        );
-    });
+    let _ = log!(Level::INFO, "string_attr_log", foo = "bar");
+    let _ = log!(Level::INFO, "int_attr_log", num = 42);
+    let _ = log!(Level::INFO, "bool_attr_log", flag = true);
+    let _ = log!(Level::INFO, "dotted_attr_log", dotted.key = "value");
+    let _ = log!(
+        Level::INFO,
+        "multi_attr_log",
+        a = 1,
+        b = "two",
+        c = false,
+        d.e = 3
+    );
+
+    guard.shutdown().unwrap();
     let logs = log_exporter.get_emitted_logs().unwrap();
 
     // String attribute
@@ -107,19 +107,19 @@ fn test_log_macro_shorthand_ident() {
         .unwrap();
 
     let guard = logfire::set_local_logfire(logfire);
-    tracing::subscriber::with_default(guard.subscriber(), || {
-        let _ = log!(Level::INFO, "dotted_attr_log", dotted.key);
-        let _ = log!(Level::INFO, "int_attr_log", int_val);
-        let _ = log!(Level::INFO, "bool_attr_log", bool_val);
-        let _ = log!(
-            Level::INFO,
-            "multi_attr_log",
-            multi.a,
-            multi.b,
-            multi.c,
-            multi.d_e
-        );
-    });
+    let _ = log!(Level::INFO, "dotted_attr_log", dotted.key);
+    let _ = log!(Level::INFO, "int_attr_log", int_val);
+    let _ = log!(Level::INFO, "bool_attr_log", bool_val);
+    let _ = log!(
+        Level::INFO,
+        "multi_attr_log",
+        multi.a,
+        multi.b,
+        multi.c,
+        multi.d_e
+    );
+
+    guard.shutdown().unwrap();
 
     let logs = log_exporter.get_emitted_logs().unwrap();
 
