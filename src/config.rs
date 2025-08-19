@@ -308,7 +308,7 @@ impl std::fmt::Debug for Target {
     }
 }
 
-/// Options primarily used for testing by Logfire developers.
+/// Options used for fine-grained control over the logfire SDK.
 #[derive(Default)]
 pub struct AdvancedOptions {
     pub(crate) base_url: Option<String>,

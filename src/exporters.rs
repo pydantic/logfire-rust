@@ -91,7 +91,7 @@ pub fn span_exporter(
                     use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
                     builder
                         .with_http()
-                        .with_protocol(Protocol::HttpBinary)
+                        .with_protocol(Protocol::HttpJson)
                         .with_headers(headers.unwrap_or_default())
                         .with_endpoint(format!("{endpoint}/v1/traces"))
                         .build()?
@@ -164,7 +164,7 @@ pub fn metric_exporter(
                 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
                 Ok(builder
                     .with_http()
-                    .with_protocol(Protocol::HttpBinary)
+                    .with_protocol(Protocol::HttpJson)
                     .with_headers(headers.unwrap_or_default())
                     .with_endpoint(format!("{endpoint}/v1/metrics"))
                     .build()?)
@@ -234,7 +234,7 @@ pub fn log_exporter(
                 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
                 Ok(builder
                     .with_http()
-                    .with_protocol(Protocol::HttpBinary)
+                    .with_protocol(Protocol::HttpJson)
                     .with_headers(headers.unwrap_or_default())
                     .with_endpoint(format!("{endpoint}/v1/logs"))
                     .build()?)
