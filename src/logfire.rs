@@ -4,7 +4,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     panic::PanicHookInfo,
-    sync::{Arc, Once},
+    sync::{Arc, Mutex, Once},
     time::Duration,
 };
 
@@ -37,6 +37,7 @@ use crate::{
     internal::{
         env::get_optional_env,
         exporters::console::{ConsoleWriter, create_console_processors},
+        log_processor_shutdown_hack::LogProcessorShutdownHack,
         logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer},
     },
     ulid_id_generator::UlidIdGenerator,
@@ -55,6 +56,7 @@ pub struct Logfire {
     pub(crate) meter_provider: SdkMeterProvider,
     pub(crate) logger_provider: SdkLoggerProvider,
     pub(crate) enable_tracing_metrics: bool,
+    pub(crate) shutdown_sender: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
 }
 
 impl Logfire {
@@ -96,9 +98,20 @@ impl Logfire {
     ///
     /// See [`ConfigureError`] for possible errors.
     pub fn shutdown(&self) -> Result<(), ShutdownError> {
+        // shutdown produces some logs, we don't care about these
+        let _guard = Context::enter_telemetry_suppressed_scope();
+
         self.tracer_provider.shutdown()?;
         self.meter_provider.shutdown()?;
         self.logger_provider.shutdown()?;
+
+        // Send shutdown signal to the background runtime thread
+        if let Ok(mut sender_guard) = self.shutdown_sender.lock() {
+            if let Some(sender) = sender_guard.take() {
+                let _ = sender.send(());
+            }
+        }
+
         Ok(())
     }
 
@@ -152,6 +165,7 @@ impl Logfire {
             meter_provider,
             logger_provider,
             enable_tracing_metrics,
+            shutdown_sender,
             ..
         } = Self::build_parts(config, None)?;
 
@@ -186,6 +200,7 @@ impl Logfire {
             meter_provider,
             logger_provider,
             enable_tracing_metrics,
+            shutdown_sender,
         })
     }
 
@@ -310,7 +325,7 @@ impl Logfire {
             None
         };
 
-        if let Some(logfire_base_url) = logfire_base_url {
+        let shutdown_sender = if let Some(logfire_base_url) = logfire_base_url {
             thread_local! {
                 static SUPPRESS_GUARD: RefCell<Option<opentelemetry::ContextGuard>> = const { RefCell::new(None) };
             }
@@ -337,15 +352,21 @@ impl Logfire {
 
             let handle = rt.handle().clone();
 
+            // Create oneshot channel for shutdown signaling
+            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
             // Spawn the runtime into a background thread
-            //
-            // FIXME: make logfire shutdown trigger shutdown of this runtime once the exporters have shutdown.
             std::thread::Builder::new()
                 .name("logfire-export-runtime".into())
                 .spawn(move || {
                     let _guard = Context::enter_telemetry_suppressed_scope();
-                    rt.block_on(std::future::pending::<()>())
-                });
+                    let _ = rt.block_on(shutdown_rx);
+                })
+                .map_err(|e| {
+                    ConfigureError::Other(
+                        format!("failed to create logfire exporter: {e:?}").into(),
+                    )
+                })?;
 
             let (span_processor, log_processor, metrics_processor) = std::thread::scope(|s| {
                 s.spawn(|| -> Result<_, ConfigureError> {
@@ -363,11 +384,13 @@ impl Logfire {
                     )
                     .build();
 
-                    let log_processor = BatchLogProcessor::builder(
-                        crate::exporters::log_exporter(logfire_base_url, http_headers.clone())?,
-                        runtime::Tokio,
-                    )
-                    .build();
+                    let log_processor = LogProcessorShutdownHack::new(
+                        BatchLogProcessor::builder(
+                            crate::exporters::log_exporter(logfire_base_url, http_headers.clone())?,
+                            runtime::Tokio,
+                        )
+                        .build(),
+                    );
 
                     let metrics_processor = if config.metrics.is_some() {
                         Some(
@@ -395,7 +418,11 @@ impl Logfire {
             if let Some(metrics_processor) = metrics_processor {
                 meter_provider_builder = meter_provider_builder.with_reader(metrics_processor);
             }
-        }
+
+            Arc::new(Mutex::new(Some(shutdown_tx)))
+        } else {
+            Arc::new(Mutex::new(None))
+        };
 
         let console_processors = config
             .console_options
@@ -477,6 +504,7 @@ impl Logfire {
             meter_provider,
             logger_provider,
             enable_tracing_metrics: advanced_options.enable_tracing_metrics,
+            shutdown_sender,
             #[cfg(test)]
             metadata: TestMetadata {
                 send_to_logfire,
@@ -534,6 +562,7 @@ struct LogfireParts {
     meter_provider: SdkMeterProvider,
     logger_provider: SdkLoggerProvider,
     enable_tracing_metrics: bool,
+    shutdown_sender: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     #[cfg(test)]
     metadata: TestMetadata,
 }

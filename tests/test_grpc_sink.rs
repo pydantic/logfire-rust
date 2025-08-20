@@ -190,9 +190,6 @@ async fn test_grpc_protobuf_export() {
         info!("Test log message from within span");
     });
 
-    // need to allow some time for logs to flush
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
     tokio::task::spawn_blocking(move || logfire.shutdown())
         .await
         .unwrap()
