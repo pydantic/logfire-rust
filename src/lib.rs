@@ -95,7 +95,7 @@ pub use macros::*;
 pub use metrics::*;
 
 pub use crate::bridges::tracing::LogfireTracingLayer;
-pub use crate::logfire::Logfire;
+pub use crate::logfire::{Logfire, ShutdownGuard};
 
 mod internal;
 

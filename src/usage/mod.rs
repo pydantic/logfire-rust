@@ -85,7 +85,7 @@
 //!     .finish()?;
 //!
 //! // 2. add a logfire shutdown guard for panics
-//! let _guard = logfire.shutdown_guard();
+//! let _guard = logfire.clone().shutdown_guard();
 //!
 //! // 3. create a tracing subscriber
 //! let subscriber = tracing_subscriber::registry()
