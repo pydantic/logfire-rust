@@ -166,7 +166,7 @@ macro_rules! metric_doc_create_metric {
         concat!(
             "static ",
             $var_name,
-            ": LazyLock<logfire::metrics::",
+            ": LazyLock<logfire::",
             stringify!($ty),
             "> = LazyLock::new(|| {
     logfire::",
