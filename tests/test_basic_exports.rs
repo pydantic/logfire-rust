@@ -1586,13 +1586,12 @@ async fn test_basic_metrics() {
 
     let logfire = logfire::configure()
         .send_to_logfire(false)
+        .with_service_name("test-service")
+        .with_service_version("1.2.3")
+        .with_environment("test")
         .with_metrics(Some(
             MetricsOptions::default().with_additional_reader(reader.clone()),
         ))
-        .with_advanced_options(
-            AdvancedOptions::default()
-                .with_resource(Resource::builder_empty().with_service_name("test").build()),
-        )
         .finish()
         .unwrap();
 
@@ -1621,20 +1620,38 @@ async fn test_basic_metrics() {
     assert_debug_snapshot!(metrics, @r#"
     [
         DeterministicResourceMetrics {
-            resource: Resource {
-                inner: ResourceInner {
-                    attrs: {
-                        Static(
-                            "service.name",
-                        ): String(
-                            Static(
-                                "test",
-                            ),
+            resource: [
+                KeyValue {
+                    key: Static(
+                        "deployment.environment.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test",
                         ),
-                    },
-                    schema_url: None,
+                    ),
                 },
-            },
+                KeyValue {
+                    key: Static(
+                        "service.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test-service",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "service.version",
+                    ),
+                    value: String(
+                        Owned(
+                            "1.2.3",
+                        ),
+                    ),
+                },
+            ],
             scope_metrics: [
                 DeterministicScopeMetrics {
                     scope: InstrumentationScope {
@@ -1655,20 +1672,38 @@ async fn test_basic_metrics() {
             ],
         },
         DeterministicResourceMetrics {
-            resource: Resource {
-                inner: ResourceInner {
-                    attrs: {
-                        Static(
-                            "service.name",
-                        ): String(
-                            Static(
-                                "test",
-                            ),
+            resource: [
+                KeyValue {
+                    key: Static(
+                        "deployment.environment.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test",
                         ),
-                    },
-                    schema_url: None,
+                    ),
                 },
-            },
+                KeyValue {
+                    key: Static(
+                        "service.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test-service",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "service.version",
+                    ),
+                    value: String(
+                        Owned(
+                            "1.2.3",
+                        ),
+                    ),
+                },
+            ],
             scope_metrics: [
                 DeterministicScopeMetrics {
                     scope: InstrumentationScope {
