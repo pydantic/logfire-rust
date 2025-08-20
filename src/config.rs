@@ -26,9 +26,9 @@ pub struct LogfireConfigBuilder {
     pub(crate) local: bool,
     pub(crate) send_to_logfire: Option<SendToLogfire>,
     pub(crate) token: Option<String>,
-    // service_name: Option<String>,
-    // service_version: Option<String>,
-    // environment: Option<String>,
+    pub(crate) service_name: Option<String>,
+    pub(crate) service_version: Option<String>,
+    pub(crate) environment: Option<String>,
     pub(crate) console_options: Option<ConsoleOptions>,
 
     // config_dir: Option<PathBuf>,
@@ -83,6 +83,30 @@ impl LogfireConfigBuilder {
     /// Defaults to the value of `LOGFIRE_TOKEN` if set.
     pub fn with_token<T: Into<String>>(mut self, token: T) -> Self {
         self.token = Some(token.into());
+        self
+    }
+
+    /// Set the [service name] for the application.
+    ///
+    /// [service name]: https://opentelemetry.io/docs/specs/semconv/registry/attributes/service/#service-name
+    pub fn with_service_name<T: Into<String>>(mut self, service_name: T) -> Self {
+        self.service_name = Some(service_name.into());
+        self
+    }
+
+    /// Set the [service version] for the application.
+    ///
+    /// [service version]: https://opentelemetry.io/docs/specs/semconv/registry/attributes/service/#service-version
+    pub fn with_service_version<T: Into<String>>(mut self, service_version: T) -> Self {
+        self.service_version = Some(service_version.into());
+        self
+    }
+
+    /// Set the [deployment environment] for the application.
+    ///
+    /// [deployment environment]: https://opentelemetry.io/docs/specs/semconv/registry/attributes/deployment/#deployment-environment-name
+    pub fn with_environment<T: Into<String>>(mut self, environment: T) -> Self {
+        self.environment = Some(environment.into());
         self
     }
 

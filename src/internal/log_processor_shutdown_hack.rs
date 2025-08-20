@@ -1,6 +1,6 @@
 use opentelemetry_sdk::logs::LogProcessor;
 
-/// Workaround for https://github.com/open-telemetry/opentelemetry-rust/issues/3132
+/// Workaround for <https://github.com/open-telemetry/opentelemetry-rust/issues/3132>
 ///
 /// This wraps the inner exporter and redirects calls to `shutdown_with_timeout` to
 /// `shutdown`.

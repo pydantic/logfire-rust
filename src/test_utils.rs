@@ -12,7 +12,7 @@ use std::{
 };
 
 use opentelemetry::{
-    InstrumentationScope, Value,
+    InstrumentationScope, KeyValue, Value,
     logs::{LogRecord, Logger, LoggerProvider as _},
     trace::{SpanId, TraceId},
 };
@@ -190,13 +190,23 @@ pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
     })
 }
 
+/// `Resource` contains a hashmap, so deterministic tests need to convert to an ordered container.
+fn make_deterministic_resource(resource: &Resource) -> Vec<KeyValue> {
+    let mut attrs: Vec<_> = resource
+        .iter()
+        .map(|(k, v)| KeyValue::new(k.clone(), v.clone()))
+        .collect();
+    attrs.sort_by_key(|kv| kv.key.clone());
+    attrs
+}
+
 pub fn make_deterministic_resource_metrics(
     metrics: Vec<ResourceMetrics>,
 ) -> Vec<DeterministicResourceMetrics> {
     metrics
         .into_iter()
         .map(|metric| DeterministicResourceMetrics {
-            resource: metric.resource().clone(),
+            resource: make_deterministic_resource(&metric.resource()),
             scope_metrics: metric
                 .scope_metrics()
                 .map(|scope_metric| DeterministicScopeMetrics {
@@ -262,7 +272,7 @@ pub struct DeterministicMetric {
 /// Deterministic resource metrics
 #[derive(Debug)]
 pub struct DeterministicResourceMetrics {
-    resource: Resource,
+    resource: Vec<KeyValue>,
     scope_metrics: Vec<DeterministicScopeMetrics>,
 }
 

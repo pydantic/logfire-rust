@@ -301,6 +301,34 @@ impl Logfire {
                 tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
         }
 
+        // Add service-specific resources from config
+        let mut service_resource_builder = opentelemetry_sdk::Resource::builder_empty();
+        let mut has_service_attributes = false;
+
+        if let Some(service_name) = config.service_name {
+            service_resource_builder = service_resource_builder.with_service_name(service_name);
+            has_service_attributes = true;
+        }
+
+        if let Some(service_version) = config.service_version {
+            service_resource_builder = service_resource_builder.with_attribute(
+                opentelemetry::KeyValue::new("service.version", service_version),
+            );
+            has_service_attributes = true;
+        }
+
+        if let Some(environment) = config.environment {
+            service_resource_builder = service_resource_builder.with_attribute(
+                opentelemetry::KeyValue::new("deployment.environment.name", environment),
+            );
+            has_service_attributes = true;
+        }
+
+        if has_service_attributes {
+            let service_resource = service_resource_builder.build();
+            advanced_options.resources.push(service_resource);
+        }
+
         for resource in advanced_options.resources {
             tracer_provider_builder = tracer_provider_builder.with_resource(resource.clone());
             logger_provider_builder = logger_provider_builder.with_resource(resource.clone());
@@ -610,13 +638,14 @@ struct LogfireCredentials {
 /// Spawns a tokio runtime in a background thread and creates exporters which will use
 /// that runtime.
 ///
-/// As per https://github.com/open-telemetry/opentelemetry-rust/pull/3084, using a
+/// As per <https://github.com/open-telemetry/opentelemetry-rust/pull/3084>, using a
 /// runtime with suppression is the recommended way to avoid the export process
 /// generating telemetry logs (and creating both noise and an infinite cycle).
 ///
 /// It also has the benefit for the `grpc` export that the tonic channel can be created
 /// successfully in all cases; it _needs_ a tokio runtime and this way we don't need
 /// the user to call `logfire::configure` inside an async context.
+#[allow(clippy::type_complexity)] // internal type, not exposed to users
 fn spawn_runtime_and_exporters(
     logfire_base_url: &str,
     http_headers: Option<HashMap<String, String>>,
@@ -697,7 +726,7 @@ fn spawn_runtime_and_exporters(
             let metrics_processor = if enable_metrics {
                 Some(
                     PeriodicReader::builder(
-                        crate::exporters::metric_exporter(logfire_base_url, http_headers.clone())?,
+                        crate::exporters::metric_exporter(logfire_base_url, http_headers)?,
                         runtime::Tokio,
                     )
                     .build(),
