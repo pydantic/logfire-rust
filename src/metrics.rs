@@ -140,7 +140,7 @@ macro_rules! metric_doc_header {
   (histogram, $method:ident) => {
     concat!("Wrapper for [`Meter::", stringify!($method), "`] using Pydantic Logfire's global meter.")
   };
-  (exponential_histogram, $method:ident) => { 
+  (exponential_histogram, $method:ident) => {
     concat!("Wrapper for [`Histogram`] using Base2ExponentialHistogram aggregation and Pydantic Logfire's global meter.")
   };
 }
