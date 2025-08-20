@@ -71,6 +71,7 @@
 //! ```rust
 //! use std::sync::LazyLock;
 //! use opentelemetry::metrics::Histogram;
+//! use crate::metrics::ExponentialHistogram;
 //!
 //! static REQUEST_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
 //!     logfire::f64_histogram("http_request_duration")
@@ -86,14 +87,14 @@
 //!         .build()
 //! });
 //!
-//! static QUEUE_LATENCY: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+//! static QUEUE_LATENCY: LazyLock<ExponentialHistogram<f64>> = LazyLock::new(|| {
 //!     logfire::f64_exponential_histogram("queue_latency", 20)
 //!         .with_description("Latency of items in a queue")
 //!         .with_unit("ms")
 //!         .build()
 //! });
 //!
-//! static MEMORY_USAGE_BYTES: LazyLock<Histogram<u64>> = LazyLock::new(|| {
+//! static MEMORY_USAGE_BYTES: LazyLock<ExponentialHistogram<u64>> = LazyLock::new(|| {
 //!     logfire::u64_exponential_histogram("memory_usage_bytes", 20)
 //!         .with_description("Memory usage in bytes")
 //!         .with_unit("By")
