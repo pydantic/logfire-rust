@@ -71,7 +71,7 @@
 //! ```rust
 //! use std::sync::LazyLock;
 //! use opentelemetry::metrics::Histogram;
-//! use crate::metrics::ExponentialHistogram;
+//! use logfire::ExponentialHistogram;
 //!
 //! static REQUEST_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
 //!     logfire::f64_histogram("http_request_duration")

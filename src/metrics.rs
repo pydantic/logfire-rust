@@ -166,7 +166,7 @@ macro_rules! metric_doc_create_metric {
         concat!(
             "static ",
             $var_name,
-            ": LazyLock<opentelemetry::metrics::",
+            ": LazyLock<",
             stringify!($ty),
             "> = LazyLock::new(|| {
     logfire::",
