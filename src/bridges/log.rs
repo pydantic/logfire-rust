@@ -81,7 +81,6 @@ mod tests {
         let logfire = crate::configure()
             .local()
             .send_to_logfire(false)
-            .install_panic_handler()
             .with_default_level_filter(TracingLevelFilter::TRACE)
             .with_advanced_options(
                 AdvancedOptions::default()
@@ -179,7 +178,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        26,
+                                        25,
                                     ),
                                 ),
                             ),
@@ -312,7 +311,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        27,
+                                        26,
                                     ),
                                 ),
                             ),
@@ -445,7 +444,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        30,
+                                        29,
                                     ),
                                 ),
                             ),
@@ -578,7 +577,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        31,
+                                        30,
                                     ),
                                 ),
                             ),
@@ -711,7 +710,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        32,
+                                        31,
                                     ),
                                 ),
                             ),
@@ -844,7 +843,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        33,
+                                        32,
                                     ),
                                 ),
                             ),
@@ -977,7 +976,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        34,
+                                        33,
                                     ),
                                 ),
                             ),
@@ -1065,7 +1064,6 @@ mod tests {
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options.clone()))
-            .install_panic_handler()
             .with_default_level_filter(TracingLevelFilter::TRACE)
             .finish()
             .unwrap();

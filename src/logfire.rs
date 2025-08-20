@@ -73,7 +73,6 @@ impl Logfire {
     /// ```rust
     /// fn main() -> Result<(), Box<dyn std::error::Error>> {
     ///     let logfire = logfire::configure()
-    ///         .install_panic_handler()
     /// #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
     ///         .finish()?;
     ///
@@ -1061,5 +1060,37 @@ mod tests {
             assert!(matches!(e, crate::ConfigureError::TokenRequired));
         }
         // temp_dir is cleaned up automatically
+    }
+
+    #[test]
+    fn test_panic_handler_disabled() {
+        // other tests check enabled (default)
+
+        use crate::config::AdvancedOptions;
+        use opentelemetry_sdk::logs::{InMemoryLogExporter, SimpleLogProcessor};
+
+        let log_exporter = InMemoryLogExporter::default();
+
+        let logfire = configure()
+            .local()
+            .send_to_logfire(false)
+            .with_install_panic_handler(false)
+            .with_advanced_options(
+                AdvancedOptions::default()
+                    .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
+            )
+            .finish()
+            .expect("failed to configure logfire");
+
+        let guard = crate::set_local_logfire(logfire);
+
+        let _result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            panic!("test panic");
+        }));
+
+        guard.shutdown().expect("shutdown should succeed");
+
+        let logs = log_exporter.get_emitted_logs().unwrap();
+        assert!(logs.is_empty());
     }
 }

@@ -45,7 +45,6 @@ fn test_basic_span() {
             TEST_FILE,
             TEST_LINE,
         )))
-        .install_panic_handler()
         .with_default_level_filter(LevelFilter::TRACE)
         .with_advanced_options(
             AdvancedOptions::default()
@@ -128,7 +127,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        33,
+                        32,
                     ),
                 },
                 KeyValue {
@@ -254,7 +253,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        34,
+                        33,
                     ),
                 },
                 KeyValue {
@@ -410,7 +409,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        34,
+                        33,
                     ),
                 },
                 KeyValue {
@@ -572,7 +571,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        35,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -708,7 +707,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        35,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -850,7 +849,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        36,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -986,7 +985,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        36,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -1128,7 +1127,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        33,
+                        32,
                     ),
                 },
                 KeyValue {
@@ -1302,7 +1301,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    37,
+                                    36,
                                 ),
                             ),
                         ),
@@ -1457,7 +1456,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    38,
+                                    37,
                                 ),
                             ),
                         ),
