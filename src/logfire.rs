@@ -21,7 +21,7 @@ use opentelemetry_sdk::{
 };
 use tracing::{Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-use tracing_subscriber::{layer::SubscriberExt, registry::LookupSpan};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, registry::LookupSpan};
 
 use crate::{
     __macros_impl::LogfireValue,
@@ -44,6 +44,7 @@ use crate::{
 pub struct Logfire {
     pub(crate) tracer_provider: SdkTracerProvider,
     pub(crate) tracer: LogfireTracer,
+    pub(crate) env_filter: Arc<EnvFilter>,
     pub(crate) subscriber: Arc<dyn Subscriber + Send + Sync>,
     pub(crate) meter_provider: SdkMeterProvider,
     pub(crate) logger_provider: SdkLoggerProvider,
@@ -97,6 +98,9 @@ impl Logfire {
 
     /// Get a tracing layer which can be used to embed this `Logfire` instance into a `tracing_subscriber::Registry`.
     ///
+    /// This layer will filter data in the same way the `Logfire` SDK would; via the `RUST_LOG` environment variable
+    /// or the default level filter set in the `LogfireConfigBuilder`.
+    ///
     /// # Example
     ///
     /// ```rust
@@ -122,7 +126,11 @@ impl Logfire {
     where
         S: Subscriber + for<'span> LookupSpan<'span>,
     {
-        LogfireTracingLayer::new(self.tracer.clone(), self.enable_tracing_metrics)
+        LogfireTracingLayer::new(
+            self.tracer.clone(),
+            self.enable_tracing_metrics,
+            self.env_filter.clone(),
+        )
     }
 
     /// Called by `LogfireConfigBuilder::finish()`.
@@ -132,6 +140,7 @@ impl Logfire {
         let LogfireParts {
             local,
             tracer,
+            env_filter,
             subscriber,
             tracer_provider,
             meter_provider,
@@ -162,6 +171,7 @@ impl Logfire {
         Ok(Logfire {
             tracer_provider,
             tracer,
+            env_filter,
             subscriber,
             meter_provider,
             logger_provider,
@@ -318,19 +328,6 @@ impl Logfire {
         let tracer_provider = tracer_provider_builder.build();
 
         let tracer = tracer_provider.tracer("logfire");
-        let default_level_filter = config.default_level_filter.unwrap_or(if send_to_logfire {
-            // by default, send everything to the logfire platform, for best UX
-            LevelFilter::TRACE
-        } else {
-            // but if printing locally, just set INFO
-            LevelFilter::INFO
-        });
-
-        let filter = tracing_subscriber::EnvFilter::builder()
-            .with_default_directive(default_level_filter.into())
-            .from_env()?; // but allow the user to override this with `RUST_LOG`
-
-        let subscriber = tracing_subscriber::registry().with(filter);
 
         let mut meter_provider_builder = SdkMeterProvider::builder();
 
@@ -380,6 +377,14 @@ impl Logfire {
 
         let logger = Arc::new(logger_provider.logger("logfire"));
 
+        let default_level_filter = config.default_level_filter.unwrap_or(if send_to_logfire {
+            // by default, send everything to the logfire platform, for best UX
+            LevelFilter::TRACE
+        } else {
+            // but if printing locally, just set INFO
+            LevelFilter::INFO
+        });
+
         let mut filter_builder = env_filter::Builder::new();
         if let Ok(filter) = std::env::var("RUST_LOG") {
             filter_builder.parse(&filter);
@@ -395,9 +400,17 @@ impl Logfire {
             filter: Arc::new(filter_builder.build()),
         };
 
-        let subscriber = subscriber.with(LogfireTracingLayer::new(
+        let filter = Arc::new(
+            tracing_subscriber::EnvFilter::builder()
+                .with_default_directive(default_level_filter.into())
+                // but allow the user to override this with `RUST_LOG`
+                .from_env()?,
+        );
+
+        let subscriber = tracing_subscriber::registry().with(LogfireTracingLayer::new(
             tracer.clone(),
             advanced_options.enable_tracing_metrics,
+            filter.clone(),
         ));
 
         if config.install_panic_handler {
@@ -407,6 +420,7 @@ impl Logfire {
         Ok(LogfireParts {
             local: config.local,
             tracer,
+            env_filter: filter,
             subscriber: Arc::new(subscriber),
             tracer_provider,
             meter_provider,
@@ -463,6 +477,7 @@ impl Drop for ShutdownGuard {
 struct LogfireParts {
     local: bool,
     tracer: LogfireTracer,
+    env_filter: Arc<EnvFilter>,
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     tracer_provider: SdkTracerProvider,
     meter_provider: SdkMeterProvider,
