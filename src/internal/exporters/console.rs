@@ -410,7 +410,6 @@ mod tests {
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
-            .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
             .unwrap();
@@ -457,7 +456,6 @@ mod tests {
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
-            .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
             .unwrap();
@@ -503,7 +501,6 @@ mod tests {
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
-            .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
             .unwrap();
@@ -541,7 +538,6 @@ mod tests {
         let shutdown_handler = crate::configure()
             .send_to_logfire(false)
             .local()
-            .install_panic_handler()
             .finish()
             .unwrap();
 

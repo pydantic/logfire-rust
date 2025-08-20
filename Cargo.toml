@@ -19,11 +19,30 @@ tonic = { version = "0.13", optional = true }
 
 rand = "0.9.0"
 
-opentelemetry = { version = "0.30", default-features = false, features = ["trace", "logs"] }
-opentelemetry_sdk = { version = "0.30", default-features = false, features = ["trace", "experimental_metrics_custom_reader", "logs", "spec_unstable_metrics_views"] }
-opentelemetry-otlp = { version = "0.30", default-features = false, features = ["trace", "metrics", "logs"] }
+opentelemetry = { version = "0.30", default-features = false, features = [
+    "trace",
+    "logs",
+] }
+opentelemetry_sdk = { version = "0.30", default-features = false, features = [
+    "trace",
+    "experimental_metrics_custom_reader",
+    "experimental_trace_batch_span_processor_with_async_runtime",
+    "experimental_logs_batch_log_processor_with_async_runtime",
+    "experimental_metrics_periodicreader_with_async_runtime",
+    "rt-tokio",
+    "logs",
+    "spec_unstable_metrics_views"
+] }
+opentelemetry-otlp = { version = "0.30", default-features = false, features = [
+    "trace",
+    "metrics",
+    "logs",
+] }
 futures-util = "0.3"
 
+tokio = { version = "1.44.1", default-features = false, features = [
+    "rt-multi-thread",
+] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-opentelemetry = "0.31"
@@ -40,23 +59,36 @@ regex = "1.11.1"
 async-trait = "0.1.88"
 futures = { version = "0.3.31", features = ["futures-executor"] }
 insta = "1.42.1"
-opentelemetry_sdk = { version = "0.30", default-features = false, features = ["testing"] }
+opentelemetry_sdk = { version = "0.30", default-features = false, features = [
+    "testing",
+] }
 regex = "1.11.1"
-tokio = {version = "1.44.1", features = ["test-util", "macros", "rt-multi-thread"] }
+tokio = { version = "1.44.1", features = [
+    "test-util",
+    "macros",
+    "rt-multi-thread",
+] }
 ulid = "1.2.0"
 wiremock = "0.6"
 tonic-build = "0.13"
 tonic = { version = "0.13", features = ["transport"] }
 prost = "0.13"
-opentelemetry-proto = { version = "0.30", features = ["tonic", "gen-tonic-messages"] }
+opentelemetry-proto = { version = "0.30", features = [
+    "tonic",
+    "gen-tonic-messages",
+] }
 tokio-stream = { version = "0.1", features = ["net"] }
 
 # Dependencies for examples
 axum = { version = "0.8", features = ["macros"] }
-axum-tracing-opentelemetry = { version = "0.29", features = ["tracing_level_info"] }
+axum-tracing-opentelemetry = { version = "0.29", features = [
+    "tracing_level_info",
+] }
 axum-otel-metrics = "0.12.0"
 actix-web = "4.0"
-opentelemetry-instrumentation-actix-web = { version = "0.22", features = ["metrics"] }
+opentelemetry-instrumentation-actix-web = { version = "0.22", features = [
+    "metrics",
+] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 futures-util = "0.3"
@@ -65,9 +97,22 @@ tempfile = "3.20.0"
 [features]
 default = ["data-dir", "export-http-protobuf"]
 data-dir = ["dep:serde", "dep:serde_json"]
-export-grpc = ["opentelemetry-otlp/grpc-tonic", "opentelemetry-otlp/tls", "dep:http", "dep:tonic"]
-export-http-protobuf = ["opentelemetry-otlp/http-proto", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
-export-http-json = ["opentelemetry-otlp/http-json", "opentelemetry-otlp/reqwest-blocking-client", "opentelemetry-otlp/reqwest-rustls"]
+export-grpc = [
+    "opentelemetry-otlp/grpc-tonic",
+    "opentelemetry-otlp/tls",
+    "dep:http",
+    "dep:tonic",
+]
+export-http-protobuf = [
+    "opentelemetry-otlp/http-proto",
+    "opentelemetry-otlp/reqwest-client",
+    "opentelemetry-otlp/reqwest-rustls",
+]
+export-http-json = [
+    "opentelemetry-otlp/http-json",
+    "opentelemetry-otlp/reqwest-client",
+    "opentelemetry-otlp/reqwest-rustls",
+]
 
 [lints.rust]
 missing_docs = "warn"

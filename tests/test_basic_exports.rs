@@ -45,7 +45,6 @@ fn test_basic_span() {
             TEST_FILE,
             TEST_LINE,
         )))
-        .install_panic_handler()
         .with_default_level_filter(LevelFilter::TRACE)
         .with_advanced_options(
             AdvancedOptions::default()
@@ -128,7 +127,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        33,
+                        32,
                     ),
                 },
                 KeyValue {
@@ -254,7 +253,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        34,
+                        33,
                     ),
                 },
                 KeyValue {
@@ -410,7 +409,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        34,
+                        33,
                     ),
                 },
                 KeyValue {
@@ -572,7 +571,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        35,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -708,7 +707,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        35,
+                        34,
                     ),
                 },
                 KeyValue {
@@ -850,7 +849,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        36,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -986,7 +985,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        36,
+                        35,
                     ),
                 },
                 KeyValue {
@@ -1128,7 +1127,7 @@ fn test_basic_span() {
                         "code.lineno",
                     ),
                     value: I64(
-                        33,
+                        32,
                     ),
                 },
                 KeyValue {
@@ -1302,7 +1301,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    37,
+                                    36,
                                 ),
                             ),
                         ),
@@ -1457,7 +1456,7 @@ fn test_basic_span() {
                                     "code.lineno",
                                 ),
                                 Int(
-                                    38,
+                                    37,
                                 ),
                             ),
                         ),
@@ -1586,13 +1585,12 @@ async fn test_basic_metrics() {
 
     let logfire = logfire::configure()
         .send_to_logfire(false)
+        .with_service_name("test-service")
+        .with_service_version("1.2.3")
+        .with_environment("test")
         .with_metrics(Some(
             MetricsOptions::default().with_additional_reader(reader.clone()),
         ))
-        .with_advanced_options(
-            AdvancedOptions::default()
-                .with_resource(Resource::builder_empty().with_service_name("test").build()),
-        )
         .finish()
         .unwrap();
 
@@ -1621,20 +1619,38 @@ async fn test_basic_metrics() {
     assert_debug_snapshot!(metrics, @r#"
     [
         DeterministicResourceMetrics {
-            resource: Resource {
-                inner: ResourceInner {
-                    attrs: {
-                        Static(
-                            "service.name",
-                        ): String(
-                            Static(
-                                "test",
-                            ),
+            resource: [
+                KeyValue {
+                    key: Static(
+                        "deployment.environment.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test",
                         ),
-                    },
-                    schema_url: None,
+                    ),
                 },
-            },
+                KeyValue {
+                    key: Static(
+                        "service.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test-service",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "service.version",
+                    ),
+                    value: String(
+                        Owned(
+                            "1.2.3",
+                        ),
+                    ),
+                },
+            ],
             scope_metrics: [
                 DeterministicScopeMetrics {
                     scope: InstrumentationScope {
@@ -1655,20 +1671,38 @@ async fn test_basic_metrics() {
             ],
         },
         DeterministicResourceMetrics {
-            resource: Resource {
-                inner: ResourceInner {
-                    attrs: {
-                        Static(
-                            "service.name",
-                        ): String(
-                            Static(
-                                "test",
-                            ),
+            resource: [
+                KeyValue {
+                    key: Static(
+                        "deployment.environment.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test",
                         ),
-                    },
-                    schema_url: None,
+                    ),
                 },
-            },
+                KeyValue {
+                    key: Static(
+                        "service.name",
+                    ),
+                    value: String(
+                        Owned(
+                            "test-service",
+                        ),
+                    ),
+                },
+                KeyValue {
+                    key: Static(
+                        "service.version",
+                    ),
+                    value: String(
+                        Owned(
+                            "1.2.3",
+                        ),
+                    ),
+                },
+            ],
             scope_metrics: [
                 DeterministicScopeMetrics {
                     scope: InstrumentationScope {

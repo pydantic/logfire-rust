@@ -20,15 +20,14 @@ use tracing::{Level, level_filters::LevelFilter};
 use crate::{ConfigureError, logfire::Logfire};
 
 /// Builder for logfire configuration, returned from [`logfire::configure()`][crate::configure].
-#[derive(Default)]
 #[must_use = "call `.finish()` to complete logfire configuration."]
 pub struct LogfireConfigBuilder {
     pub(crate) local: bool,
     pub(crate) send_to_logfire: Option<SendToLogfire>,
     pub(crate) token: Option<String>,
-    // service_name: Option<String>,
-    // service_version: Option<String>,
-    // environment: Option<String>,
+    pub(crate) service_name: Option<String>,
+    pub(crate) service_version: Option<String>,
+    pub(crate) environment: Option<String>,
     pub(crate) console_options: Option<ConsoleOptions>,
 
     // config_dir: Option<PathBuf>,
@@ -52,6 +51,23 @@ pub struct LogfireConfigBuilder {
     pub(crate) default_level_filter: Option<LevelFilter>,
 }
 
+impl Default for LogfireConfigBuilder {
+    fn default() -> Self {
+        Self {
+            local: false,
+            send_to_logfire: None,
+            token: None,
+            console_options: None,
+            data_dir: None,
+            additional_span_processors: Vec::new(),
+            advanced: None,
+            metrics: None,
+            install_panic_handler: true,
+            default_level_filter: None,
+        }
+    }
+}
+
 impl LogfireConfigBuilder {
     /// Call to configure Logfire for local use only.
     ///
@@ -62,11 +78,17 @@ impl LogfireConfigBuilder {
         self
     }
 
-    /// Call to install a hook to log panics.
+    /// Whether to install a hook to
     ///
     /// Any existing panic hook will be preserved and called after the logfire panic hook.
-    pub fn install_panic_handler(mut self) -> Self {
-        self.install_panic_handler = true;
+    pub fn with_install_panic_handler(mut self, install: bool) -> Self {
+        self.install_panic_handler = install;
+        self
+    }
+
+    /// Deprecated form of [`with_install_panic_handler`][Self::with_install_panic_handler].
+    #[deprecated(since = "0.8.0", note = "noop; now installed by default")]
+    pub fn install_panic_handler(self) -> Self {
         self
     }
 
@@ -83,6 +105,30 @@ impl LogfireConfigBuilder {
     /// Defaults to the value of `LOGFIRE_TOKEN` if set.
     pub fn with_token<T: Into<String>>(mut self, token: T) -> Self {
         self.token = Some(token.into());
+        self
+    }
+
+    /// Set the [service name] for the application.
+    ///
+    /// [service name]: https://opentelemetry.io/docs/specs/semconv/registry/attributes/service/#service-name
+    pub fn with_service_name<T: Into<String>>(mut self, service_name: T) -> Self {
+        self.service_name = Some(service_name.into());
+        self
+    }
+
+    /// Set the [service version] for the application.
+    ///
+    /// [service version]: https://opentelemetry.io/docs/specs/semconv/registry/attributes/service/#service-version
+    pub fn with_service_version<T: Into<String>>(mut self, service_version: T) -> Self {
+        self.service_version = Some(service_version.into());
+        self
+    }
+
+    /// Set the [deployment environment] for the application.
+    ///
+    /// [deployment environment]: https://opentelemetry.io/docs/specs/semconv/registry/attributes/deployment/#deployment-environment-name
+    pub fn with_environment<T: Into<String>>(mut self, environment: T) -> Self {
+        self.environment = Some(environment.into());
         self
     }
 

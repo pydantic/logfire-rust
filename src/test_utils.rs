@@ -12,10 +12,11 @@ use std::{
 };
 
 use opentelemetry::{
-    InstrumentationScope, Value,
+    InstrumentationScope, KeyValue, Value,
     logs::{LogRecord, Logger, LoggerProvider as _},
     trace::{SpanId, TraceId},
 };
+use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_sdk::{
     Resource,
@@ -189,13 +190,23 @@ pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
     })
 }
 
+/// `Resource` contains a hashmap, so deterministic tests need to convert to an ordered container.
+fn make_deterministic_resource(resource: &Resource) -> Vec<KeyValue> {
+    let mut attrs: Vec<_> = resource
+        .iter()
+        .map(|(k, v)| KeyValue::new(k.clone(), v.clone()))
+        .collect();
+    attrs.sort_by_key(|kv| kv.key.clone());
+    attrs
+}
+
 pub fn make_deterministic_resource_metrics(
     metrics: Vec<ResourceMetrics>,
 ) -> Vec<DeterministicResourceMetrics> {
     metrics
         .into_iter()
         .map(|metric| DeterministicResourceMetrics {
-            resource: metric.resource().clone(),
+            resource: make_deterministic_resource(&metric.resource()),
             scope_metrics: metric
                 .scope_metrics()
                 .map(|scope_metric| DeterministicScopeMetrics {
@@ -261,7 +272,7 @@ pub struct DeterministicMetric {
 /// Deterministic resource metrics
 #[derive(Debug)]
 pub struct DeterministicResourceMetrics {
-    resource: Resource,
+    resource: Vec<KeyValue>,
     scope_metrics: Vec<DeterministicScopeMetrics>,
 }
 
@@ -447,6 +458,46 @@ pub fn make_trace_request_deterministic(req: &mut ExportTraceServiceRequest) {
                     event.time_unix_nano =
                         timestamp_remap.remap_u64_nano_timestamp(event.time_unix_nano);
                 }
+            }
+        }
+    }
+}
+
+pub fn make_log_request_deterministic(req: &mut ExportLogsServiceRequest) {
+    let mut timestamp_remap = TimestampRemapper::new();
+
+    for resource_log in &mut req.resource_logs {
+        if let Some(resource) = &mut resource_log.resource {
+            resource.attributes.sort_by_key(|attr| attr.key.clone());
+        }
+
+        for scope_log in &mut resource_log.scope_logs {
+            if let Some(scope) = &mut scope_log.scope {
+                scope.attributes.sort_by_key(|attr| attr.key.clone());
+            }
+
+            for log_record in &mut scope_log.log_records {
+                // Remap timestamps
+                log_record.time_unix_nano =
+                    timestamp_remap.remap_u64_nano_timestamp(log_record.time_unix_nano);
+                log_record.observed_time_unix_nano =
+                    timestamp_remap.remap_u64_nano_timestamp(log_record.observed_time_unix_nano);
+
+                // Zero out non-deterministic attributes
+                for attr in &mut log_record.attributes {
+                    if attr.key == "thread.id" {
+                        attr.value = Some(opentelemetry_proto::tonic::common::v1::AnyValue {
+                            value: Some(
+                                opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(
+                                    0,
+                                ),
+                            ),
+                        });
+                    }
+                }
+
+                // Sort attributes by key
+                log_record.attributes.sort_by_key(|attr| attr.key.clone());
             }
         }
     }
