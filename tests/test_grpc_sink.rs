@@ -1,5 +1,5 @@
 //! Integration tests for gRPC sink with mock server.
-// #![cfg(feature = "export-grpc")]
+#![cfg(feature = "export-grpc")]
 
 use futures::channel::oneshot;
 use insta::assert_debug_snapshot;
