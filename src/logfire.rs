@@ -18,7 +18,10 @@ use opentelemetry::{
 };
 use opentelemetry_sdk::{
     logs::{SdkLoggerProvider, log_processor_with_async_runtime::BatchLogProcessor},
-    metrics::{SdkMeterProvider, periodic_reader_with_async_runtime::PeriodicReader},
+    metrics::{
+        SdkMeterProvider, exporter::PushMetricExporter,
+        periodic_reader_with_async_runtime::PeriodicReader,
+    },
     runtime,
     trace::{
         BatchConfigBuilder, SdkTracerProvider,
@@ -326,92 +329,12 @@ impl Logfire {
         };
 
         let shutdown_sender = if let Some(logfire_base_url) = logfire_base_url {
-            thread_local! {
-                static SUPPRESS_GUARD: RefCell<Option<opentelemetry::ContextGuard>> = const { RefCell::new(None) };
-            }
-
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .worker_threads(1)
-                .on_thread_start(|| {
-                    let suppress_guard = Context::enter_telemetry_suppressed_scope();
-                    SUPPRESS_GUARD.with(|guard| {
-                        *guard.borrow_mut() = Some(suppress_guard);
-                    });
-                })
-                .on_thread_stop(|| {
-                    SUPPRESS_GUARD.with(|guard| {
-                        if let Some(suppress_guard) = guard.borrow_mut().take() {
-                            drop(suppress_guard);
-                        }
-                    });
-                })
-                .thread_name("logfire-export-runtime")
-                .build()
-                .map_err(|e| ConfigureError::Other(e.into()))?;
-
-            let handle = rt.handle().clone();
-
-            // Create oneshot channel for shutdown signaling
-            let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-
-            // Spawn the runtime into a background thread
-            std::thread::Builder::new()
-                .name("logfire-export-runtime".into())
-                .spawn(move || {
-                    let _guard = Context::enter_telemetry_suppressed_scope();
-                    let _ = rt.block_on(shutdown_rx);
-                })
-                .map_err(|e| {
-                    ConfigureError::Other(
-                        format!("failed to create logfire exporter: {e:?}").into(),
-                    )
-                })?;
-
-            let (span_processor, log_processor, metrics_processor) = std::thread::scope(|s| {
-                s.spawn(|| -> Result<_, ConfigureError> {
-                    // all these processors spawn tasks on the runtime when they are created.
-                    let _guard = handle.enter();
-
-                    let span_processor = BatchSpanProcessor::builder(
-                        crate::exporters::span_exporter(logfire_base_url, http_headers.clone())?,
-                        runtime::Tokio,
-                    )
-                    .with_batch_config(
-                        BatchConfigBuilder::default()
-                            .with_scheduled_delay(Duration::from_millis(500)) // 500 matches Python
-                            .build(),
-                    )
-                    .build();
-
-                    let log_processor = LogProcessorShutdownHack::new(
-                        BatchLogProcessor::builder(
-                            crate::exporters::log_exporter(logfire_base_url, http_headers.clone())?,
-                            runtime::Tokio,
-                        )
-                        .build(),
-                    );
-
-                    let metrics_processor = if config.metrics.is_some() {
-                        Some(
-                            PeriodicReader::builder(
-                                crate::exporters::metric_exporter(
-                                    logfire_base_url,
-                                    http_headers.clone(),
-                                )?,
-                                runtime::Tokio,
-                            )
-                            .build(),
-                        )
-                    } else {
-                        None
-                    };
-
-                    Ok((span_processor, log_processor, metrics_processor))
-                })
-                .join()
-                .map_err(|_| ConfigureError::Other("failed to create logfire processors".into()))?
-            })?;
+            let (shutdown_tx, span_processor, log_processor, metrics_processor) =
+                spawn_runtime_and_exporters(
+                    logfire_base_url,
+                    http_headers,
+                    config.metrics.is_some(),
+                )?;
 
             tracer_provider_builder = tracer_provider_builder.with_span_processor(span_processor);
             logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
@@ -682,6 +605,119 @@ struct LogfireCredentials {
     #[expect(dead_code, reason = "not used for now")]
     project_url: String,
     logfire_api_url: String,
+}
+
+/// Spawns a tokio runtime in a background thread and creates exporters which will use
+/// that runtime.
+///
+/// As per https://github.com/open-telemetry/opentelemetry-rust/pull/3084, using a
+/// runtime with suppression is the recommended way to avoid the export process
+/// generating telemetry logs (and creating both noise and an infinite cycle).
+///
+/// It also has the benefit for the `grpc` export that the tonic channel can be created
+/// successfully in all cases; it _needs_ a tokio runtime and this way we don't need
+/// the user to call `logfire::configure` inside an async context.
+fn spawn_runtime_and_exporters(
+    logfire_base_url: &str,
+    http_headers: Option<HashMap<String, String>>,
+    enable_metrics: bool,
+) -> Result<
+    (
+        tokio::sync::oneshot::Sender<()>,
+        BatchSpanProcessor<runtime::Tokio>,
+        LogProcessorShutdownHack<BatchLogProcessor<runtime::Tokio>>,
+        Option<PeriodicReader<impl PushMetricExporter + use<>>>,
+    ),
+    ConfigureError,
+> {
+    thread_local! {
+        static SUPPRESS_GUARD: RefCell<Option<opentelemetry::ContextGuard>> = const { RefCell::new(None) };
+    }
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .worker_threads(1)
+        .on_thread_start(|| {
+            let suppress_guard = Context::enter_telemetry_suppressed_scope();
+            SUPPRESS_GUARD.with(|guard| {
+                *guard.borrow_mut() = Some(suppress_guard);
+            });
+        })
+        .on_thread_stop(|| {
+            SUPPRESS_GUARD.with(|guard| {
+                if let Some(suppress_guard) = guard.borrow_mut().take() {
+                    drop(suppress_guard);
+                }
+            });
+        })
+        .thread_name("logfire-export-runtime")
+        .build()
+        .map_err(|e| ConfigureError::Other(e.into()))?;
+
+    let handle = rt.handle().clone();
+
+    // Create oneshot channel for shutdown signaling
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
+    // Spawn the runtime into a background thread
+    std::thread::Builder::new()
+        .name("logfire-export-runtime".into())
+        .spawn(move || {
+            let _guard = Context::enter_telemetry_suppressed_scope();
+            let _ = rt.block_on(shutdown_rx);
+        })
+        .map_err(|e| {
+            ConfigureError::Other(format!("failed to create logfire exporter: {e:?}").into())
+        })?;
+
+    let (span_processor, log_processor, metrics_processor) = std::thread::scope(|s| {
+        s.spawn(|| -> Result<_, ConfigureError> {
+            // all these processors spawn tasks on the runtime when they are created.
+            let _guard = handle.enter();
+
+            let span_processor = BatchSpanProcessor::builder(
+                crate::exporters::span_exporter(logfire_base_url, http_headers.clone())?,
+                runtime::Tokio,
+            )
+            .with_batch_config(
+                BatchConfigBuilder::default()
+                    .with_scheduled_delay(Duration::from_millis(500)) // 500 matches Python
+                    .build(),
+            )
+            .build();
+
+            let log_processor = LogProcessorShutdownHack::new(
+                BatchLogProcessor::builder(
+                    crate::exporters::log_exporter(logfire_base_url, http_headers.clone())?,
+                    runtime::Tokio,
+                )
+                .build(),
+            );
+
+            let metrics_processor = if enable_metrics {
+                Some(
+                    PeriodicReader::builder(
+                        crate::exporters::metric_exporter(logfire_base_url, http_headers.clone())?,
+                        runtime::Tokio,
+                    )
+                    .build(),
+                )
+            } else {
+                None
+            };
+
+            Ok((span_processor, log_processor, metrics_processor))
+        })
+        .join()
+        .map_err(|_| ConfigureError::Other("failed to create logfire processors".into()))?
+    })?;
+
+    Ok((
+        shutdown_tx,
+        span_processor,
+        log_processor,
+        metrics_processor,
+    ))
 }
 
 #[cfg(test)]
