@@ -1,5 +1,6 @@
 use std::borrow::Cow;
-use std::sync::LazyLock;
+use std::collections::HashMap;
+use std::sync::{LazyLock, RwLock};
 
 use opentelemetry::metrics::{
     AsyncInstrumentBuilder, Counter, Gauge, Histogram, HistogramBuilder, InstrumentBuilder, Meter,
@@ -7,14 +8,28 @@ use opentelemetry::metrics::{
 };
 
 static METER: LazyLock<Meter> = LazyLock::new(|| opentelemetry::global::meter("logfire"));
+type HistogramName = Cow<'static, str>;
+/// A map of histogram name to scale.
+/// Histograms that are members of this map will be forced to use `Base2ExponentialHistogram`
+/// for aggregation by the meter provider view.
+pub static EXPONENTIAL_HISTOGRAMS: LazyLock<RwLock<HashMap<HistogramName, i8>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+#[rustfmt::skip]
+macro_rules! metric_doc_header {
+  (show_header, $method: ident) => {
+    concat!("Wrapper for [`Meter::", stringify!($method), "`] using Pydantic Logfire's global meter.")
+  };
+  (hide_header, $method: ident) => { "" };
+}
 
 /// For methods which are called with an observation.
 #[rustfmt::skip]
 macro_rules! make_metric_doc {
-    ($method: ident, $ty:ty, $var_name:literal, $usage:literal) => {
+    ($method: ident, $ty:ty, $var_name:literal, $usage:literal, $show_header: ident) => {
         concat!(
-"Wrapper for [`Meter::", stringify!($method), "`] using Pydantic Logfire's global meter.
-
+metric_doc_header!($show_header, $method),
+"
 # Examples
 
 We recommend using this as a static variable, like so:
@@ -50,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 macro_rules! wrap_method {
     ($method:ident, $ty:ty, $var_name:literal, $usage:literal) => {
-        #[doc = make_metric_doc!($method, $ty, $var_name, $usage)]
+        #[doc = make_metric_doc!($method, $ty, $var_name, $usage, show_header)]
         pub fn $method(name: impl Into<Cow<'static, str>>) -> InstrumentBuilder<'static, $ty> {
             METER.$method(name)
         }
@@ -59,7 +74,7 @@ macro_rules! wrap_method {
 
 macro_rules! wrap_histogram_method {
     ($method:ident, $ty:ty, $var_name:literal, $usage:literal) => {
-        #[doc = make_metric_doc!($method, $ty, $var_name, $usage)]
+        #[doc = make_metric_doc!($method, $ty, $var_name, $usage, show_header)]
         pub fn $method(name: impl Into<Cow<'static, str>>) -> HistogramBuilder<'static, $ty> {
             METER.$method(name)
         }
@@ -101,6 +116,32 @@ wrap_histogram_method!(
     "HISTOGRAM",
     "HISTOGRAM.record(1, &[])"
 );
+
+#[doc = make_metric_doc!(f64_exponential_histogram, Histogram<f64>, "HISTOGRAM", "HISTOGRAM.record(1, &[])", hide_header)]
+pub fn f64_exponential_histogram(
+    name: impl Into<Cow<'static, str>>,
+    scale: i8,
+) -> HistogramBuilder<'static, Histogram<f64>> {
+    let mut histograms = EXPONENTIAL_HISTOGRAMS
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let name = name.into();
+    histograms.insert(name.clone(), scale);
+    f64_histogram(name)
+}
+
+#[doc = make_metric_doc!(u64_exponential_histogram, Histogram<u64>, "HISTOGRAM", "HISTOGRAM.record(1, &[])", hide_header)]
+pub fn u64_exponential_histogram(
+    name: impl Into<Cow<'static, str>>,
+    scale: i8,
+) -> HistogramBuilder<'static, Histogram<u64>> {
+    let mut histograms = EXPONENTIAL_HISTOGRAMS
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let name = name.into();
+    histograms.insert(name.clone(), scale);
+    u64_histogram(name)
+}
 
 /// For observable methods which take a callback.
 #[rustfmt::skip]

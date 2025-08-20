@@ -20,7 +20,7 @@ tonic = { version = "0.13", optional = true }
 rand = "0.9.0"
 
 opentelemetry = { version = "0.30", default-features = false, features = ["trace", "logs"] }
-opentelemetry_sdk = { version = "0.30", default-features = false, features = ["trace", "experimental_metrics_custom_reader", "logs"] }
+opentelemetry_sdk = { version = "0.30", default-features = false, features = ["trace", "experimental_metrics_custom_reader", "logs", "spec_unstable_metrics_views"] }
 opentelemetry-otlp = { version = "0.30", default-features = false, features = ["trace", "metrics", "logs"] }
 futures-util = "0.3"
 
