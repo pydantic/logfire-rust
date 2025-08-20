@@ -16,7 +16,7 @@ use opentelemetry::{
 };
 use opentelemetry_sdk::{
     logs::{BatchLogProcessor, SdkLoggerProvider},
-    metrics::{Aggregation, Instrument, PeriodicReader, SdkMeterProvider, Stream},
+    metrics::{Aggregation, Instrument, InstrumentKind, PeriodicReader, SdkMeterProvider, Stream},
     trace::{BatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider},
 };
 use tracing::{Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
@@ -355,6 +355,9 @@ impl Logfire {
         }
 
         let view = |i: &Instrument| {
+            if i.kind() != InstrumentKind::Histogram {
+                return None;
+            }
             let histograms = metrics::EXPONENTIAL_HISTOGRAMS.read().ok()?;
             let scale = histograms.get(i.name())?;
 
@@ -966,9 +969,14 @@ mod tests {
         let u64_hist = u64_histogram("u64_hist").build();
         u64_hist.record(20, &[]);
 
-        let f64_exp = f64_exponential_histogram("f64_exp", 20).build();
+        let f64_exp = f64_exponential_histogram("f64_exp", 2).build();
+        f64_exp.record(1.0, &[]);
+        f64_exp.record(1.5, &[]);
+        f64_exp.record(2.0, &[]);
+        f64_exp.record(3.0, &[]);
         f64_exp.record(10.0, &[]);
-        let u64_exp = u64_exponential_histogram("u64_exp", 20).build();
+
+        let u64_exp = u64_exponential_histogram("u64_exp", 2).build();
         u64_exp.record(10, &[]);
 
         reader.force_flush().unwrap();
@@ -976,12 +984,6 @@ mod tests {
         let metrics = exporter.get_finished_metrics().unwrap();
 
         for scope_metics in metrics[0].scope_metrics() {
-            // Scope name is defined in src/metrics.rs. Using "logfire" as the scope name
-            // because that's the scope name of the meter used by functions that create histograms.
-            if scope_metics.scope().name() != "logfire" {
-                continue;
-            }
-
             for (name, expected) in [
                 ("f64_hist", false),
                 ("u64_hist", false),
