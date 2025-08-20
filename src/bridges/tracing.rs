@@ -1,4 +1,4 @@
-use std::{any::TypeId, borrow::Cow};
+use std::{any::TypeId, borrow::Cow, sync::Arc};
 
 use opentelemetry::{
     Context, KeyValue,
@@ -8,7 +8,7 @@ use opentelemetry::{
 };
 use tracing::{Subscriber, field::Visit};
 use tracing_opentelemetry::{OtelData, PreSampledTracer};
-use tracing_subscriber::{Layer, registry::LookupSpan};
+use tracing_subscriber::{EnvFilter, Layer, filter::Filtered, layer::Filter, registry::LookupSpan};
 
 use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer};
 
@@ -17,20 +17,20 @@ use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer
 ///
 /// See [`Logfire::tracing_layer`][crate::Logfire::tracing_layer] for how to use
 /// this layer.
-pub struct LogfireTracingLayer<S> {
-    tracer: LogfireTracer,
-    /// This odd structure with two inner layers is deliberate; we don't want to send any events
-    /// to the `otel_layer` and we only send (some) events to the `metrics_layer`.
-    otel_layer: tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
-    metrics_layer: Option<tracing_opentelemetry::MetricsLayer<S>>,
-}
+pub struct LogfireTracingLayer<S>(
+    Filtered<LogfireTracingLayerInner<S>, Arc<dyn Filter<S> + Send + Sync + 'static>, S>,
+);
 
 impl<S> LogfireTracingLayer<S>
 where
     S: Subscriber + for<'span> LookupSpan<'span>,
 {
-    /// Create a new `LogfireTracingLayer` with the given tracer.
-    pub(crate) fn new(tracer: LogfireTracer, enable_tracing_metrics: bool) -> Self {
+    /// Create a new `LogfireTracingLayerInner` with the given tracer.
+    pub(crate) fn new(
+        tracer: LogfireTracer,
+        enable_tracing_metrics: bool,
+        filter: Arc<EnvFilter>,
+    ) -> Self {
         let otel_layer = tracing_opentelemetry::layer()
             .with_error_records_to_exceptions(true)
             .with_tracer(tracer.inner.clone());
@@ -38,15 +38,121 @@ where
         let metrics_layer = enable_tracing_metrics
             .then(|| tracing_opentelemetry::MetricsLayer::new(tracer.meter_provider.clone()));
 
-        LogfireTracingLayer {
+        let inner = LogfireTracingLayerInner {
             tracer,
             otel_layer,
             metrics_layer,
+        };
+
+        Self(inner.with_filter(filter as Arc<dyn Filter<S> + Send + Sync + 'static>))
+    }
+}
+
+struct LogfireTracingLayerInner<S> {
+    tracer: LogfireTracer,
+    /// This odd structure with two inner layers is deliberate; we don't want to send any events
+    /// to the `otel_layer` and we only send (some) events to the `metrics_layer`.
+    otel_layer: tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
+    metrics_layer: Option<tracing_opentelemetry::MetricsLayer<S>>,
+}
+
+impl<S> Layer<S> for LogfireTracingLayer<S>
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
+    fn on_register_dispatch(&self, subscriber: &tracing::Dispatch) {
+        self.0.on_register_dispatch(subscriber);
+    }
+
+    fn on_layer(&mut self, subscriber: &mut S) {
+        self.0.on_layer(subscriber);
+    }
+
+    fn register_callsite(
+        &self,
+        metadata: &'static tracing::Metadata<'static>,
+    ) -> tracing::subscriber::Interest {
+        self.0.register_callsite(metadata)
+    }
+
+    fn enabled(
+        &self,
+        metadata: &tracing::Metadata<'_>,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        self.0.enabled(metadata, ctx)
+    }
+
+    fn on_new_span(
+        &self,
+        attrs: &tracing::span::Attributes<'_>,
+        id: &tracing::span::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        self.0.on_new_span(attrs, id, ctx);
+    }
+
+    fn on_record(
+        &self,
+        span: &tracing::span::Id,
+        values: &tracing::span::Record<'_>,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        self.0.on_record(span, values, ctx);
+    }
+
+    fn on_follows_from(
+        &self,
+        span: &tracing::span::Id,
+        follows: &tracing::span::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        self.0.on_follows_from(span, follows, ctx);
+    }
+
+    fn event_enabled(
+        &self,
+        event: &tracing::Event<'_>,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        self.0.event_enabled(event, ctx)
+    }
+
+    fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        self.0.on_event(event, ctx);
+    }
+
+    fn on_enter(&self, id: &tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        self.0.on_enter(id, ctx);
+    }
+
+    fn on_exit(&self, id: &tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        self.0.on_exit(id, ctx);
+    }
+
+    fn on_close(&self, id: tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        self.0.on_close(id, ctx);
+    }
+
+    fn on_id_change(
+        &self,
+        old: &tracing::span::Id,
+        new: &tracing::span::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        self.0.on_id_change(old, new, ctx);
+    }
+
+    unsafe fn downcast_raw(&self, id: TypeId) -> Option<*const ()> {
+        if id == TypeId::of::<Self>() {
+            Some(std::ptr::from_ref(self).cast())
+        } else {
+            unsafe { self.0.downcast_raw(id) }
         }
     }
 }
 
-impl<S> Layer<S> for LogfireTracingLayer<S>
+impl<S> Layer<S> for LogfireTracingLayerInner<S>
 where
     S: Subscriber + for<'span> LookupSpan<'span>,
 {
@@ -441,7 +547,7 @@ mod tests {
 
         let guard = set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+        {
             tracing::info!("root event");
             tracing::info!(name: "root event with value", field_value = 1);
 
@@ -452,8 +558,9 @@ mod tests {
 
             tracing::info!("hello world log");
             tracing::info!(name: "hello world log with value", field_value = 1);
-        });
+        }
 
+        guard.shutdown().unwrap();
         let spans = exporter.get_finished_spans().unwrap();
         assert_debug_snapshot!(spans, @r#"
         [
@@ -1982,7 +2089,7 @@ mod tests {
 
         let guard = crate::set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
+        {
             tracing::info!("root event");
             tracing::info!(name: "root event with value", field_value = 1);
 
@@ -1993,7 +2100,7 @@ mod tests {
 
             tracing::info!("hello world log");
             tracing::info!(name: "hello world log with value", field_value = 1);
-        });
+        }
 
         guard.shutdown().unwrap();
 
@@ -2053,11 +2160,15 @@ mod tests {
             assert!(tracing::span_enabled!(Level::TRACE));
             assert!(tracing::event_enabled!(Level::TRACE));
 
-            // This TRACE log should be filtered out by the INFO filter in the logfire configuration
+            // TRACE data should be filtered out by the INFO filter in the logfire configuration
             crate::trace!("This TRACE log should be filtered out");
+            tracing::trace!("This TRACE log should be filtered out");
+            crate::span!("This TRACE span should be filtered out");
 
-            // This INFO log should be emitted normally
+            // INFO data should be emitted normally
             crate::info!("This INFO log should be emitted");
+            tracing::info!("This additional INFO log should be emitted");
+            crate::span!("This INFO span should be emitted");
         });
 
         guard.shutdown().unwrap();
@@ -2070,8 +2181,20 @@ mod tests {
             "TRACE log was emitted when it should have been filtered out."
         );
         assert!(
+            output.contains("This TRACE span should be filtered out"),
+            "TRACE span was emitted when it should have been filtered out."
+        );
+        assert!(
             output.contains("This INFO log should be emitted"),
             "INFO log was not emitted when it should have been."
+        );
+        assert!(
+            output.contains("This additional INFO log should be emitted"),
+            "INFO log was not emitted when it should have been."
+        );
+        assert!(
+            output.contains("This INFO span should be emitted"),
+            "INFO span was not emitted when it should have been."
         );
     }
 

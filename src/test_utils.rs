@@ -16,6 +16,7 @@ use opentelemetry::{
     logs::{LogRecord, Logger, LoggerProvider as _},
     trace::{SpanId, TraceId},
 };
+use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_sdk::{
     Resource,
     error::OTelSdkResult,
@@ -166,6 +167,15 @@ impl TimestampRemapper {
             }
         }
     }
+
+    fn remap_u64_nano_timestamp(&mut self, from: u64) -> u64 {
+        self.remap_timestamp(SystemTime::UNIX_EPOCH + std::time::Duration::from_nanos(from))
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+            .try_into()
+            .unwrap()
+    }
 }
 
 pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
@@ -256,6 +266,7 @@ pub struct DeterministicResourceMetrics {
 }
 
 /// Find a span by name in a slice of SpanData.
+#[track_caller]
 pub fn find_span<'a>(
     spans: &'a [opentelemetry_sdk::trace::SpanData],
     name: &str,
@@ -303,7 +314,7 @@ pub fn make_deterministic_logs(
     file: &str,
     line_offset: u32,
 ) -> Vec<LogDataWithResource> {
-    let timestamp_remap = Arc::new(Mutex::new(TimestampRemapper::new()));
+    let mut timestamp_remap = TimestampRemapper::new();
 
     // A new logger is necessary to be able to create log records; `SdkLogRecord` constructor is private.
     let logger_provider = SdkLoggerProvider::builder().build();
@@ -318,16 +329,11 @@ pub fn make_deterministic_logs(
 
             // Copy basic fields with deterministic timestamp remapping
             if let Some(timestamp) = original_record.timestamp() {
-                new_record
-                    .set_timestamp(timestamp_remap.lock().unwrap().remap_timestamp(timestamp));
+                new_record.set_timestamp(timestamp_remap.remap_timestamp(timestamp));
             }
             if let Some(observed_timestamp) = original_record.observed_timestamp() {
-                new_record.set_observed_timestamp(
-                    timestamp_remap
-                        .lock()
-                        .unwrap()
-                        .remap_timestamp(observed_timestamp),
-                );
+                new_record
+                    .set_observed_timestamp(timestamp_remap.remap_timestamp(observed_timestamp));
             }
             if let Some(event_name) = original_record.event_name() {
                 new_record.set_event_name(event_name);
@@ -396,4 +402,52 @@ pub fn make_deterministic_logs(
             }
         })
         .collect()
+}
+
+pub fn make_trace_request_deterministic(req: &mut ExportTraceServiceRequest) {
+    let mut timestamp_remap = TimestampRemapper::new();
+
+    for resource_span in &mut req.resource_spans {
+        if let Some(resource) = &mut resource_span.resource {
+            // Sort attributes by key
+            resource.attributes.sort_by_key(|attr| attr.key.clone());
+        }
+
+        for scope_span in &mut resource_span.scope_spans {
+            if let Some(scope) = &mut scope_span.scope {
+                // Sort attributes by key
+                scope.attributes.sort_by_key(|attr| attr.key.clone());
+            }
+
+            for span in &mut scope_span.spans {
+                // Set start/end timestamps to deterministic values
+                span.start_time_unix_nano =
+                    timestamp_remap.remap_u64_nano_timestamp(span.start_time_unix_nano);
+                span.end_time_unix_nano =
+                    timestamp_remap.remap_u64_nano_timestamp(span.end_time_unix_nano);
+
+                // Zero out non-deterministic attributes
+                for attr in &mut span.attributes {
+                    if attr.key == "thread.id" || attr.key == "busy_ns" || attr.key == "idle_ns" {
+                        attr.value = Some(opentelemetry_proto::tonic::common::v1::AnyValue {
+                            value: Some(
+                                opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(
+                                    0,
+                                ),
+                            ),
+                        });
+                    }
+                }
+
+                // Also sort attributes by key
+                span.attributes.sort_by_key(|attr| attr.key.clone());
+
+                // Set event timestamps to deterministic values
+                for event in &mut span.events {
+                    event.time_unix_nano =
+                        timestamp_remap.remap_u64_nano_timestamp(event.time_unix_nano);
+                }
+            }
+        }
+    }
 }

@@ -28,7 +28,9 @@ The Logfire server application for recording and displaying data is closed sourc
 
 ## Using Logfire's Rust SDK
 
-First [set up a Logfire project](https://logfire.pydantic.dev/docs/#logfire) and [create a write token](https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens/). You'll need to set this token as an environment variable (`LOGFIRE_TOKEN`) to export to Logfire.
+First [set up a Logfire project](https://logfire.pydantic.dev/docs/#logfire). You will then configure the SDK to send to Logfire by:
+- [creating a write token](https://logfire.pydantic.dev/docs/how-to-guides/create-write-tokens/) manually and setting this token as an environment variable (`LOGFIRE_TOKEN`), or
+- [using the Logfire CLI](https://logfire.pydantic.dev/docs/#instrument) to select a project.
 
 With a logfire project set up, start by adding the `logfire` crate to your `Cargo.toml`:
 

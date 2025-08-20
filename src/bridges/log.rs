@@ -100,19 +100,20 @@ mod tests {
         log::set_max_level(log::LevelFilter::Trace);
         let guard = set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            log::info!(logger: lf_logger, "root event");
-            log::info!(logger: lf_logger, target: "custom_target", "root event with target");
+        log::info!(logger: lf_logger, "root event");
+        log::info!(logger: lf_logger, target: "custom_target", "root event with target");
 
-            let _root = tracing::span!(tracing::Level::INFO, "root span").entered();
-            log::info!(logger: lf_logger, "hello world log");
-            log::warn!(logger: lf_logger, "warning log");
-            log::error!(logger: lf_logger, "error log");
-            log::debug!(logger: lf_logger, "debug log");
-            log::trace!(logger: lf_logger, "trace log");
-        });
+        let _root = tracing::span!(tracing::Level::INFO, "root span").entered();
+        log::info!(logger: lf_logger, "hello world log");
+        log::warn!(logger: lf_logger, "warning log");
+        log::error!(logger: lf_logger, "error log");
+        log::debug!(logger: lf_logger, "debug log");
+        log::trace!(logger: lf_logger, "trace log");
 
         let logs = log_exporter.get_emitted_logs().unwrap();
+
+        guard.shutdown().unwrap();
+
         let logs = make_deterministic_logs(logs, TEST_FILE, TEST_LINE);
         assert_debug_snapshot!(logs, @r#"
         [
@@ -178,7 +179,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        27,
+                                        26,
                                     ),
                                 ),
                             ),
@@ -311,7 +312,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        28,
+                                        27,
                                     ),
                                 ),
                             ),
@@ -444,7 +445,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        31,
+                                        30,
                                     ),
                                 ),
                             ),
@@ -577,7 +578,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        32,
+                                        31,
                                     ),
                                 ),
                             ),
@@ -710,7 +711,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        33,
+                                        32,
                                     ),
                                 ),
                             ),
@@ -843,7 +844,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        34,
+                                        33,
                                     ),
                                 ),
                             ),
@@ -976,7 +977,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        35,
+                                        34,
                                     ),
                                 ),
                             ),
@@ -1076,16 +1077,14 @@ mod tests {
         log::set_max_level(log::LevelFilter::Trace);
         let guard = crate::set_local_logfire(logfire);
 
-        tracing::subscriber::with_default(guard.subscriber().clone(), || {
-            log::info!(logger: lf_logger, "root event");
-            log::info!(logger: lf_logger, target: "custom_target", "root event with target");
+        log::info!(logger: lf_logger, "root event");
+        log::info!(logger: lf_logger, target: "custom_target", "root event with target");
 
-            let _root = tracing::span!(tracing::Level::INFO, "root span").entered();
-            log::info!(logger: lf_logger, "hello world log");
-            log::warn!(logger: lf_logger, "warning log");
-            log::error!(logger: lf_logger, "error log");
-            log::trace!(logger: lf_logger, "trace log");
-        });
+        let _root = tracing::span!(tracing::Level::INFO, "root span").entered();
+        log::info!(logger: lf_logger, "hello world log");
+        log::warn!(logger: lf_logger, "warning log");
+        log::error!(logger: lf_logger, "error log");
+        log::trace!(logger: lf_logger, "trace log");
 
         guard.shutdown().unwrap();
 

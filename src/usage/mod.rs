@@ -71,14 +71,14 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // 1. configure logfire as usual, setting it as a `.local()` instance
-//! let shutdown_handler = logfire::configure()
-//!    .local()
+//! let logfire = logfire::configure()
+//!     .local()
 //!     .install_panic_handler()
-//!    .finish()?;
+//!     .finish()?;
 //!
 //! // 2. create a tracing subscriber
 //! let subscriber = tracing_subscriber::registry()
-//!     .with(shutdown_handler.tracing_layer());
+//!     .with(logfire.tracing_layer());
 //!
 //! // 3. set the subscriber as the default (or otherwise set it up for your application)
 //! tracing::subscriber::set_global_default(subscriber)?;
@@ -86,8 +86,8 @@
 //! // 4. now tracing's spans and logs will be sent to Logfire
 //! tracing::info!("This will be sent to Logfire");
 //!
-//! // 5. when finished, call shutdown_handler.shutdown() to flush and clean up
-//! shutdown_handler.shutdown()?;
+//! // 5. when finished, call logfire.shutdown() to flush and clean up
+//! logfire.shutdown()?;
 //! # Ok(())
 //! # }
 //! ```

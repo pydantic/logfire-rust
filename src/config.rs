@@ -4,6 +4,7 @@
 
 use std::{
     fmt::Display,
+    path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
 };
@@ -31,7 +32,7 @@ pub struct LogfireConfigBuilder {
     pub(crate) console_options: Option<ConsoleOptions>,
 
     // config_dir: Option<PathBuf>,
-    // data_dir: Option<Path>,
+    pub(crate) data_dir: Option<PathBuf>,
 
     // TODO: change to match Python SDK
     pub(crate) additional_span_processors: Vec<BoxedSpanProcessor>,
@@ -90,6 +91,13 @@ impl LogfireConfigBuilder {
     /// If not set, will use `ConsoleOptions::default()`.
     pub fn with_console(mut self, console_options: Option<ConsoleOptions>) -> Self {
         self.console_options = console_options;
+        self
+    }
+
+    /// Sets the directory where credentials are stored. If unset uses the `LOGFIRE_CREDENTIALS_DIR` environment
+    /// variable, otherwise defaults to `'.logfire'`.
+    pub fn with_data_dir<T: Into<PathBuf>>(mut self, data_dir: T) -> Self {
+        self.data_dir = Some(data_dir.into());
         self
     }
 
@@ -308,7 +316,7 @@ impl std::fmt::Debug for Target {
     }
 }
 
-/// Options primarily used for testing by Logfire developers.
+/// Options used for fine-grained control over the logfire SDK.
 #[derive(Default)]
 pub struct AdvancedOptions {
     pub(crate) base_url: Option<String>,

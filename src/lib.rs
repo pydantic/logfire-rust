@@ -152,6 +152,15 @@ pub enum ConfigureError {
         value: String,
     },
 
+    /// Error reading credentials file.
+    #[error("Error reading credentials file {path}: {error}")]
+    CredentialFileError {
+        /// The path to the credentials file.
+        path: std::path::PathBuf,
+        /// The underlying error.
+        error: String,
+    },
+
     /// Any other error.
     #[error(transparent)]
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
