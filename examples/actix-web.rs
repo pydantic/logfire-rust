@@ -50,7 +50,6 @@ struct CreateUserRequest {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize Logfire
     let logfire = logfire::configure()
-        .install_panic_handler()
         .finish()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     let _guard = logfire.shutdown_guard();

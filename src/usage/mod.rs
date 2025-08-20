@@ -57,6 +57,15 @@
 //! span.record("my_attr", "some value");
 //! ```
 //!
+//! # Handling panics
+//!
+//! By default, the Logfire SDK will install a [panic hook][std::panic::set_hook] to record panics as error logs.
+//!
+//! In the case that the panic is causing the application to fully unwind and exit, you should
+//! ensure that there is a [`ShutdownGuard`][crate::ShutdownGuard] installed on your application's main stack frame.
+//!
+//! All [examples] follow this best-practice.
+//!
 //! # Using `logfire` as a layer in an existing `tracing` application
 //!
 //! If you have an existing application which already has a [`tracing_subscriber`] and you
@@ -73,20 +82,22 @@
 //! // 1. configure logfire as usual, setting it as a `.local()` instance
 //! let logfire = logfire::configure()
 //!     .local()
-//!     .install_panic_handler()
 //!     .finish()?;
 //!
-//! // 2. create a tracing subscriber
+//! // 2. add a logfire shutdown guard for panics
+//! let _guard = logfire.shutdown_guard();
+//!
+//! // 3. create a tracing subscriber
 //! let subscriber = tracing_subscriber::registry()
 //!     .with(logfire.tracing_layer());
 //!
-//! // 3. set the subscriber as the default (or otherwise set it up for your application)
+//! // 4. set the subscriber as the default (or otherwise set it up for your application)
 //! tracing::subscriber::set_global_default(subscriber)?;
 //!
-//! // 4. now tracing's spans and logs will be sent to Logfire
+//! // 5. now tracing's spans and logs will be sent to Logfire
 //! tracing::info!("This will be sent to Logfire");
 //!
-//! // 5. when finished, call logfire.shutdown() to flush and clean up
+//! // 6. when finished, call logfire.shutdown() to flush and clean up
 //! logfire.shutdown()?;
 //! # Ok(())
 //! # }

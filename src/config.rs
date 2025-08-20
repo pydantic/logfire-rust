@@ -20,7 +20,6 @@ use tracing::{Level, level_filters::LevelFilter};
 use crate::{ConfigureError, logfire::Logfire};
 
 /// Builder for logfire configuration, returned from [`logfire::configure()`][crate::configure].
-#[derive(Default)]
 #[must_use = "call `.finish()` to complete logfire configuration."]
 pub struct LogfireConfigBuilder {
     pub(crate) local: bool,
@@ -52,6 +51,23 @@ pub struct LogfireConfigBuilder {
     pub(crate) default_level_filter: Option<LevelFilter>,
 }
 
+impl Default for LogfireConfigBuilder {
+    fn default() -> Self {
+        Self {
+            local: false,
+            send_to_logfire: None,
+            token: None,
+            console_options: None,
+            data_dir: None,
+            additional_span_processors: Vec::new(),
+            advanced: None,
+            metrics: None,
+            install_panic_handler: true,
+            default_level_filter: None,
+        }
+    }
+}
+
 impl LogfireConfigBuilder {
     /// Call to configure Logfire for local use only.
     ///
@@ -62,11 +78,17 @@ impl LogfireConfigBuilder {
         self
     }
 
-    /// Call to install a hook to log panics.
+    /// Whether to install a hook to
     ///
     /// Any existing panic hook will be preserved and called after the logfire panic hook.
-    pub fn install_panic_handler(mut self) -> Self {
-        self.install_panic_handler = true;
+    pub fn with_install_panic_handler(mut self, install: bool) -> Self {
+        self.install_panic_handler = install;
+        self
+    }
+
+    /// Deprecated form of [`with_install_panic_handler`][Self::with_install_panic_handler].
+    #[deprecated(since = "0.8.0", note = "noop; now installed by default")]
+    pub fn install_panic_handler(self) -> Self {
         self
     }
 

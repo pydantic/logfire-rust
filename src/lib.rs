@@ -46,7 +46,6 @@
 //! ```rust
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let logfire = logfire::configure()
-//!         .install_panic_handler()
 //! #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
 //!         .finish()?;
 //!
@@ -186,7 +185,6 @@ pub enum ShutdownError {
 /// ```rust
 /// fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let logfire = logfire::configure()
-///         .install_panic_handler()
 /// #        .send_to_logfire(logfire::config::SendToLogfire::IfTokenPresent)
 ///         .finish()?;
 ///

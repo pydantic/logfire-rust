@@ -535,7 +535,6 @@ mod tests {
                 .with_additional_span_processor(SimpleSpanProcessor::new(
                     DeterministicExporter::new(exporter.clone(), TEST_FILE, TEST_LINE),
                 ))
-                .install_panic_handler()
                 .with_default_level_filter(LevelFilter::TRACE)
                 .with_advanced_options(
                     AdvancedOptions::default()
@@ -613,7 +612,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            28,
+                            27,
                         ),
                     },
                     KeyValue {
@@ -719,7 +718,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            29,
+                            28,
                         ),
                     },
                     KeyValue {
@@ -835,7 +834,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            29,
+                            28,
                         ),
                     },
                     KeyValue {
@@ -957,7 +956,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            30,
+                            29,
                         ),
                     },
                     KeyValue {
@@ -1073,7 +1072,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            30,
+                            29,
                         ),
                     },
                     KeyValue {
@@ -1195,7 +1194,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            31,
+                            30,
                         ),
                     },
                     KeyValue {
@@ -1311,7 +1310,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            31,
+                            30,
                         ),
                     },
                     KeyValue {
@@ -1433,7 +1432,7 @@ mod tests {
                             "code.lineno",
                         ),
                         value: I64(
-                            28,
+                            27,
                         ),
                     },
                     KeyValue {
@@ -1573,7 +1572,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        25,
+                                        24,
                                     ),
                                 ),
                             ),
@@ -1706,7 +1705,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        26,
+                                        25,
                                     ),
                                 ),
                             ),
@@ -1849,7 +1848,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        33,
+                                        32,
                                     ),
                                 ),
                             ),
@@ -1982,7 +1981,7 @@ mod tests {
                                         "code.lineno",
                                     ),
                                     Int(
-                                        34,
+                                        33,
                                     ),
                                 ),
                             ),
@@ -2082,7 +2081,6 @@ mod tests {
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options.clone()))
-            .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
             .unwrap();
@@ -2138,7 +2136,6 @@ mod tests {
             .local()
             .send_to_logfire(false)
             .with_console(Some(console_options))
-            .install_panic_handler()
             .with_default_level_filter(LevelFilter::INFO)
             .finish()
             .unwrap();
@@ -2278,7 +2275,6 @@ mod tests {
             .with_metrics(Some(
                 crate::config::MetricsOptions::default().with_additional_reader(reader.clone()),
             ))
-            .install_panic_handler()
             .with_default_level_filter(LevelFilter::TRACE)
             .with_advanced_options(
                 AdvancedOptions::default()
