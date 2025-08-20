@@ -2328,20 +2328,18 @@ mod tests {
         assert_debug_snapshot!(metrics, @r#"
         [
             DeterministicResourceMetrics {
-                resource: Resource {
-                    inner: ResourceInner {
-                        attrs: {
+                resource: [
+                    KeyValue {
+                        key: Static(
+                            "service.name",
+                        ),
+                        value: String(
                             Static(
-                                "service.name",
-                            ): String(
-                                Static(
-                                    "test",
-                                ),
+                                "test",
                             ),
-                        },
-                        schema_url: None,
+                        ),
                     },
-                },
+                ],
                 scope_metrics: [
                     DeterministicScopeMetrics {
                         scope: InstrumentationScope {
@@ -2376,20 +2374,18 @@ mod tests {
                 ],
             },
             DeterministicResourceMetrics {
-                resource: Resource {
-                    inner: ResourceInner {
-                        attrs: {
+                resource: [
+                    KeyValue {
+                        key: Static(
+                            "service.name",
+                        ),
+                        value: String(
                             Static(
-                                "service.name",
-                            ): String(
-                                Static(
-                                    "test",
-                                ),
+                                "test",
                             ),
-                        },
-                        schema_url: None,
+                        ),
                     },
-                },
+                ],
                 scope_metrics: [
                     DeterministicScopeMetrics {
                         scope: InstrumentationScope {

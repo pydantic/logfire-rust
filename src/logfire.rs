@@ -272,6 +272,37 @@ impl Logfire {
                 tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
         }
 
+        // Add service-specific resources from config
+        let mut service_resource_builder = opentelemetry_sdk::Resource::builder_empty();
+        let mut has_service_attributes = false;
+
+        if let Some(service_name) = config.service_name {
+            service_resource_builder = service_resource_builder.with_service_name(service_name);
+            has_service_attributes = true;
+        }
+
+        if let Some(service_version) = config.service_version {
+            service_resource_builder = service_resource_builder.with_attribute(
+                opentelemetry::KeyValue::new("service.version", service_version),
+            );
+            has_service_attributes = true;
+        }
+
+        if let Some(environment) = config.environment {
+            service_resource_builder = service_resource_builder.with_attribute(
+                opentelemetry::KeyValue::new("deployment.environment.name", environment),
+            );
+            has_service_attributes = true;
+        }
+
+        if has_service_attributes {
+            let service_resource = service_resource_builder.build();
+            tracer_provider_builder =
+                tracer_provider_builder.with_resource(service_resource.clone());
+            // Add it to the list for other components too
+            advanced_options.resources.push(service_resource);
+        }
+
         for resource in &advanced_options.resources {
             tracer_provider_builder = tracer_provider_builder.with_resource(resource.clone());
         }
