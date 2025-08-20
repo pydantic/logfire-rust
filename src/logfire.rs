@@ -1,6 +1,7 @@
 use std::{
     backtrace::Backtrace,
     borrow::Cow,
+    cell::RefCell,
     collections::HashMap,
     panic::PanicHookInfo,
     sync::{Arc, Once},
@@ -11,13 +12,18 @@ use std::{
 use std::path::{Path, PathBuf};
 
 use opentelemetry::{
+    Context,
     logs::{LoggerProvider as _, Severity},
     trace::TracerProvider,
 };
 use opentelemetry_sdk::{
-    logs::{BatchLogProcessor, SdkLoggerProvider},
-    metrics::{PeriodicReader, SdkMeterProvider},
-    trace::{BatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider},
+    logs::{SdkLoggerProvider, log_processor_with_async_runtime::BatchLogProcessor},
+    metrics::{SdkMeterProvider, periodic_reader_with_async_runtime::PeriodicReader},
+    runtime,
+    trace::{
+        BatchConfigBuilder, SdkTracerProvider,
+        span_processor_with_async_runtime::BatchSpanProcessor,
+    },
 };
 use tracing::{Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -150,6 +156,10 @@ impl Logfire {
         } = Self::build_parts(config, None)?;
 
         if !local {
+            // avoid otel logs firing as these messages are sent regarding "global meter provider"
+            // being set
+            let _guard = Context::enter_telemetry_suppressed_scope();
+
             tracing::subscriber::set_global_default(subscriber.clone())?;
             let logger = crate::bridges::log::LogfireLogger::init(tracer.clone());
             log::set_logger(logger)?;
@@ -264,6 +274,7 @@ impl Logfire {
 
         let mut tracer_provider_builder = SdkTracerProvider::builder();
         let mut logger_provider_builder = SdkLoggerProvider::builder();
+        let mut meter_provider_builder = SdkMeterProvider::builder();
 
         if let Some(id_generator) = advanced_options.id_generator {
             tracer_provider_builder = tracer_provider_builder.with_id_generator(id_generator);
@@ -272,8 +283,10 @@ impl Logfire {
                 tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
         }
 
-        for resource in &advanced_options.resources {
+        for resource in advanced_options.resources {
             tracer_provider_builder = tracer_provider_builder.with_resource(resource.clone());
+            logger_provider_builder = logger_provider_builder.with_resource(resource.clone());
+            meter_provider_builder = meter_provider_builder.with_resource(resource);
         }
 
         let mut http_headers: Option<HashMap<String, String>> = None;
@@ -298,18 +311,90 @@ impl Logfire {
         };
 
         if let Some(logfire_base_url) = logfire_base_url {
-            tracer_provider_builder = tracer_provider_builder.with_span_processor(
-                BatchSpanProcessor::builder(crate::exporters::span_exporter(
-                    logfire_base_url,
-                    http_headers.clone(),
-                )?)
-                .with_batch_config(
-                    BatchConfigBuilder::default()
-                        .with_scheduled_delay(Duration::from_millis(500)) // 500 matches Python
-                        .build(),
-                )
-                .build(),
-            );
+            thread_local! {
+                static SUPPRESS_GUARD: RefCell<Option<opentelemetry::ContextGuard>> = const { RefCell::new(None) };
+            }
+
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .worker_threads(1)
+                .on_thread_start(|| {
+                    let suppress_guard = Context::enter_telemetry_suppressed_scope();
+                    SUPPRESS_GUARD.with(|guard| {
+                        *guard.borrow_mut() = Some(suppress_guard);
+                    });
+                })
+                .on_thread_stop(|| {
+                    SUPPRESS_GUARD.with(|guard| {
+                        if let Some(suppress_guard) = guard.borrow_mut().take() {
+                            drop(suppress_guard);
+                        }
+                    });
+                })
+                .thread_name("logfire-export-runtime")
+                .build()
+                .map_err(|e| ConfigureError::Other(e.into()))?;
+
+            let handle = rt.handle().clone();
+
+            // Spawn the runtime into a background thread
+            //
+            // FIXME: make logfire shutdown trigger shutdown of this runtime once the exporters have shutdown.
+            std::thread::Builder::new()
+                .name("logfire-export-runtime".into())
+                .spawn(move || {
+                    let _guard = Context::enter_telemetry_suppressed_scope();
+                    rt.block_on(std::future::pending::<()>())
+                });
+
+            let (span_processor, log_processor, metrics_processor) = std::thread::scope(|s| {
+                s.spawn(|| -> Result<_, ConfigureError> {
+                    // all these processors spawn tasks on the runtime when they are created.
+                    let _guard = handle.enter();
+
+                    let span_processor = BatchSpanProcessor::builder(
+                        crate::exporters::span_exporter(logfire_base_url, http_headers.clone())?,
+                        runtime::Tokio,
+                    )
+                    .with_batch_config(
+                        BatchConfigBuilder::default()
+                            .with_scheduled_delay(Duration::from_millis(500)) // 500 matches Python
+                            .build(),
+                    )
+                    .build();
+
+                    let log_processor = BatchLogProcessor::builder(
+                        crate::exporters::log_exporter(logfire_base_url, http_headers.clone())?,
+                        runtime::Tokio,
+                    )
+                    .build();
+
+                    let metrics_processor = if config.metrics.is_some() {
+                        Some(
+                            PeriodicReader::builder(
+                                crate::exporters::metric_exporter(
+                                    logfire_base_url,
+                                    http_headers.clone(),
+                                )?,
+                                runtime::Tokio,
+                            )
+                            .build(),
+                        )
+                    } else {
+                        None
+                    };
+
+                    Ok((span_processor, log_processor, metrics_processor))
+                })
+                .join()
+                .map_err(|_| ConfigureError::Other("failed to create logfire processors".into()))?
+            })?;
+
+            tracer_provider_builder = tracer_provider_builder.with_span_processor(span_processor);
+            logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
+            if let Some(metrics_processor) = metrics_processor {
+                meter_provider_builder = meter_provider_builder.with_reader(metrics_processor);
+            }
         }
 
         let console_processors = config
@@ -326,22 +411,7 @@ impl Logfire {
         }
 
         let tracer_provider = tracer_provider_builder.build();
-
         let tracer = tracer_provider.tracer("logfire");
-
-        let mut meter_provider_builder = SdkMeterProvider::builder();
-
-        if let Some(logfire_base_url) = logfire_base_url {
-            if config.metrics.is_some() {
-                let metric_reader = PeriodicReader::builder(crate::exporters::metric_exporter(
-                    logfire_base_url,
-                    http_headers.clone(),
-                )?)
-                .build();
-
-                meter_provider_builder = meter_provider_builder.with_reader(metric_reader);
-            }
-        }
 
         if let Some(metrics) = config.metrics {
             for reader in metrics.additional_readers {
@@ -349,32 +419,13 @@ impl Logfire {
             }
         }
 
-        for resource in &advanced_options.resources {
-            meter_provider_builder = meter_provider_builder.with_resource(resource.clone());
-        }
-
         let meter_provider = meter_provider_builder.build();
-
-        if let Some(logfire_base_url) = logfire_base_url {
-            logger_provider_builder = logger_provider_builder.with_log_processor(
-                BatchLogProcessor::builder(crate::exporters::log_exporter(
-                    logfire_base_url,
-                    http_headers.clone(),
-                )?)
-                .build(),
-            );
-        }
 
         for log_processor in advanced_options.log_record_processors {
             logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
         }
 
-        for resource in advanced_options.resources {
-            logger_provider_builder = logger_provider_builder.with_resource(resource);
-        }
-
         let logger_provider = logger_provider_builder.build();
-
         let logger = Arc::new(logger_provider.logger("logfire"));
 
         let default_level_filter = config.default_level_filter.unwrap_or(if send_to_logfire {

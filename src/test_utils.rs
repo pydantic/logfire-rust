@@ -16,6 +16,7 @@ use opentelemetry::{
     logs::{LogRecord, Logger, LoggerProvider as _},
     trace::{SpanId, TraceId},
 };
+use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_sdk::{
     Resource,
@@ -447,6 +448,46 @@ pub fn make_trace_request_deterministic(req: &mut ExportTraceServiceRequest) {
                     event.time_unix_nano =
                         timestamp_remap.remap_u64_nano_timestamp(event.time_unix_nano);
                 }
+            }
+        }
+    }
+}
+
+pub fn make_log_request_deterministic(req: &mut ExportLogsServiceRequest) {
+    let mut timestamp_remap = TimestampRemapper::new();
+
+    for resource_log in &mut req.resource_logs {
+        if let Some(resource) = &mut resource_log.resource {
+            resource.attributes.sort_by_key(|attr| attr.key.clone());
+        }
+
+        for scope_log in &mut resource_log.scope_logs {
+            if let Some(scope) = &mut scope_log.scope {
+                scope.attributes.sort_by_key(|attr| attr.key.clone());
+            }
+
+            for log_record in &mut scope_log.log_records {
+                // Remap timestamps
+                log_record.time_unix_nano =
+                    timestamp_remap.remap_u64_nano_timestamp(log_record.time_unix_nano);
+                log_record.observed_time_unix_nano =
+                    timestamp_remap.remap_u64_nano_timestamp(log_record.observed_time_unix_nano);
+
+                // Zero out non-deterministic attributes
+                for attr in &mut log_record.attributes {
+                    if attr.key == "thread.id" {
+                        attr.value = Some(opentelemetry_proto::tonic::common::v1::AnyValue {
+                            value: Some(
+                                opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(
+                                    0,
+                                ),
+                            ),
+                        });
+                    }
+                }
+
+                // Sort attributes by key
+                log_record.attributes.sort_by_key(|attr| attr.key.clone());
             }
         }
     }
