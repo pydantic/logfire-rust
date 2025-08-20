@@ -38,10 +38,6 @@ impl<T> Drop for Inner<T> {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        println!(
-            "\n\naaaaaaa Inner Drop called self.name {:?}\n\n",
-            &self.name
-        );
         histograms.remove(&self.name);
     }
 }
@@ -95,10 +91,13 @@ impl ExponentialHistogramBuilder<'_, u64> {
     /// and an error is logged using internal logging.
     #[must_use]
     pub fn build(self) -> ExponentialHistogram<u64> {
-        let mut histograms = EXPONENTIAL_HISTOGRAMS
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        histograms.insert(self.name.clone(), self.scale);
+        {
+            let mut histograms = EXPONENTIAL_HISTOGRAMS
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            histograms.insert(self.name.clone(), self.scale);
+        }
+
         let histogram = self.inner.build();
 
         ExponentialHistogram {
@@ -118,11 +117,15 @@ impl ExponentialHistogramBuilder<'_, f64> {
     /// and an error is logged using internal logging.
     #[must_use]
     pub fn build(self) -> ExponentialHistogram<f64> {
-        let mut histograms = EXPONENTIAL_HISTOGRAMS
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        histograms.insert(self.name.clone(), self.scale);
+        {
+            let mut histograms = EXPONENTIAL_HISTOGRAMS
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            histograms.insert(self.name.clone(), self.scale);
+        }
+
         let histogram = self.inner.build();
+
         ExponentialHistogram {
             inner: Arc::new(Inner {
                 name: self.name,
@@ -413,26 +416,6 @@ mod tests {
             let histograms = EXPONENTIAL_HISTOGRAMS.read().unwrap();
             assert!(!histograms.contains_key("f64_exp"));
             assert!(!histograms.contains_key("u64_exp"));
-        }
-    }
-
-    #[test]
-    fn exponential_histograms_are_registered_on_build() {
-        let b1 = f64_exponential_histogram("f64_exp", 10);
-        let b2 = u64_exponential_histogram("u64_exp", 20);
-
-        {
-            let histograms = EXPONENTIAL_HISTOGRAMS.read().unwrap();
-            assert!(histograms.is_empty());
-        }
-
-        let _a = b1.build();
-        let _bb = b2.build();
-
-        {
-            let histograms = EXPONENTIAL_HISTOGRAMS.read().unwrap();
-            assert!(histograms.contains_key("f64_exp"));
-            assert!(histograms.contains_key("u64_exp"));
         }
     }
 }

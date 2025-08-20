@@ -401,13 +401,16 @@ impl Logfire {
             if i.kind() != InstrumentKind::Histogram {
                 return None;
             }
-            let histograms = metrics::EXPONENTIAL_HISTOGRAMS.read().ok()?;
-            let scale = histograms.get(i.name())?;
+
+            let scale = {
+                let histograms = metrics::EXPONENTIAL_HISTOGRAMS.read().ok()?;
+                *histograms.get(i.name())?
+            };
 
             Stream::builder()
                 .with_aggregation(Aggregation::Base2ExponentialHistogram {
                     max_size: 160,
-                    max_scale: *scale, // Upper bound on resolution
+                    max_scale: scale, // Upper bound on resolution
                     record_min_max: true,
                 })
                 .build()
