@@ -46,8 +46,6 @@ Then, you can use the SDK to instrument the code. Here's a simple example which 
 use std::fs;
 use std::sync::LazyLock;
 
-use opentelemetry::{KeyValue, metrics::Counter};
-
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() -> Result<()> {
