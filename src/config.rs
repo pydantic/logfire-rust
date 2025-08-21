@@ -54,9 +54,6 @@ pub struct LogfireConfigBuilder {
 impl Default for LogfireConfigBuilder {
     fn default() -> Self {
         Self {
-            environment: None,
-            service_name: None,
-            service_version: None,
             local: false,
             send_to_logfire: None,
             token: None,
