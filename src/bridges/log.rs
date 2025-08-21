@@ -102,12 +102,14 @@ mod tests {
         log::info!(logger: lf_logger, "root event");
         log::info!(logger: lf_logger, target: "custom_target", "root event with target");
 
-        let _root = tracing::span!(tracing::Level::INFO, "root span").entered();
+        let root = tracing::span!(tracing::Level::INFO, "root span").entered();
         log::info!(logger: lf_logger, "hello world log");
         log::warn!(logger: lf_logger, "warning log");
         log::error!(logger: lf_logger, "error log");
         log::debug!(logger: lf_logger, "debug log");
         log::trace!(logger: lf_logger, "trace log");
+
+        drop(root);
 
         let logs = log_exporter.get_emitted_logs().unwrap();
 

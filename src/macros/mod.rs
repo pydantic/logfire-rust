@@ -90,13 +90,13 @@ macro_rules! span {
         $crate::__macros_impl::tracing_span!(parent: $parent, $level, $format, $($($path).+ $(= $value)?),*)
     };
     (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::__macros_impl::tracing_span!(parent: $parent, tracing::Level::INFO, $format, $($($path).+ $(= $value)?),*)
+        $crate::__macros_impl::tracing_span!(parent: $parent, $crate::__macros_impl::Level::INFO, $format, $($($path).+ $(= $value)?),*)
     };
     (level: $level:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
         $crate::__macros_impl::tracing_span!($level, $format, $($($path).+ $(= $value)?),*)
     };
     ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::__macros_impl::tracing_span!(tracing::Level::INFO, $format, $($($path).+ $(= $value)?),*)
+        $crate::__macros_impl::tracing_span!($crate::__macros_impl::Level::INFO, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -106,10 +106,10 @@ macro_rules! span {
 #[macro_export]
 macro_rules! error {
     (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, tracing::Level::ERROR, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::ERROR, $format, $($($path).+ $(= $value)?),*)
     };
     ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(tracing::Level::ERROR, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!($crate::__macros_impl::Level::ERROR, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -119,10 +119,10 @@ macro_rules! error {
 #[macro_export]
 macro_rules! warn {
     (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, tracing::Level::WARN, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::WARN, $format, $($($path).+ $(= $value)?),*)
     };
     ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(tracing::Level::WARN, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!($crate::__macros_impl::Level::WARN, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -132,10 +132,10 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! info {
     (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, tracing::Level::INFO, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::INFO, $format, $($($path).+ $(= $value)?),*)
     };
     ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(tracing::Level::INFO, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!($crate::__macros_impl::Level::INFO, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -145,10 +145,10 @@ macro_rules! info {
 #[macro_export]
 macro_rules! debug {
     (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, tracing::Level::DEBUG, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::DEBUG, $format, $($($path).+ $(= $value)?),*)
     };
     ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(tracing::Level::DEBUG, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!($crate::__macros_impl::Level::DEBUG, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -158,10 +158,10 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! trace {
     (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, tracing::Level::TRACE, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::TRACE, $format, $($($path).+ $(= $value)?),*)
     };
     ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(tracing::Level::TRACE, $format, $($($path).+ $(= $value)?),*)
+        $crate::log!($crate::__macros_impl::Level::TRACE, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
@@ -265,7 +265,7 @@ macro_rules! log {
         $crate::__macros_impl::log!(parent: $parent, $level, $format, $($($path).+ $(= $value)?),*)
     };
     ($level:expr, $format:expr  $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::__macros_impl::log!(parent: tracing::Span::current(), $level, $format, $($($path).+ $(= $value)?),*)
+        $crate::__macros_impl::log!(parent: $crate::__macros_impl::Span::current(), $level, $format, $($($path).+ $(= $value)?),*)
     };
 }
 
