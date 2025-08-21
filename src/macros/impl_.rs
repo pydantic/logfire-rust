@@ -16,13 +16,16 @@ use tracing_opentelemetry::OpenTelemetrySpanExt;
 // them at the crate root.
 pub use crate::{__log as log, __tracing_span as tracing_span};
 
+// Private re-export of `tracing` components, because the macros depend upon it.
+pub use tracing::{Level, Span, span as __tracing_span_impl};
+
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __tracing_span {
     (parent: $parent:expr, $level:expr, $format:expr, $($($path:ident).+ $(= $value:expr)?),*) => {{
         // bind args early to avoid multiple evaluation
         $crate::__bind_single_ident_args!($($($path).+ $(= $value)?),*);
-        tracing::span!(
+        $crate::__macros_impl::__tracing_span_impl!(
             parent: $parent,
             $level,
             $format,
@@ -34,7 +37,7 @@ macro_rules! __tracing_span {
     ($level:expr, $format:expr, $($($path:ident).+ $(= $value:expr)?),*) => {{
         // bind args early to avoid multiple evaluation
         $crate::__bind_single_ident_args!($($($path).+ $(= $value)?),*);
-        tracing::span!(
+        $crate::__macros_impl::__tracing_span_impl!(
             $level,
             $format,
             $($($path).+ = $crate::__evaluate_arg!($($path).+ $(= $value)?),)*
@@ -261,12 +264,12 @@ macro_rules! __log {
             $crate::__macros_impl::export_log(
                 $format,
                 &$parent,
-                format!($format),
+                ::std::format!($format),
                 $level,
                 $crate::__json_schema!($($($path).+),*),
-                Some(::std::borrow::Cow::Borrowed(file!())),
-                Some(line!()),
-                Some(module_path!()),
+                ::std::option::Option::Some(::std::borrow::Cow::Borrowed(file!())),
+                ::std::option::Option::Some(line!()),
+                ::std::option::Option::Some(module_path!()),
                 [
                     $({
                         let arg_value = $crate::__evaluate_arg!($($path).+ $(= $value)?);
