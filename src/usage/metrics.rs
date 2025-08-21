@@ -71,6 +71,7 @@
 //! ```rust
 //! use std::sync::LazyLock;
 //! use opentelemetry::metrics::Histogram;
+//! use logfire::ExponentialHistogram;
 //!
 //! static REQUEST_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
 //!     logfire::f64_histogram("http_request_duration")
@@ -82,6 +83,20 @@
 //! static RESPONSE_SIZE: LazyLock<Histogram<u64>> = LazyLock::new(|| {
 //!     logfire::u64_histogram("http_response_size")
 //!         .with_description("HTTP response size")
+//!         .with_unit("By")
+//!         .build()
+//! });
+//!
+//! static QUEUE_LATENCY: LazyLock<ExponentialHistogram<f64>> = LazyLock::new(|| {
+//!     logfire::f64_exponential_histogram("queue_latency", 20)
+//!         .with_description("Latency of items in a queue")
+//!         .with_unit("ms")
+//!         .build()
+//! });
+//!
+//! static MEMORY_USAGE_BYTES: LazyLock<ExponentialHistogram<u64>> = LazyLock::new(|| {
+//!     logfire::u64_exponential_histogram("memory_usage_bytes", 20)
+//!         .with_description("Memory usage in bytes")
 //!         .with_unit("By")
 //!         .build()
 //! });

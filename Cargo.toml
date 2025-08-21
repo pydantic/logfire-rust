@@ -31,6 +31,7 @@ opentelemetry_sdk = { version = "0.30", default-features = false, features = [
     "experimental_metrics_periodicreader_with_async_runtime",
     "rt-tokio",
     "logs",
+    "spec_unstable_metrics_views"
 ] }
 opentelemetry-otlp = { version = "0.30", default-features = false, features = [
     "trace",

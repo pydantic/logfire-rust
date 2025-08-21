@@ -19,8 +19,8 @@ use opentelemetry::{
 use opentelemetry_sdk::{
     logs::{SdkLoggerProvider, log_processor_with_async_runtime::BatchLogProcessor},
     metrics::{
-        SdkMeterProvider, exporter::PushMetricExporter,
-        periodic_reader_with_async_runtime::PeriodicReader,
+        Aggregation, Instrument, InstrumentKind, SdkMeterProvider, Stream,
+        exporter::PushMetricExporter, periodic_reader_with_async_runtime::PeriodicReader,
     },
     runtime,
     trace::{
@@ -43,6 +43,7 @@ use crate::{
         log_processor_shutdown_hack::LogProcessorShutdownHack,
         logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer},
     },
+    metrics,
     ulid_id_generator::UlidIdGenerator,
 };
 
@@ -396,6 +397,26 @@ impl Logfire {
             }
         }
 
+        let view = |i: &Instrument| {
+            if i.kind() != InstrumentKind::Histogram {
+                return None;
+            }
+
+            let scale = {
+                let histograms = metrics::EXPONENTIAL_HISTOGRAMS.read().ok()?;
+                *histograms.get(i.name())?
+            };
+
+            Stream::builder()
+                .with_aggregation(Aggregation::Base2ExponentialHistogram {
+                    max_size: 160,
+                    max_scale: scale, // Upper bound on resolution
+                    record_min_max: true,
+                })
+                .build()
+                .ok()
+        };
+        meter_provider_builder = meter_provider_builder.with_view(view);
         let meter_provider = meter_provider_builder.build();
 
         for log_processor in advanced_options.log_record_processors {
@@ -758,9 +779,21 @@ mod tests {
         time::Duration,
     };
 
-    use opentelemetry_sdk::trace::{SpanData, SpanProcessor};
+    use opentelemetry_sdk::{
+        metrics::{
+            InMemoryMetricExporter, PeriodicReader,
+            data::{Metric, MetricData},
+            reader::MetricReader,
+        },
+        trace::{SpanData, SpanProcessor},
+    };
 
-    use crate::{ConfigureError, Logfire, config::SendToLogfire, configure};
+    use crate::{
+        ConfigureError, Logfire,
+        config::{BoxedMetricReader, MetricsOptions, SendToLogfire},
+        configure, f64_exponential_histogram, f64_histogram, u64_exponential_histogram,
+        u64_histogram,
+    };
 
     #[test]
     fn test_send_to_logfire() {
@@ -1092,5 +1125,73 @@ mod tests {
 
         let logs = log_exporter.get_emitted_logs().unwrap();
         assert!(logs.is_empty());
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_exponential_histogram_view() {
+        let exporter = InMemoryMetricExporter::default();
+        let reader = PeriodicReader::builder(exporter.clone()).build();
+        let logfire = configure()
+            .send_to_logfire(false)
+            .with_metrics(Some(MetricsOptions {
+                additional_readers: vec![BoxedMetricReader::new(Box::new(reader.clone()))],
+            }))
+            .finish()
+            .expect("failed to configure logfire");
+
+        let _guard = logfire.shutdown_guard();
+
+        let f64_hist = f64_histogram("f64_hist").build();
+        f64_hist.record(1.0, &[]);
+        let u64_hist = u64_histogram("u64_hist").build();
+        u64_hist.record(20, &[]);
+
+        let f64_exp = f64_exponential_histogram("f64_exp", 2).build();
+        f64_exp.record(1.0, &[]);
+        f64_exp.record(1.5, &[]);
+        f64_exp.record(2.0, &[]);
+        f64_exp.record(3.0, &[]);
+        f64_exp.record(10.0, &[]);
+
+        let u64_exp = u64_exponential_histogram("u64_exp", 2).build();
+        u64_exp.record(10, &[]);
+
+        reader.force_flush().unwrap();
+
+        let metrics = exporter.get_finished_metrics().unwrap();
+
+        for scope_metics in metrics[0].scope_metrics() {
+            for (name, expected) in [
+                ("f64_hist", false),
+                ("u64_hist", false),
+                ("f64_exp", true),
+                ("u64_exp", true),
+            ] {
+                let metric = scope_metics.metrics().find(|m| m.name() == name).unwrap();
+                assert_eq!(expected, is_exponential_histogram(metric));
+            }
+        }
+    }
+
+    fn is_exponential_histogram(metric: &Metric) -> bool {
+        match metric.data() {
+            opentelemetry_sdk::metrics::data::AggregatedMetrics::F64(metric_data) => {
+                is_exponential_histogram_metric_data(metric_data)
+            }
+            opentelemetry_sdk::metrics::data::AggregatedMetrics::U64(metric_data) => {
+                is_exponential_histogram_metric_data(metric_data)
+            }
+            opentelemetry_sdk::metrics::data::AggregatedMetrics::I64(metric_data) => {
+                is_exponential_histogram_metric_data(metric_data)
+            }
+        }
+    }
+
+    fn is_exponential_histogram_metric_data<T>(data: &MetricData<T>) -> bool {
+        matches!(
+            data,
+            opentelemetry_sdk::metrics::data::MetricData::ExponentialHistogram(_)
+        )
     }
 }
