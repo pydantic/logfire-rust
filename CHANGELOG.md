@@ -1,3 +1,7 @@
+## [v0.8.1] (2025-08-21)
+
+* make macros hygienic by @davidhewitt in [#100](https://github.com/pydantic/logfire-rust/pull/100)
+
 ## [v0.8.0] (2025-08-21)
 
 * logs: stop sending `logfire.msg`, test `event_name` properly by @davidhewitt in [#84](https://github.com/pydantic/logfire-rust/pull/84)
@@ -90,3 +94,4 @@ Initial release.
 [v0.7.0]: https://github.com/pydantic/logfire-rust/compare/v0.6.1..v0.7.0
 [v0.7.1]: https://github.com/pydantic/logfire-rust/compare/v0.7.0..v0.7.1
 [v0.8.0]: https://github.com/pydantic/logfire-rust/compare/v0.7.1..v0.8.0
+[v0.8.1]: https://github.com/pydantic/logfire-rust/compare/v0.8.0..v0.8.1
