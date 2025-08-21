@@ -1,3 +1,49 @@
+## [v0.8.0] (2025-08-21)
+
+* logs: stop sending `logfire.msg`, test `event_name` properly by @davidhewitt in [#84](https://github.com/pydantic/logfire-rust/pull/84)
+* chore: explicitly call shutdown on drop of `ShutdownHandler` by @the-wondersmith in [#85](https://github.com/pydantic/logfire-rust/pull/85)
+* don't fabricate "panic" and "log message" event names by @davidhewitt in [#86](https://github.com/pydantic/logfire-rust/pull/86)
+* create a proper `Logfire` type by @davidhewitt in [#87](https://github.com/pydantic/logfire-rust/pull/87)
+* filter out default tracing span name by @davidhewitt in [#88](https://github.com/pydantic/logfire-rust/pull/88)
+* feat: allow multiple `opentelemetry_sdk::Resource`s to be set via `AdvancedOptions` by @the-wondersmith in [#89](https://github.com/pydantic/logfire-rust/pull/89)
+* allow picking up credentials from a .logfire directory by @davidhewitt in [#90](https://github.com/pydantic/logfire-rust/pull/90)
+* make `LogfireTracingLayer` respect configured filters by @davidhewitt in [#93](https://github.com/pydantic/logfire-rust/pull/93)
+* implement service_name, service_version, and deployment_environment config builders by @davidhewitt in [#96](https://github.com/pydantic/logfire-rust/pull/96)
+* suppress telemetry from otel export by @davidhewitt in [#95](https://github.com/pydantic/logfire-rust/pull/95)
+* handle panics by default by @davidhewitt in [#97](https://github.com/pydantic/logfire-rust/pull/97)
+* Create functions to create `u64` and `f64` exponential histograms by @PoorlyDefinedBehaviour in [#94](https://github.com/pydantic/logfire-rust/pull/94)
+
+## [v0.7.1] (2025-07-16)
+
+* add `trace!` macro by @davidhewitt in [#80](https://github.com/pydantic/logfire-rust/pull/80)
+* fix setting resource on custom log processor by @davidhewitt in [#79](https://github.com/pydantic/logfire-rust/pull/79)
+* fix case where tracing enabled caused too-verbose logging by @davidhewitt in [#81](https://github.com/pydantic/logfire-rust/pull/81)
+
+## [v0.7.0] (2025-07-16)
+
+* export logs over logs stream by @davidhewitt in [#73](https://github.com/pydantic/logfire-rust/pull/73)
+* send log bridge data over logs stream by @davidhewitt in [#74](https://github.com/pydantic/logfire-rust/pull/74)
+* send tracing event logs over logs stream by @davidhewitt in [#75](https://github.com/pydantic/logfire-rust/pull/75)
+* support tracing metrics layer by @davidhewitt in [#76](https://github.com/pydantic/logfire-rust/pull/76)
+
+## [v0.6.1] (2025-06-26)
+
+* fix location of panic messages by @davidhewitt in [#67](https://github.com/pydantic/logfire-rust/pull/67)
+* test span / log syntax examples, make them consistent by @davidhewitt in [#69](https://github.com/pydantic/logfire-rust/pull/69)
+* fix parent span id for tracing events by @davidhewitt in [#71](https://github.com/pydantic/logfire-rust/pull/71)
+
+## [v0.6.0] (2025-06-23)
+
+* Add include_timestamps config by @hramezani in [#42](https://github.com/pydantic/logfire-rust/pull/42)
+* Add min_log_level config by @hramezani in [#43](https://github.com/pydantic/logfire-rust/pull/43)
+* upgrade to opentelemetry 0.30 by @davidhewitt in [#54](https://github.com/pydantic/logfire-rust/pull/54)
+* send tracing events as logs by @davidhewitt in [#56](https://github.com/pydantic/logfire-rust/pull/56)
+* Support ident without value shorthand in macros by @davidhewitt in [#57](https://github.com/pydantic/logfire-rust/pull/57)
+* add examples for `axum` and `actix-web` by @davidhewitt in [#59](https://github.com/pydantic/logfire-rust/pull/59)
+* add `LogfireTracingLayer` as a public type by @davidhewitt in [#61](https://github.com/pydantic/logfire-rust/pull/61)
+* fix deadlock in console caused by SimpleSpanProcessor by @davidhewitt in [#60](https://github.com/pydantic/logfire-rust/pull/60)
+* remove APIs deprecated on 0.4 by @davidhewitt in [#62](https://github.com/pydantic/logfire-rust/pull/62)
+
 ## [v0.5.0] (2025-04-02)
 
 * update to opentelemetry 0.29 by @davidhewitt in https://github.com/pydantic/logfire-rust/pull/40
@@ -39,3 +85,8 @@ Initial release.
 [v0.3.1]: https://github.com/pydantic/logfire-rust/compare/v0.3.0..v0.3.1
 [v0.4.0]: https://github.com/pydantic/logfire-rust/compare/v0.3.1..v0.4.0
 [v0.5.0]: https://github.com/pydantic/logfire-rust/compare/v0.4.0..v0.5.0
+[v0.6.0]: https://github.com/pydantic/logfire-rust/compare/v0.5.0..v0.6.0
+[v0.6.1]: https://github.com/pydantic/logfire-rust/compare/v0.6.0..v0.6.1
+[v0.7.0]: https://github.com/pydantic/logfire-rust/compare/v0.6.1..v0.7.0
+[v0.7.1]: https://github.com/pydantic/logfire-rust/compare/v0.7.0..v0.7.1
+[v0.8.0]: https://github.com/pydantic/logfire-rust/compare/v0.7.1..v0.8.0
