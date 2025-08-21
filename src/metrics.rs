@@ -269,7 +269,7 @@ wrap_histogram_method!(
     "HISTOGRAM.record(1, &[])"
 );
 
-#[doc = make_metric_doc!(f64_exponential_histogram, ExponentialHistogram<f64>, "HISTOGRAM", "HISTOGRAM.record(1, &[])", exponential_histogram)]
+#[doc = make_metric_doc!(f64_exponential_histogram, ExponentialHistogram<f64>, "HISTOGRAM", "HISTOGRAM.record(1.0, &[])", exponential_histogram)]
 pub fn f64_exponential_histogram(
     name: impl Into<Cow<'static, str>>,
     scale: i8,
