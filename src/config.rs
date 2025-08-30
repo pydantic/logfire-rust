@@ -12,7 +12,7 @@ use std::{
 use opentelemetry_sdk::{
     logs::LogProcessor,
     metrics::reader::MetricReader,
-    trace::{IdGenerator, SpanProcessor},
+    trace::{IdGenerator, ShouldSample, SpanProcessor, TracerProviderBuilder},
 };
 use regex::Regex;
 use tracing::{Level, level_filters::LevelFilter};
@@ -373,6 +373,7 @@ pub struct AdvancedOptions {
     pub(crate) resources: Vec<opentelemetry_sdk::Resource>,
     pub(crate) log_record_processors: Vec<BoxedLogProcessor>,
     pub(crate) enable_tracing_metrics: bool,
+    pub(crate) trace_provider: TracerProviderBuilder,
     //
     //
     // TODO: arguments below supported by Python
@@ -415,6 +416,13 @@ impl AdvancedOptions {
     ) -> Self {
         self.log_record_processors
             .push(BoxedLogProcessor::new(Box::new(processor)));
+        self
+    }
+
+    /// Add a custom sampler implementation
+    #[must_use]
+    pub fn with_sampler<T: ShouldSample + 'static>(mut self, sampler: T) -> Self {
+        self.trace_provider = self.trace_provider.with_sampler(sampler);
         self
     }
 
