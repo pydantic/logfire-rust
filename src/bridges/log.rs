@@ -1080,11 +1080,13 @@ mod tests {
         log::info!(logger: lf_logger, "root event");
         log::info!(logger: lf_logger, target: "custom_target", "root event with target");
 
-        let _root = tracing::span!(tracing::Level::INFO, "root span").entered();
-        log::info!(logger: lf_logger, "hello world log");
-        log::warn!(logger: lf_logger, "warning log");
-        log::error!(logger: lf_logger, "error log");
-        log::trace!(logger: lf_logger, "trace log");
+        {
+            let _root = tracing::span!(tracing::Level::INFO, "root span").entered();
+            log::info!(logger: lf_logger, "hello world log");
+            log::warn!(logger: lf_logger, "warning log");
+            log::error!(logger: lf_logger, "error log");
+            log::trace!(logger: lf_logger, "trace log");
+        }
 
         guard.shutdown().unwrap();
 
