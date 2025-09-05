@@ -56,13 +56,11 @@ chrono = "0.4.39"
 regex = "1.11.1"
 
 [dev-dependencies]
-async-trait = "0.1.88"
 futures = { version = "0.3.31", features = ["futures-executor"] }
 insta = "1.42.1"
 opentelemetry_sdk = { version = "0.30", default-features = false, features = [
     "testing",
 ] }
-regex = "1.11.1"
 tokio = { version = "1.44.1", features = [
     "test-util",
     "macros",
@@ -91,7 +89,6 @@ opentelemetry-instrumentation-actix-web = { version = "0.22", features = [
 ] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-futures-util = "0.3"
 tempfile = "3.20.0"
 
 [features]
