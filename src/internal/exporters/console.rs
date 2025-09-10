@@ -207,8 +207,8 @@ impl ConsoleWriter {
 
     fn with_writer<R>(&self, f: impl FnOnce(&mut dyn Write) -> R) -> R {
         match &self.options.target {
-            Target::Stdout => f(&mut io::stdout()),
-            Target::Stderr => f(&mut io::stderr()),
+            Target::Stdout => f(&mut io::stdout().lock()),
+            Target::Stderr => f(&mut io::stderr().lock()),
             Target::Pipe(p) => f(&mut *p.lock().expect("pipe lock poisoned")),
         }
     }
@@ -360,22 +360,13 @@ impl ConsoleWriter {
         }
 
         if !fields.is_empty() {
+
             for (idx, (key, value)) in fields.iter().enumerate() {
                 let key = key.as_str();
-                let value_str = match value {
-                    opentelemetry::logs::AnyValue::String(s) => s.as_str(),
-                    opentelemetry::logs::AnyValue::Int(i) => {
-                        return write!(w, " {}={}", ITALIC.paint(key), i);
-                    }
-                    opentelemetry::logs::AnyValue::Double(d) => {
-                        return write!(w, " {}={}", ITALIC.paint(key), d);
-                    }
-                    opentelemetry::logs::AnyValue::Boolean(b) => {
-                        return write!(w, " {}={}", ITALIC.paint(key), b);
-                    }
-                    _ => &format!("{value:?}"),
-                };
-                write!(w, " {}={}", ITALIC.paint(key), value_str)?;
+
+                write!(w, " {}=", ITALIC.paint(key))?;
+                write_any_value(w, value)?;
+
                 if idx < fields.len() - 1 {
                     write!(w, ",")?;
                 }
@@ -384,6 +375,54 @@ impl ConsoleWriter {
 
         writeln!(w)
     }
+}
+
+fn write_any_value<W: io::Write>(w: &mut W, value: &AnyValue) -> io::Result<()> {
+    match value {
+        AnyValue::Int(i) => {
+            write!(w, "{i}")?;
+        }
+        AnyValue::Double(d) => {
+            write!(w, "{d}")?;
+        }
+        AnyValue::String(s) => {
+            write!(w, "{s}")?;
+        }
+        AnyValue::Boolean(b) => {
+            write!(w, "{b}")?;
+        }
+        AnyValue::Bytes(items) => {
+            write!(w, "{}", DIMMED.paint(format!("<bytes:{}>", items.len())))?;
+        }
+        AnyValue::ListAny(list_values) => {
+            for (idx, val) in (&**list_values).iter().enumerate() {
+                write_any_value(w, val)?;
+
+                if idx < list_values.len() - 1 {
+                    write!(w, ",")?;
+                }
+            }
+        }
+        AnyValue::Map(hash_map) => {
+
+            write!(w, "{{")?;
+
+            for (idx, (key, val)) in (&**hash_map).iter().enumerate() {
+                write!(w, "{}=", ITALIC.paint(key.as_str()))?;
+                write_any_value(w, val)?;
+
+                if idx < hash_map.len() - 1 {
+                    write!(w, ",")?;
+                }
+            }
+            write!(w, "}}")?;
+        },
+        other => {
+            write!(w, "{other:?}")?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -422,6 +461,7 @@ mod tests {
             let _ = crate::span!(level: Level::DEBUG, "debug span");
             let _ =
                 crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
+            crate::info!("log with values", foo = 42, bar = 33);
             crate::info!("hello world log");
             panic!("oh no!");
         }))
@@ -438,8 +478,9 @@ mod tests {
         [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
         [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
         [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
-        [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [1mpanic: oh no![0m [3mbacktrace[0m=disabled backtrace
+        [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mlog with values[0m [3mfoo[0m=42, [3mbar[0m=33
+        [2m1970-01-01T00:00:00.000005Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
+        [2m1970-01-01T00:00:00.000006Z[0m[31m ERROR[0m [1mpanic: oh no![0m [3mbacktrace[0m=disabled backtrace
         ");
     }
 
