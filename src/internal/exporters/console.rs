@@ -360,7 +360,6 @@ impl ConsoleWriter {
         }
 
         if !fields.is_empty() {
-
             for (idx, (key, value)) in fields.iter().enumerate() {
                 let key = key.as_str();
 
@@ -395,7 +394,7 @@ fn write_any_value<W: io::Write>(w: &mut W, value: &AnyValue) -> io::Result<()> 
             write!(w, "{}", DIMMED.paint(format!("<bytes:{}>", items.len())))?;
         }
         AnyValue::ListAny(list_values) => {
-            for (idx, val) in (&**list_values).iter().enumerate() {
+            for (idx, val) in list_values.iter().enumerate() {
                 write_any_value(w, val)?;
 
                 if idx < list_values.len() - 1 {
@@ -404,10 +403,9 @@ fn write_any_value<W: io::Write>(w: &mut W, value: &AnyValue) -> io::Result<()> 
             }
         }
         AnyValue::Map(hash_map) => {
-
             write!(w, "{{")?;
 
-            for (idx, (key, val)) in (&**hash_map).iter().enumerate() {
+            for (idx, (key, val)) in (**hash_map).iter().enumerate() {
                 write!(w, "{}=", ITALIC.paint(key.as_str()))?;
                 write_any_value(w, val)?;
 
@@ -416,7 +414,7 @@ fn write_any_value<W: io::Write>(w: &mut W, value: &AnyValue) -> io::Result<()> 
                 }
             }
             write!(w, "}}")?;
-        },
+        }
         other => {
             write!(w, "{other:?}")?;
         }
