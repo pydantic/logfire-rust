@@ -2335,6 +2335,36 @@ mod tests {
                             ),
                         ),
                     },
+                    KeyValue {
+                        key: Static(
+                            "telemetry.sdk.language",
+                        ),
+                        value: String(
+                            Static(
+                                "rust",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "telemetry.sdk.name",
+                        ),
+                        value: String(
+                            Static(
+                                "opentelemetry",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "telemetry.sdk.version",
+                        ),
+                        value: String(
+                            Static(
+                                "0.0.0",
+                            ),
+                        ),
+                    },
                 ],
                 scope_metrics: [
                     DeterministicScopeMetrics {
@@ -2378,6 +2408,36 @@ mod tests {
                         value: String(
                             Static(
                                 "test",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "telemetry.sdk.language",
+                        ),
+                        value: String(
+                            Static(
+                                "rust",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "telemetry.sdk.name",
+                        ),
+                        value: String(
+                            Static(
+                                "opentelemetry",
+                            ),
+                        ),
+                    },
+                    KeyValue {
+                        key: Static(
+                            "telemetry.sdk.version",
+                        ),
+                        value: String(
+                            Static(
+                                "0.0.0",
                             ),
                         ),
                     },

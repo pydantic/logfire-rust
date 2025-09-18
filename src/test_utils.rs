@@ -191,12 +191,18 @@ pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
 }
 
 /// `Resource` contains a hashmap, so deterministic tests need to convert to an ordered container.
-fn make_deterministic_resource(resource: &Resource) -> Vec<KeyValue> {
+pub fn make_deterministic_resource(resource: &Resource) -> Vec<KeyValue> {
     let mut attrs: Vec<_> = resource
         .iter()
         .map(|(k, v)| KeyValue::new(k.clone(), v.clone()))
         .collect();
     attrs.sort_by_key(|kv| kv.key.clone());
+    for attr in &mut attrs {
+        // don't care about opentelemetry sdk version for tests
+        if attr.key.as_str() == "telemetry.sdk.version" {
+            attr.value = "0.0.0".into();
+        }
+    }
     attrs
 }
 

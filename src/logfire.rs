@@ -36,7 +36,10 @@ use crate::{
     __macros_impl::LogfireValue,
     ConfigureError, LogfireConfigBuilder, ShutdownError,
     bridges::tracing::LogfireTracingLayer,
-    config::{SendToLogfire, get_base_url_from_token},
+    config::{
+        LOGFIRE_ENVIRONMENT, LOGFIRE_SEND_TO_LOGFIRE, LOGFIRE_SERVICE_NAME,
+        LOGFIRE_SERVICE_VERSION, SendToLogfire, get_base_url_from_token,
+    },
     internal::{
         env::get_optional_env,
         exporters::console::{ConsoleWriter, create_console_processors},
@@ -159,6 +162,13 @@ impl Logfire {
     pub(crate) fn from_config_builder(
         config: LogfireConfigBuilder,
     ) -> Result<Logfire, ConfigureError> {
+        Self::from_config_builder_and_env(config, None)
+    }
+
+    fn from_config_builder_and_env(
+        config: LogfireConfigBuilder,
+        env: Option<&HashMap<String, String>>,
+    ) -> Result<Logfire, ConfigureError> {
         let LogfireParts {
             local,
             tracer,
@@ -170,7 +180,7 @@ impl Logfire {
             enable_tracing_metrics,
             shutdown_sender,
             ..
-        } = Self::build_parts(config, None)?;
+        } = Self::build_parts(config, env)?;
 
         if !local {
             // avoid otel logs firing as these messages are sent regarding "global meter provider"
@@ -276,13 +286,7 @@ impl Logfire {
             }
         }
 
-        let send_to_logfire = match config.send_to_logfire {
-            Some(send_to_logfire) => send_to_logfire,
-            None => match get_optional_env("LOGFIRE_SEND_TO_LOGFIRE", env)? {
-                Some(value) => value.parse()?,
-                None => SendToLogfire::Yes,
-            },
-        };
+        let send_to_logfire = LOGFIRE_SEND_TO_LOGFIRE.resolve(config.send_to_logfire, env)?;
 
         let send_to_logfire = match send_to_logfire {
             SendToLogfire::Yes => true,
@@ -302,34 +306,32 @@ impl Logfire {
         }
 
         // Add service-specific resources from config
-        let mut service_resource_builder = opentelemetry_sdk::Resource::builder_empty();
-        let mut has_service_attributes = false;
+        let mut service_resource_builder = opentelemetry_sdk::Resource::builder();
 
-        if let Some(service_name) = config.service_name {
+        if let Some(service_name) = LOGFIRE_SERVICE_NAME.resolve(config.service_name, env)? {
             service_resource_builder = service_resource_builder.with_service_name(service_name);
-            has_service_attributes = true;
         }
 
-        if let Some(service_version) = config.service_version {
+        if let Some(service_version) =
+            LOGFIRE_SERVICE_VERSION.resolve(config.service_version, env)?
+        {
             service_resource_builder = service_resource_builder.with_attribute(
                 opentelemetry::KeyValue::new("service.version", service_version),
             );
-            has_service_attributes = true;
         }
 
-        if let Some(environment) = config.environment {
+        if let Some(environment) = LOGFIRE_ENVIRONMENT.resolve(config.environment, env)? {
             service_resource_builder = service_resource_builder.with_attribute(
                 opentelemetry::KeyValue::new("deployment.environment.name", environment),
             );
-            has_service_attributes = true;
         }
 
-        if has_service_attributes {
-            let service_resource = service_resource_builder.build();
-            advanced_options.resources.push(service_resource);
-        }
-
-        for resource in advanced_options.resources {
+        // Use "default" resource first so that user-provided resources can override it
+        let service_resource = service_resource_builder.build();
+        for resource in [service_resource]
+            .into_iter()
+            .chain(advanced_options.resources)
+        {
             tracer_provider_builder = tracer_provider_builder.with_resource(resource.clone());
             logger_provider_builder = logger_provider_builder.with_resource(resource.clone());
             meter_provider_builder = meter_provider_builder.with_resource(resource);
