@@ -77,27 +77,60 @@ pub fn converter<T>(_: &T) -> LogfireConverter<T> {
     LogfireConverter(TryConvertOption(FallbackToConvertValue(PhantomData)))
 }
 
-/// `usize` might exceed OTLP range of i64. The Python SDK handles this by converting
-/// to a string for oversize values, we do the same.
-impl LogfireConverter<usize> {
-    #[inline]
-    #[must_use]
-    pub fn convert_value(&self, value: usize) -> Option<Value> {
-        if let Ok(value) = i64::try_from(value) {
-            Some(value.into())
-        } else {
-            // TODO emit a warning?
-            Some(value.to_string().into())
-        }
-    }
-}
-
 /// Convenience to take ownership of borrow on String
 impl LogfireConverter<&'_ String> {
     #[inline]
     #[must_use]
     pub fn convert_value(&self, value: &String) -> Option<Value> {
         Some(String::to_owned(value).into())
+    }
+}
+
+pub trait IntoI64Value: Sized {}
+
+impl IntoI64Value for u8 {}
+impl IntoI64Value for u16 {}
+impl IntoI64Value for u32 {}
+impl IntoI64Value for u64 {}
+impl IntoI64Value for u128 {}
+impl IntoI64Value for usize {}
+impl IntoI64Value for i8 {}
+impl IntoI64Value for i16 {}
+impl IntoI64Value for i32 {}
+impl IntoI64Value for i128 {}
+impl IntoI64Value for isize {}
+
+/// `usize` might exceed OTLP range of i64. The Python SDK handles this by converting
+/// to a string for oversize values, we do the same.
+/// `u64`, `u128`, `i128`, and `isize` might also overflow, in that case, it is also
+/// converted to a string.
+impl<T: IntoI64Value + ToString + Copy> LogfireConverter<T> {
+    #[inline]
+    #[must_use]
+    pub fn convert_value(&self, value: T) -> Option<Value> {
+        let value_string = value.to_string();
+        if let Ok(value) = value_string.parse::<i64>() {
+            Some(value.into())
+        } else {
+            // TODO emit a warning?
+            Some(value_string.into())
+        }
+    }
+}
+
+impl LogfireConverter<f32> {
+    #[inline]
+    #[must_use]
+    pub fn convert_value(&self, value: f32) -> Option<Value> {
+        Some(f64::from(value).into())
+    }
+}
+
+impl LogfireConverter<char> {
+    #[inline]
+    #[must_use]
+    pub fn convert_value(&self, value: char) -> Option<Value> {
+        Some(value.to_string().into())
     }
 }
 

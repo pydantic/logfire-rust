@@ -102,28 +102,22 @@ async fn root() -> &'static str {
 
 async fn get_user(Path(user_id): Path<u32>) -> Result<Json<User>, StatusCode> {
     async {
-        logfire::info!("Fetching user with ID: {user_id}", user_id = user_id as i64);
+        logfire::info!("Fetching user with ID: {user_id}");
 
         // Simulate database lookup
         tokio::time::sleep(std::time::Duration::from_millis(10))
             .instrument(logfire::span!("Database query for user"))
             .await;
 
-        logfire::debug!(
-            "Database query completed for user {user_id}",
-            user_id = user_id as i64
-        );
+        logfire::debug!("Database query completed for user {user_id}",);
 
         if user_id == 0 {
-            logfire::warn!(
-                "Invalid user ID requested: {user_id}",
-                user_id = user_id as i64
-            );
+            logfire::warn!("Invalid user ID requested: {user_id}",);
             return Err(StatusCode::BAD_REQUEST);
         }
 
         if user_id > 1000 {
-            logfire::error!("User {user_id} not found", user_id = user_id as i64);
+            logfire::error!("User {user_id} not found");
             return Err(StatusCode::NOT_FOUND);
         }
 
@@ -133,14 +127,11 @@ async fn get_user(Path(user_id): Path<u32>) -> Result<Json<User>, StatusCode> {
             email: format!("user{user_id}@example.com"),
         };
 
-        logfire::info!(
-            "Successfully retrieved user {user_id}",
-            user_id = user_id as i64
-        );
+        logfire::info!("Successfully retrieved user {user_id}",);
 
         Ok(Json(user))
     }
-    .instrument(logfire::span!("Fetching user {user_id}", user_id = user_id))
+    .instrument(logfire::span!("Fetching user {user_id}"))
     .await
 }
 
@@ -173,7 +164,7 @@ async fn create_user(
 
         logfire::info!(
             "Successfully created user {id} with name {name}",
-            id = user.id as i64,
+            id = user.id,
             name = &user.name
         );
 
