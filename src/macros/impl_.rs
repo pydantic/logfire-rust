@@ -86,37 +86,48 @@ impl LogfireConverter<&'_ String> {
     }
 }
 
-pub trait IntoI64Value: Sized {}
-
-impl IntoI64Value for u8 {}
-impl IntoI64Value for u16 {}
-impl IntoI64Value for u32 {}
-impl IntoI64Value for u64 {}
-impl IntoI64Value for u128 {}
-impl IntoI64Value for usize {}
-impl IntoI64Value for i8 {}
-impl IntoI64Value for i16 {}
-impl IntoI64Value for i32 {}
-impl IntoI64Value for i128 {}
-impl IntoI64Value for isize {}
-
-/// `usize` might exceed OTLP range of i64. The Python SDK handles this by converting
-/// to a string for oversize values, we do the same.
-/// `u64`, `u128`, `i128`, and `isize` might also overflow, in that case, it is also
-/// converted to a string.
-impl<T: IntoI64Value + ToString + Copy> LogfireConverter<T> {
-    #[inline]
-    #[must_use]
-    pub fn convert_value(&self, value: T) -> Option<Value> {
-        let value_string = value.to_string();
-        if let Ok(value) = value_string.parse::<i64>() {
-            Some(value.into())
-        } else {
-            // TODO emit a warning?
-            Some(value_string.into())
+macro_rules! impl_into_try_into_i64_value {
+    ($type:ty) => {
+        impl LogfireConverter<$type> {
+            #[inline]
+            #[must_use]
+            pub fn convert_value(&self, value: $type) -> Option<Value> {
+                // Attempt to convert the value to an i64.
+                if let Ok(value) = i64::try_from(value) {
+                    Some(value.into())
+                } else {
+                    // If it fails (e.g., overflow), fall back to a string.
+                    // TODO emit a warning?
+                    Some(value.to_string().into())
+                }
+            }
         }
-    }
+    };
 }
+
+macro_rules! impl_into_from_i64_value {
+    ($type:ty) => {
+        impl LogfireConverter<$type> {
+            #[inline]
+            #[must_use]
+            pub fn convert_value(&self, value: $type) -> Option<Value> {
+                Some(i64::from(value).into())
+            }
+        }
+    };
+}
+
+impl_into_from_i64_value!(u8);
+impl_into_from_i64_value!(u16);
+impl_into_from_i64_value!(u32);
+impl_into_try_into_i64_value!(u64);
+impl_into_try_into_i64_value!(u128);
+impl_into_try_into_i64_value!(usize);
+impl_into_from_i64_value!(i8);
+impl_into_from_i64_value!(i16);
+impl_into_from_i64_value!(i32);
+impl_into_try_into_i64_value!(i128);
+impl_into_try_into_i64_value!(isize);
 
 impl LogfireConverter<f32> {
     #[inline]

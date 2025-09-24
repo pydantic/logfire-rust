@@ -303,7 +303,7 @@ mod tests {
         let (output, guard) = get_output_guard(Level::ERROR);
 
         crate::error!("Test error message");
-        crate::error!("Test error with value", field = 42);
+        crate::error!("Test error with value", field = 42i64);
 
         guard.shutdown().unwrap();
 
@@ -435,6 +435,9 @@ mod tests {
     #[test]
     fn test_rust_primitive_types_conversion_in_log() {
         let (output, guard) = get_output_guard(Level::INFO);
+
+        // i64::MAX =                9_223_372_036_854_775_807
+        // so we test overflow with 10_000_000_000_000_000_000
 
         crate::info!("an u8: {value}", value = 1u8);
         crate::info!("an u16: {value}", value = 2u16);
