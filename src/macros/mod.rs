@@ -172,7 +172,7 @@ macro_rules! trace {
 /// The macro accepts the following syntax:
 ///
 /// ```rust
-/// # let value = 42;
+/// # let value: i64 = 42;
 /// logfire::log!(
 ///    parent: tracing::Span::current(), // optional, tracing::Span
 ///    tracing::Level::INFO,             // required, see `info!` and variants for convenience
@@ -205,34 +205,34 @@ macro_rules! trace {
 /// let root_span = logfire::span!("Root span");
 ///
 /// // Log with attributes x and y
-/// logfire::log!(parent: &root_span, Level::INFO, "Child log", x = 42, y = "hello");
+/// logfire::log!(parent: &root_span, Level::INFO, "Child log", x = 42i64, y = "hello");
 /// // or
-/// logfire::info!(parent: &root_span, "Child log", x = 42, y = "hello");
+/// logfire::info!(parent: &root_span, "Child log", x = 42i64, y = "hello");
 ///
 /// // Typically a span will be "entered" to set the parent implicitly
 /// root_span.in_scope(|| {
 ///     // This log will be a child of root_span
-///     logfire::log!(Level::INFO, "Nested log", x = 42, y = "hello");
+///     logfire::log!(Level::INFO, "Nested log", x = 42i64, y = "hello");
 ///     // or
-///     logfire::info!("Nested log", x = 42, y = "hello");
+///     logfire::info!("Nested log", x = 42i64, y = "hello");
 ///
 ///     // Debug-level child log
-///     logfire::log!(Level::DEBUG, "Debugging", x = 42, y = "hello");
+///     logfire::log!(Level::DEBUG, "Debugging", x = 42i64, y = "hello");
 ///     // or
-///     logfire::debug!("Debugging", x = 42, y = "hello");
+///     logfire::debug!("Debugging", x = 42i64, y = "hello");
 /// });
 ///
 /// // With x included in the formatted message but not as an attribute
-/// let x = 42;
+/// let x: i64 = 42;
 /// logfire::log!(Level::INFO, "Log with x = {x}, y = {y}", y = "hello");
 /// // or
 /// logfire::info!("Log with x = {x}, y = {y}", y = "hello");
 ///
 /// // Attributes can either be a single name or a dotted.name
 /// // `dotted.name` is not available in the format string.
-/// logfire::log!(Level::INFO, "Log with x = {x}, y = {y}", y = "hello", foo.bar = 42);
+/// logfire::log!(Level::INFO, "Log with x = {x}, y = {y}", y = "hello", foo.bar = 42i64);
 /// // or
-/// logfire::info!("Log with x = {x}, y = {y}", y = "hello", foo.bar = 42);
+/// logfire::info!("Log with x = {x}, y = {y}", y = "hello", foo.bar = 42i64);
 ///
 /// // If just an identifier is used without `= value`, it will be captured as an attribute
 /// let foo = "bar";
