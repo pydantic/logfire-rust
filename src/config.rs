@@ -3,7 +3,10 @@
 //! See [`LogfireConfigBuilder`] for documentation of all these options.
 
 use std::{
+    collections::HashMap,
+    convert::Infallible,
     fmt::Display,
+    marker::PhantomData,
     path::PathBuf,
     str::FromStr,
     sync::{Arc, Mutex},
@@ -17,7 +20,7 @@ use opentelemetry_sdk::{
 use regex::Regex;
 use tracing::{Level, level_filters::LevelFilter};
 
-use crate::{ConfigureError, logfire::Logfire};
+use crate::{ConfigureError, internal::env::get_optional_env, logfire::Logfire};
 
 /// Builder for logfire configuration, returned from [`logfire::configure()`][crate::configure].
 #[must_use = "call `.finish()` to complete logfire configuration."]
@@ -623,6 +626,112 @@ impl LogProcessor for BoxedLogProcessor {
         self.0.set_resource(resource);
     }
 }
+
+pub(crate) trait ParseConfigValue: Sized {
+    fn parse_config_value(s: &str) -> Result<Self, ConfigureError>;
+}
+
+impl<T> ParseConfigValue for T
+where
+    T: FromStr,
+    ConfigureError: From<T::Err>,
+{
+    fn parse_config_value(s: &str) -> Result<Self, ConfigureError> {
+        Ok(s.parse()?)
+    }
+}
+
+pub(crate) struct ConfigValue<T> {
+    env_vars: &'static [&'static str],
+    default_value: fn() -> T,
+}
+
+impl<T> ConfigValue<T> {
+    const fn new(env_vars: &'static [&'static str], default_value: fn() -> T) -> Self {
+        Self {
+            env_vars,
+            default_value,
+        }
+    }
+}
+impl<T: ParseConfigValue> ConfigValue<T> {
+    /// Resolves a config value, using the provided value if present, otherwise falling back to the environment variable or the default.
+    pub(crate) fn resolve(
+        &self,
+        value: Option<T>,
+        env: Option<&HashMap<String, String>>,
+    ) -> Result<T, ConfigureError> {
+        if let Some(v) = try_resolve_from_env(value, self.env_vars, env)? {
+            return Ok(v);
+        }
+
+        Ok((self.default_value)())
+    }
+}
+
+pub(crate) struct OptionalConfigValue<T> {
+    env_vars: &'static [&'static str],
+    default_value: PhantomData<Option<T>>,
+}
+
+impl<T> OptionalConfigValue<T> {
+    const fn new(env_vars: &'static [&'static str]) -> Self {
+        Self {
+            env_vars,
+            default_value: PhantomData,
+        }
+    }
+}
+
+impl<T: ParseConfigValue> OptionalConfigValue<T> {
+    /// Resolves an optional config value, using the provided value if present, otherwise falling back to the environment variable or `None`.
+    pub(crate) fn resolve(
+        &self,
+        value: Option<T>,
+        env: Option<&HashMap<String, String>>,
+    ) -> Result<Option<T>, ConfigureError> {
+        try_resolve_from_env(value, self.env_vars, env)
+    }
+}
+
+fn try_resolve_from_env<T>(
+    value: Option<T>,
+    env_vars: &[&str],
+    env: Option<&HashMap<String, String>>,
+) -> Result<Option<T>, ConfigureError>
+where
+    T: ParseConfigValue,
+{
+    if let Some(v) = value {
+        return Ok(Some(v));
+    }
+
+    for var in env_vars {
+        if let Some(s) = get_optional_env(var, env)? {
+            return T::parse_config_value(&s).map(Some);
+        }
+    }
+
+    Ok(None)
+}
+
+impl From<Infallible> for ConfigureError {
+    fn from(_: Infallible) -> Self {
+        unreachable!("Infallible cannot be constructed")
+    }
+}
+
+pub(crate) static LOGFIRE_SEND_TO_LOGFIRE: ConfigValue<SendToLogfire> =
+    ConfigValue::new(&["LOGFIRE_SEND_TO_LOGFIRE"], || SendToLogfire::Yes);
+
+pub(crate) static LOGFIRE_SERVICE_NAME: OptionalConfigValue<String> =
+    OptionalConfigValue::new(&["LOGFIRE_SERVICE_NAME", "OTEL_SERVICE_NAME"]);
+
+pub(crate) static LOGFIRE_SERVICE_VERSION: OptionalConfigValue<String> =
+    OptionalConfigValue::new(&["LOGFIRE_SERVICE_VERSION", "OTEL_SERVICE_VERSION"]);
+
+pub(crate) static LOGFIRE_ENVIRONMENT: OptionalConfigValue<String> =
+    OptionalConfigValue::new(&["LOGFIRE_ENVIRONMENT"]);
 
 #[cfg(test)]
 mod tests {
