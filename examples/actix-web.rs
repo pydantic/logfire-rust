@@ -89,28 +89,22 @@ async fn root() -> HttpResponse {
 async fn get_user(path: web::Path<u32>) -> ActixResult<HttpResponse> {
     let user_id = path.into_inner();
     async {
-        logfire::info!("Fetching user with ID: {user_id}", user_id = user_id as i64);
+        logfire::info!("Fetching user with ID: {user_id}");
 
         // Simulate database lookup
         tokio::time::sleep(std::time::Duration::from_millis(10))
             .instrument(logfire::span!("Database query for user"))
             .await;
 
-        logfire::debug!(
-            "Database query completed for user {user_id}",
-            user_id = user_id as i64
-        );
+        logfire::debug!("Database query completed for user {user_id}");
 
         if user_id == 0 {
-            logfire::warn!(
-                "Invalid user ID requested: {user_id}",
-                user_id = user_id as i64
-            );
+            logfire::warn!("Invalid user ID requested: {user_id}");
             return Ok(HttpResponse::BadRequest().finish());
         }
 
         if user_id > 1000 {
-            logfire::error!("User {user_id} not found", user_id = user_id as i64);
+            logfire::error!("User {user_id} not found");
             return Ok(HttpResponse::NotFound().finish());
         }
 
@@ -120,10 +114,7 @@ async fn get_user(path: web::Path<u32>) -> ActixResult<HttpResponse> {
             email: format!("user{user_id}@example.com"),
         };
 
-        logfire::info!(
-            "Successfully retrieved user {user_id}",
-            user_id = user_id as i64
-        );
+        logfire::info!("Successfully retrieved user {user_id}");
 
         Ok(HttpResponse::Ok().json(user))
     }
@@ -158,7 +149,7 @@ async fn create_user(payload: web::Json<CreateUserRequest>) -> ActixResult<HttpR
 
         logfire::info!(
             "Successfully created user {id} with name {name}",
-            id = user.id as i64,
+            id = user.id,
             name = &user.name
         );
 

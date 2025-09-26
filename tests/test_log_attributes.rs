@@ -24,16 +24,16 @@ fn test_log_macro_attributes() {
     let guard = logfire::set_local_logfire(logfire);
 
     let _ = log!(Level::INFO, "string_attr_log", foo = "bar");
-    let _ = log!(Level::INFO, "int_attr_log", num = 42);
+    let _ = log!(Level::INFO, "int_attr_log", num = 42i64);
     let _ = log!(Level::INFO, "bool_attr_log", flag = true);
     let _ = log!(Level::INFO, "dotted_attr_log", dotted.key = "value");
     let _ = log!(
         Level::INFO,
         "multi_attr_log",
-        a = 1,
+        a = 1i64,
         b = "two",
         c = false,
-        d.e = 3
+        d.e = 3i64
     );
 
     guard.shutdown().unwrap();
@@ -86,7 +86,7 @@ fn test_log_macro_shorthand_ident() {
     }
 
     let dotted = Dotted { key: "value" };
-    let int_val = 42;
+    let int_val: i64 = 42;
     let bool_val = true;
     let multi = Multi {
         a: 1,
