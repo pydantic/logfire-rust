@@ -51,7 +51,7 @@ fn main() -> Result<()> {
     logfire::info!(
         "total size of {cwd} is {size} bytes",
         cwd = cwd.display().to_string(),
-        size = total_size as i64
+        size = total_size
     );
 
     Ok(())

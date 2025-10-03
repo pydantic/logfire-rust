@@ -77,27 +77,71 @@ pub fn converter<T>(_: &T) -> LogfireConverter<T> {
     LogfireConverter(TryConvertOption(FallbackToConvertValue(PhantomData)))
 }
 
-/// `usize` might exceed OTLP range of i64. The Python SDK handles this by converting
-/// to a string for oversize values, we do the same.
-impl LogfireConverter<usize> {
-    #[inline]
-    #[must_use]
-    pub fn convert_value(&self, value: usize) -> Option<Value> {
-        if let Ok(value) = i64::try_from(value) {
-            Some(value.into())
-        } else {
-            // TODO emit a warning?
-            Some(value.to_string().into())
-        }
-    }
-}
-
 /// Convenience to take ownership of borrow on String
 impl LogfireConverter<&'_ String> {
     #[inline]
     #[must_use]
     pub fn convert_value(&self, value: &String) -> Option<Value> {
         Some(String::to_owned(value).into())
+    }
+}
+
+macro_rules! impl_into_try_into_i64_value {
+    ($type:ty) => {
+        impl LogfireConverter<$type> {
+            #[inline]
+            #[must_use]
+            pub fn convert_value(&self, value: $type) -> Option<Value> {
+                // Attempt to convert the value to an i64.
+                if let Ok(value) = i64::try_from(value) {
+                    Some(value.into())
+                } else {
+                    // If it fails (e.g., overflow), fall back to a string.
+                    // TODO emit a warning?
+                    Some(value.to_string().into())
+                }
+            }
+        }
+    };
+}
+
+macro_rules! impl_into_from_i64_value {
+    ($type:ty) => {
+        impl LogfireConverter<$type> {
+            #[inline]
+            #[must_use]
+            pub fn convert_value(&self, value: $type) -> Option<Value> {
+                Some(i64::from(value).into())
+            }
+        }
+    };
+}
+
+impl_into_from_i64_value!(u8);
+impl_into_from_i64_value!(u16);
+impl_into_from_i64_value!(u32);
+impl_into_try_into_i64_value!(u64);
+impl_into_try_into_i64_value!(u128);
+impl_into_try_into_i64_value!(usize);
+impl_into_from_i64_value!(i8);
+impl_into_from_i64_value!(i16);
+impl_into_from_i64_value!(i32);
+impl_into_try_into_i64_value!(i128);
+impl_into_try_into_i64_value!(isize);
+
+impl LogfireConverter<f32> {
+    #[inline]
+    #[must_use]
+    pub fn convert_value(&self, value: f32) -> Option<Value> {
+        Some(f64::from(value).into())
+    }
+}
+
+impl LogfireConverter<char> {
+    #[inline]
+    #[must_use]
+    pub fn convert_value(&self, value: char) -> Option<Value> {
+        Some(value.to_string().into())
     }
 }
 
