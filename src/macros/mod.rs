@@ -454,42 +454,42 @@ mod tests {
         // i64::MAX =                9_223_372_036_854_775_807
         // so we test overflow with 10_000_000_000_000_000_000
 
-        crate::info!("u8: {value:?}", value = 1u8);
-        crate::info!("u16: {value:?}", value = 2u16);
-        crate::info!("u32: {value:?}", value = 3u32);
-        crate::info!("u64: {value:?}", value = 4u64);
+        crate::info!("u8: {value}", value = 1u8);
+        crate::info!("u16: {value}", value = 2u16);
+        crate::info!("u32: {value}", value = 3u32);
+        crate::info!("u64: {value}", value = 4u64);
         crate::info!(
-            "u64 overflows i64: {value:?}",
+            "u64 overflows i64: {value}",
             value = 10_000_000_000_000_000_001u64
         );
-        crate::info!("u128: {value:?}", value = 5u128);
+        crate::info!("u128: {value}", value = 5u128);
         crate::info!(
-            "u128 overflows i64: {value:?}",
+            "u128 overflows i64: {value}",
             value = 10_000_000_000_000_000_002u128
         );
-        crate::info!("usize: {value:?}", value = 6usize);
+        crate::info!("usize: {value}", value = 6usize);
         crate::info!(
-            "usize overflows i64: {value:?}",
+            "usize overflows i64: {value}",
             value = 10_000_000_000_000_000_003u128
         );
-        crate::info!("usize: {value:?}", value = 6usize);
-        crate::info!("i8: {value:?}", value = 7i8);
-        crate::info!("i16: {value:?}", value = 8i16);
-        crate::info!("i32: {value:?}", value = 9i32);
-        crate::info!("i64: {value:?}", value = 10i64);
-        crate::info!("i128: {value:?}", value = 10i128);
+        crate::info!("usize: {value}", value = 6usize);
+        crate::info!("i8: {value}", value = 7i8);
+        crate::info!("i16: {value}", value = 8i16);
+        crate::info!("i32: {value}", value = 9i32);
+        crate::info!("i64: {value}", value = 10i64);
+        crate::info!("i128: {value}", value = 10i128);
         crate::info!(
-            "i128 overflows i64: {value:?}",
+            "i128 overflows i64: {value}",
             value = 10_000_000_000_000_000_004u64
         );
-        crate::info!("isize: {value:?}", value = 11isize);
+        crate::info!("isize: {value}", value = 11isize);
         crate::info!(
-            "isize overflows i64: {value:?}",
+            "isize overflows i64: {value}",
             value = 10_000_000_000_000_000_005u64
         );
-        crate::info!("f32: {value:?}", value = 1.2f32);
-        crate::info!("f64: {value:?}", value = 3.4f64);
-        crate::info!("bool: {value:?}", value = true);
+        crate::info!("f32: {value}", value = 1.2f32);
+        crate::info!("f64: {value}", value = 3.4f64);
+        crate::info!("bool: {value}", value = true);
         crate::info!("char: {value:?}", value = 'a');
 
         // repeat with optional attributes
@@ -528,8 +528,8 @@ mod tests {
         crate::info!("optional char: {value:?}", value = Some('a'));
 
         // and without type hints for literal sizes
-        crate::info!("integer: {value:?}", value = 12);
-        crate::info!("float: {value:?}", value = 5.6);
+        crate::info!("integer: {value}", value = 12);
+        crate::info!("float: {value}", value = 5.6);
         crate::info!("optional integer: {value:?}", value = Some(12));
         crate::info!("optional float: {value:?}", value = Some(5.6));
 
