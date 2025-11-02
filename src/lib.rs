@@ -69,6 +69,10 @@
 //! All environment variables supported by the Rust Opentelemetry SDK are also supported by the
 //! Logfire SDK.
 //!
+//! ## Usage Guide
+//!
+//! See the [usage guide][usage] for more detailed information about how to use this SDK to its full potential.
+//!
 //! # Examples
 //!
 //! See [examples][usage::examples] subchapter of this documentation.

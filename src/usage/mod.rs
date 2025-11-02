@@ -108,4 +108,6 @@
 //! See [examples] subchapter of this documentation.
 
 pub mod examples;
+#[doc = include_str!("./lambda.md")]
+pub mod lambda {}
 pub mod metrics;
