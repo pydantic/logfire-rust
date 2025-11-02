@@ -459,7 +459,7 @@ mod tests {
             let _ = crate::span!(level: Level::DEBUG, "debug span");
             let _ =
                 crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
-            crate::info!("log with values", foo = 42i64, bar = 33i64);
+            crate::info!("log with values", foo = 42, bar = 33);
             crate::info!("hello world log");
             panic!("oh no!");
         }))

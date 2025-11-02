@@ -172,7 +172,7 @@ macro_rules! trace {
 /// The macro accepts the following syntax:
 ///
 /// ```rust
-/// # let value: i64 = 42;
+/// # let value = 42;
 /// logfire::log!(
 ///    parent: tracing::Span::current(), // optional, tracing::Span
 ///    tracing::Level::INFO,             // required, see `info!` and variants for convenience
@@ -205,34 +205,34 @@ macro_rules! trace {
 /// let root_span = logfire::span!("Root span");
 ///
 /// // Log with attributes x and y
-/// logfire::log!(parent: &root_span, Level::INFO, "Child log", x = 42i64, y = "hello");
+/// logfire::log!(parent: &root_span, Level::INFO, "Child log", x = 42, y = "hello");
 /// // or
-/// logfire::info!(parent: &root_span, "Child log", x = 42i64, y = "hello");
+/// logfire::info!(parent: &root_span, "Child log", x = 42, y = "hello");
 ///
 /// // Typically a span will be "entered" to set the parent implicitly
 /// root_span.in_scope(|| {
 ///     // This log will be a child of root_span
-///     logfire::log!(Level::INFO, "Nested log", x = 42i64, y = "hello");
+///     logfire::log!(Level::INFO, "Nested log", x = 42, y = "hello");
 ///     // or
-///     logfire::info!("Nested log", x = 42i64, y = "hello");
+///     logfire::info!("Nested log", x = 42, y = "hello");
 ///
 ///     // Debug-level child log
-///     logfire::log!(Level::DEBUG, "Debugging", x = 42i64, y = "hello");
+///     logfire::log!(Level::DEBUG, "Debugging", x = 42, y = "hello");
 ///     // or
-///     logfire::debug!("Debugging", x = 42i64, y = "hello");
+///     logfire::debug!("Debugging", x = 42, y = "hello");
 /// });
 ///
 /// // With x included in the formatted message but not as an attribute
-/// let x: i64 = 42;
+/// let x = 42;
 /// logfire::log!(Level::INFO, "Log with x = {x}, y = {y}", y = "hello");
 /// // or
 /// logfire::info!("Log with x = {x}, y = {y}", y = "hello");
 ///
 /// // Attributes can either be a single name or a dotted.name
 /// // `dotted.name` is not available in the format string.
-/// logfire::log!(Level::INFO, "Log with x = {x}, y = {y}", y = "hello", foo.bar = 42i64);
+/// logfire::log!(Level::INFO, "Log with x = {x}, y = {y}", y = "hello", foo.bar = 42);
 /// // or
-/// logfire::info!("Log with x = {x}, y = {y}", y = "hello", foo.bar = 42i64);
+/// logfire::info!("Log with x = {x}, y = {y}", y = "hello", foo.bar = 42);
 ///
 /// // If just an identifier is used without `= value`, it will be captured as an attribute
 /// let foo = "bar";
@@ -272,9 +272,12 @@ macro_rules! log {
 #[cfg(test)]
 mod tests {
     use crate::{
-        config::{ConsoleOptions, Target},
+        config::{AdvancedOptions, ConsoleOptions, Target},
         logfire::LocalLogfireGuard,
     };
+    use insta::assert_debug_snapshot;
+    use opentelemetry::logs::AnyValue;
+    use opentelemetry_sdk::logs::{InMemoryLogExporter, SimpleLogProcessor};
     use std::sync::{Arc, Mutex};
     use tracing::Level;
 
@@ -434,74 +437,313 @@ mod tests {
 
     #[test]
     fn test_rust_primitive_types_conversion_in_log() {
-        let (output, guard) = get_output_guard(Level::INFO);
+        let log_exporter = InMemoryLogExporter::default();
+
+        let logfire = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_advanced_options(
+                AdvancedOptions::default()
+                    .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
+            )
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(logfire);
 
         // i64::MAX =                9_223_372_036_854_775_807
         // so we test overflow with 10_000_000_000_000_000_000
 
-        crate::info!("an u8: {value}", value = 1u8);
-        crate::info!("an u16: {value}", value = 2u16);
-        crate::info!("an u32: {value}", value = 3u32);
-        crate::info!("an u64: {value}", value = 4u64);
+        crate::info!("u8: {value}", value = 1u8);
+        crate::info!("u16: {value}", value = 2u16);
+        crate::info!("u32: {value}", value = 3u32);
+        crate::info!("u64: {value}", value = 4u64);
         crate::info!(
-            "an u64 that overflows: {value}",
+            "u64 overflows i64: {value}",
             value = 10_000_000_000_000_000_001u64
         );
-        crate::info!("an u128: {value}", value = 5u128);
+        crate::info!("u128: {value}", value = 5u128);
         crate::info!(
-            "an u128 that overflows: {value}",
+            "u128 overflows i64: {value}",
             value = 10_000_000_000_000_000_002u128
         );
-        crate::info!("an usize: {value}", value = 6usize);
+        crate::info!("usize: {value}", value = 6usize);
         crate::info!(
-            "an usize that overflows: {value}",
+            "usize overflows i64: {value}",
             value = 10_000_000_000_000_000_003u128
         );
-        crate::info!("an usize: {value}", value = 6usize);
-        crate::info!("an i8: {value}", value = 7i8);
-        crate::info!("an i16: {value}", value = 8i16);
-        crate::info!("an i32: {value}", value = 9i32);
-        crate::info!("an i64: {value}", value = 10i64);
-        crate::info!("an i128: {value}", value = 10i128);
+        crate::info!("usize: {value}", value = 6usize);
+        crate::info!("i8: {value}", value = 7i8);
+        crate::info!("i16: {value}", value = 8i16);
+        crate::info!("i32: {value}", value = 9i32);
+        crate::info!("i64: {value}", value = 10i64);
+        crate::info!("i128: {value}", value = 10i128);
         crate::info!(
-            "an i128 that overflows: {value}",
+            "i128 overflows i64: {value}",
             value = 10_000_000_000_000_000_004u64
         );
-        crate::info!("an isize: {value}", value = 11isize);
+        crate::info!("isize: {value}", value = 11isize);
         crate::info!(
-            "an isize that overflows: {value}",
+            "isize overflows i64: {value}",
             value = 10_000_000_000_000_000_005u64
         );
-        crate::info!("an f32: {value}", value = 1.2f32);
-        crate::info!("an f64: {value}", value = 3.4f64);
-        crate::info!("an bool: {value}", value = true);
-        crate::info!("an char: {value}", value = 'a');
+        crate::info!("f32: {value}", value = 1.2f32);
+        crate::info!("f64: {value}", value = 3.4f64);
+        crate::info!("bool: {value}", value = true);
+        crate::info!("char: {value:?}", value = 'a');
+
+        // repeat with optional attributes
+        crate::info!("optional u8: {value:?}", value = Some(1u8));
+        crate::info!("optional u16: {value:?}", value = Some(2u16));
+        crate::info!("optional u32: {value:?}", value = Some(3u32));
+        crate::info!("optional u64: {value:?}", value = Some(4u64));
+        crate::info!(
+            "optional u64 overflows i64: {value:?}",
+            value = Some(10_000_000_000_000_000_001u64)
+        );
+        crate::info!("optional u128: {value:?}", value = Some(5u128));
+        crate::info!(
+            "optional u128 overflows i64: {value:?}",
+            value = Some(10_000_000_000_000_000_002u128)
+        );
+        crate::info!("optional usize: {value:?}", value = Some(6usize));
+        crate::info!(
+            "optional usize overflows i64: {value:?}",
+            value = Some(10_000_000_000_000_000_003usize)
+        );
+        crate::info!("optional usize: {value:?}", value = Some(6usize));
+        crate::info!("optional i8: {value:?}", value = Some(7i8));
+        crate::info!("optional i16: {value:?}", value = Some(8i16));
+        crate::info!("optional i32: {value:?}", value = Some(9i32));
+        crate::info!("optional i64: {value:?}", value = Some(10i64));
+        crate::info!("optional i128: {value:?}", value = Some(10i128));
+        crate::info!(
+            "optional i128 overflows i64: {value:?}",
+            value = Some(10_000_000_000_000_000_004i128)
+        );
+        crate::info!("optional isize: {value:?}", value = Some(11isize));
+        crate::info!("optional f32: {value:?}", value = Some(1.2f32));
+        crate::info!("optional f64: {value:?}", value = Some(3.4f64));
+        crate::info!("optional bool: {value:?}", value = Some(true));
+        crate::info!("optional char: {value:?}", value = Some('a'));
+
+        // and without type hints for literal sizes
+        crate::info!("integer: {value}", value = 12);
+        crate::info!("float: {value}", value = 5.6);
+        crate::info!("optional integer: {value:?}", value = Some(12));
+        crate::info!("optional float: {value:?}", value = Some(5.6));
 
         guard.shutdown().unwrap();
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let logs = log_exporter.get_emitted_logs().unwrap();
 
-        assert!(output.contains("an u8: 1"));
-        assert!(output.contains("an u16: 2"));
-        assert!(output.contains("an u32: 3"));
-        assert!(output.contains("an u64: 4"));
-        assert!(output.contains("an u64 that overflows: 10000000000000000001"));
-        assert!(output.contains("an u128: 5"));
-        assert!(output.contains("an u128 that overflows: 10000000000000000002"));
-        assert!(output.contains("an usize: 6"));
-        assert!(output.contains("an usize that overflows: 10000000000000000003"));
-        assert!(output.contains("an i8: 7"));
-        assert!(output.contains("an i16: 8"));
-        assert!(output.contains("an i32: 9"));
-        assert!(output.contains("an i64: 10"));
-        assert!(output.contains("an i128: 10"));
-        assert!(output.contains("an i128 that overflows: 10000000000000000004"));
-        assert!(output.contains("an isize: 11"));
-        assert!(output.contains("an isize that overflows: 10000000000000000005"));
-        assert!(output.contains("an f32: 1.2"));
-        assert!(output.contains("an f64: 3.4"));
-        assert!(output.contains("an bool: true"));
-        assert!(output.contains("an char: a"));
+        let messages_and_value = logs
+            .iter()
+            .map(|log| {
+                let AnyValue::String(message) = log.record.body().unwrap() else {
+                    panic!("Expected String body");
+                };
+                let value = log
+                    .record
+                    .attributes_iter()
+                    .find(|(k, _)| k.as_str() == "value")
+                    .map(|(_, v)| v.clone())
+                    .unwrap();
+                (message.as_str(), format!("{value:?}"))
+            })
+            .collect::<Vec<_>>();
+
+        assert_debug_snapshot!(messages_and_value, @r#"
+        [
+            (
+                "u8: 1",
+                "Int(1)",
+            ),
+            (
+                "u16: 2",
+                "Int(2)",
+            ),
+            (
+                "u32: 3",
+                "Int(3)",
+            ),
+            (
+                "u64: 4",
+                "Int(4)",
+            ),
+            (
+                "u64 overflows i64: 10000000000000000001",
+                "String(Owned(\"10000000000000000001\"))",
+            ),
+            (
+                "u128: 5",
+                "Int(5)",
+            ),
+            (
+                "u128 overflows i64: 10000000000000000002",
+                "String(Owned(\"10000000000000000002\"))",
+            ),
+            (
+                "usize: 6",
+                "Int(6)",
+            ),
+            (
+                "usize overflows i64: 10000000000000000003",
+                "String(Owned(\"10000000000000000003\"))",
+            ),
+            (
+                "usize: 6",
+                "Int(6)",
+            ),
+            (
+                "i8: 7",
+                "Int(7)",
+            ),
+            (
+                "i16: 8",
+                "Int(8)",
+            ),
+            (
+                "i32: 9",
+                "Int(9)",
+            ),
+            (
+                "i64: 10",
+                "Int(10)",
+            ),
+            (
+                "i128: 10",
+                "Int(10)",
+            ),
+            (
+                "i128 overflows i64: 10000000000000000004",
+                "String(Owned(\"10000000000000000004\"))",
+            ),
+            (
+                "isize: 11",
+                "Int(11)",
+            ),
+            (
+                "isize overflows i64: 10000000000000000005",
+                "String(Owned(\"10000000000000000005\"))",
+            ),
+            (
+                "f32: 1.2",
+                "Double(1.2000000476837158)",
+            ),
+            (
+                "f64: 3.4",
+                "Double(3.4)",
+            ),
+            (
+                "bool: true",
+                "Boolean(true)",
+            ),
+            (
+                "char: 'a'",
+                "String(Owned(\"a\"))",
+            ),
+            (
+                "optional u8: Some(1)",
+                "Int(1)",
+            ),
+            (
+                "optional u16: Some(2)",
+                "Int(2)",
+            ),
+            (
+                "optional u32: Some(3)",
+                "Int(3)",
+            ),
+            (
+                "optional u64: Some(4)",
+                "Int(4)",
+            ),
+            (
+                "optional u64 overflows i64: Some(10000000000000000001)",
+                "String(Owned(\"10000000000000000001\"))",
+            ),
+            (
+                "optional u128: Some(5)",
+                "Int(5)",
+            ),
+            (
+                "optional u128 overflows i64: Some(10000000000000000002)",
+                "String(Owned(\"10000000000000000002\"))",
+            ),
+            (
+                "optional usize: Some(6)",
+                "Int(6)",
+            ),
+            (
+                "optional usize overflows i64: Some(10000000000000000003)",
+                "String(Owned(\"10000000000000000003\"))",
+            ),
+            (
+                "optional usize: Some(6)",
+                "Int(6)",
+            ),
+            (
+                "optional i8: Some(7)",
+                "Int(7)",
+            ),
+            (
+                "optional i16: Some(8)",
+                "Int(8)",
+            ),
+            (
+                "optional i32: Some(9)",
+                "Int(9)",
+            ),
+            (
+                "optional i64: Some(10)",
+                "Int(10)",
+            ),
+            (
+                "optional i128: Some(10)",
+                "Int(10)",
+            ),
+            (
+                "optional i128 overflows i64: Some(10000000000000000004)",
+                "String(Owned(\"10000000000000000004\"))",
+            ),
+            (
+                "optional isize: Some(11)",
+                "Int(11)",
+            ),
+            (
+                "optional f32: Some(1.2)",
+                "Double(1.2000000476837158)",
+            ),
+            (
+                "optional f64: Some(3.4)",
+                "Double(3.4)",
+            ),
+            (
+                "optional bool: Some(true)",
+                "Boolean(true)",
+            ),
+            (
+                "optional char: Some('a')",
+                "String(Owned(\"a\"))",
+            ),
+            (
+                "integer: 12",
+                "Int(12)",
+            ),
+            (
+                "float: 5.6",
+                "Double(5.599999904632568)",
+            ),
+            (
+                "optional integer: Some(12)",
+                "Int(12)",
+            ),
+            (
+                "optional float: Some(5.6)",
+                "Double(5.599999904632568)",
+            ),
+        ]
+        "#);
     }
 }

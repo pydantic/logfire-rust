@@ -62,19 +62,64 @@ impl LogfireValue {
     }
 }
 
-// Helper structure which converts arguments which might be optional into
-// otel arguments. Otel arguments are not allowed to be optional, so we
-// have to lift this a layer.
+/// Helper type which provides overrides for values which are either:
+/// - Not handled by `Into<Value>` in OpenTelemetry
+/// - Need special handling for type inference (e.g. `i32` integers)
+/// - Are `Option<T>`, as opentelemetry does not support `Option` directly
+pub struct LogfireConverter<T>(ConvertValue<T>);
 
-pub struct FallbackToConvertValue<T>(PhantomData<T>);
-
-pub struct TryConvertOption<T>(FallbackToConvertValue<T>);
-
-pub struct LogfireConverter<T>(TryConvertOption<T>);
+/// Implements default conversion logic
+/// - Uses `Into<Value>` for most types
+/// - Also provides the base case for any type inference / option handling
+pub struct ConvertValue<T>(PhantomData<T>);
 
 #[must_use]
 pub fn converter<T>(_: &T) -> LogfireConverter<T> {
-    LogfireConverter(TryConvertOption(FallbackToConvertValue(PhantomData)))
+    LogfireConverter(ConvertValue(PhantomData))
+}
+
+impl<T> LogfireConverter<Option<T>> {
+    /// Flattens out options, returning a None branch to stop processing if the option is None.
+    #[inline]
+    #[must_use]
+    pub fn unpack_option(&self, value: Option<T>) -> Option<(T, LogfireConverter<T>)> {
+        value.map(|v| (v, LogfireConverter(ConvertValue(PhantomData))))
+    }
+}
+
+impl LogfireConverter<i32> {
+    /// Cause type inference to pick the i32 specialization for in info!("value: {value:?}", value = 12);
+    #[inline]
+    #[must_use]
+    pub fn handle_type_inference(&self) -> LogfireConverter<i32> {
+        LogfireConverter(ConvertValue(PhantomData))
+    }
+}
+
+impl LogfireConverter<Option<i32>> {
+    /// Cause type inference to pick the i32 specialization for in info!("value: {value:?}", value = Some(12));
+    #[inline]
+    #[must_use]
+    pub fn handle_type_inference(&self) -> LogfireConverter<Option<i32>> {
+        LogfireConverter(ConvertValue(PhantomData))
+    }
+}
+
+impl<T> ConvertValue<T> {
+    /// Base case for types where we don't care about type inference.
+    #[inline]
+    #[must_use]
+    pub fn handle_type_inference(&self) -> LogfireConverter<T> {
+        LogfireConverter(ConvertValue(PhantomData))
+    }
+
+    /// Base case for non-option values, just wrap it up. This will get removed again by
+    /// inlining and optimization.
+    #[inline]
+    #[must_use]
+    pub fn unpack_option(&self, value: T) -> Option<(T, LogfireConverter<T>)> {
+        Some((value, LogfireConverter(ConvertValue(PhantomData))))
+    }
 }
 
 /// Convenience to take ownership of borrow on String
@@ -146,32 +191,14 @@ impl LogfireConverter<char> {
 }
 
 impl<T> Deref for LogfireConverter<T> {
-    type Target = TryConvertOption<T>;
+    type Target = ConvertValue<T>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<T> TryConvertOption<Option<T>> {
-    #[inline]
-    pub fn convert_value(&self, value: Option<T>) -> Option<Value>
-    where
-        T: Into<Value>,
-    {
-        value.map(Into::into)
-    }
-}
-
-impl<T> Deref for TryConvertOption<T> {
-    type Target = FallbackToConvertValue<T>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> FallbackToConvertValue<T> {
+impl<T> ConvertValue<T> {
     #[inline]
     pub fn convert_value(&self, value: T) -> Option<Value>
     where
@@ -319,7 +346,12 @@ macro_rules! __log {
                         let arg_value = $crate::__evaluate_arg!($($path).+ $(= $value)?);
                         $crate::__macros_impl::LogfireValue::new(
                             stringify!($($path).+),
-                            $crate::__macros_impl::converter(&arg_value).convert_value(arg_value)
+                            $crate::__macros_impl::converter(&arg_value)
+                                .handle_type_inference()
+                                .unpack_option(arg_value)
+                                .and_then(|(value, converter)| {
+                                    converter.convert_value(value)
+                                })
                         )
                     }),*
                 ]
