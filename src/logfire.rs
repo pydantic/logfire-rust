@@ -97,6 +97,10 @@ impl Logfire {
 
     /// Forcibly flush the current data captured by Logfire.
     ///
+    /// Note: this will block until data is flushed. If called from an async context,
+    /// consider using `tokio::task::spawn_blocking` or similar to avoid blocking the
+    /// async runtime.
+    ///
     /// # Errors
     ///
     /// This will error if the underlying OpenTelemetry SDK fails to flush data.
