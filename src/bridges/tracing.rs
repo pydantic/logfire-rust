@@ -2107,14 +2107,14 @@ mod tests {
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @r"
-        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event[0m
-        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot event with value[0m [3mfield_value[0m=1
-        [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mroot span[0m
-        [2m1970-01-01T00:00:00.000003Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world span[0m
-        [2m1970-01-01T00:00:00.000004Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[34m DEBUG[0m [2;3mlogfire::bridges::tracing::tests[0m [1mdebug span with explicit parent[0m
-        [2m1970-01-01T00:00:00.000006Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000007Z[0m[32m  INFO[0m [2;3mlogfire::bridges::tracing::tests[0m [1mhello world log with value[0m [3mfield_value[0m=1
+        1970-01-01T00:00:00.000000Z  INFO logfire::bridges::tracing::tests root event
+        1970-01-01T00:00:00.000001Z  INFO logfire::bridges::tracing::tests root event with value field_value=1
+        1970-01-01T00:00:00.000002Z  INFO logfire::bridges::tracing::tests root span
+        1970-01-01T00:00:00.000003Z  INFO logfire::bridges::tracing::tests hello world span
+        1970-01-01T00:00:00.000004Z DEBUG logfire::bridges::tracing::tests debug span
+        1970-01-01T00:00:00.000005Z DEBUG logfire::bridges::tracing::tests debug span with explicit parent
+        1970-01-01T00:00:00.000006Z  INFO logfire::bridges::tracing::tests hello world log
+        1970-01-01T00:00:00.000007Z  INFO logfire::bridges::tracing::tests hello world log with value field_value=1
         ");
     }
 

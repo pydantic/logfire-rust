@@ -1095,13 +1095,13 @@ mod tests {
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @r"
-        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::bridges::log::tests[0m [1mroot event[0m
-        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::bridges::log::tests[0m [1mroot event with target[0m
-        [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::bridges::log::tests[0m [1mroot span[0m
-        [2m1970-01-01T00:00:00.000003Z[0m[32m  INFO[0m [2;3mlogfire::bridges::log::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000004Z[0m[33m  WARN[0m [2;3mlogfire::bridges::log::tests[0m [1mwarning log[0m
-        [2m1970-01-01T00:00:00.000005Z[0m[31m ERROR[0m [2;3mlogfire::bridges::log::tests[0m [1merror log[0m
-        [2m1970-01-01T00:00:00.000006Z[0m[35m TRACE[0m [2;3mlogfire::bridges::log::tests[0m [1mtrace log[0m
+        1970-01-01T00:00:00.000000Z  INFO logfire::bridges::log::tests root event
+        1970-01-01T00:00:00.000001Z  INFO logfire::bridges::log::tests root event with target
+        1970-01-01T00:00:00.000002Z  INFO logfire::bridges::log::tests root span
+        1970-01-01T00:00:00.000003Z  INFO logfire::bridges::log::tests hello world log
+        1970-01-01T00:00:00.000004Z  WARN logfire::bridges::log::tests warning log
+        1970-01-01T00:00:00.000005Z ERROR logfire::bridges::log::tests error log
+        1970-01-01T00:00:00.000006Z TRACE logfire::bridges::log::tests trace log
         ");
     }
 }

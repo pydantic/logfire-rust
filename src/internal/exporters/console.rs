@@ -1,6 +1,6 @@
 use std::{
-    io::{self, BufWriter, Write},
-    sync::{Arc, LazyLock, Mutex, mpsc},
+    io::{self, BufWriter, IsTerminal, Write},
+    sync::{Arc, Mutex, mpsc},
 };
 
 use chrono::{DateTime, Utc};
@@ -161,30 +161,95 @@ impl opentelemetry_sdk::logs::LogProcessor for SimpleConsoleLogProcessor {
     }
 }
 
-static DIMMED: LazyLock<Style> = LazyLock::new(|| Style::new().dimmed());
-static DIMMED_AND_ITALIC: LazyLock<Style> = LazyLock::new(|| DIMMED.italic());
-static BOLD: LazyLock<Style> = LazyLock::new(|| Style::new().bold());
-static ITALIC: LazyLock<Style> = LazyLock::new(|| Style::new().italic());
+/// Theme used to control console output, currently only a plain and "colored" theme.
+struct Theme {
+    dimmed: Style,
+    dimmed_and_italic: Style,
+    bold: Style,
+    italic: Style,
+    // log levels
+    trace: Style,
+    debug: Style,
+    info: Style,
+    warn: Style,
+    error: Style,
+    unknown: Style,
+}
 
-fn level_int_to_text<W: io::Write>(level: i64, w: &mut W) -> io::Result<()> {
+const BLANK_STYLE: Style = Style {
+    foreground: None,
+    background: None,
+    is_bold: false,
+    is_dimmed: false,
+    is_italic: false,
+    is_underline: false,
+    is_blink: false,
+    is_reverse: false,
+    is_hidden: false,
+    is_strikethrough: false,
+    prefix_with_reset: false,
+};
+
+static THEME_COLORS: Theme = Theme {
+    dimmed: BLANK_STYLE.dimmed(),
+    dimmed_and_italic: BLANK_STYLE.dimmed().italic(),
+    bold: BLANK_STYLE.bold(),
+    italic: BLANK_STYLE.italic(),
+    trace: BLANK_STYLE.fg(Color::Purple),
+    debug: BLANK_STYLE.fg(Color::Blue),
+    info: BLANK_STYLE.fg(Color::Green),
+    warn: BLANK_STYLE.fg(Color::Yellow),
+    error: BLANK_STYLE.fg(Color::Red),
+    unknown: BLANK_STYLE.fg(Color::DarkGray),
+};
+
+static THEME_PLAIN: Theme = Theme {
+    dimmed: BLANK_STYLE,
+    dimmed_and_italic: BLANK_STYLE,
+    bold: BLANK_STYLE,
+    italic: BLANK_STYLE,
+    // log levels
+    trace: BLANK_STYLE,
+    debug: BLANK_STYLE,
+    info: BLANK_STYLE,
+    warn: BLANK_STYLE,
+    error: BLANK_STYLE,
+    unknown: BLANK_STYLE,
+};
+
+fn level_int_to_text<W: io::Write>(level: i64, w: &mut W, theme: &Theme) -> io::Result<()> {
     match level {
-        1 => write!(w, "{}", Color::Purple.paint(" TRACE")),
-        2..=5 => write!(w, "{}", Color::Blue.paint(" DEBUG")),
-        6..=9 => write!(w, "{}", Color::Green.paint("  INFO")),
-        10..=13 => write!(w, "{}", Color::Yellow.paint("  WARN")),
-        14.. => write!(w, "{}", Color::Red.paint(" ERROR")),
-        _ => write!(w, "{}", Color::DarkGray.paint(" -----")),
+        1 => write!(w, "{}", theme.trace.paint(" TRACE")),
+        2..=5 => write!(w, "{}", theme.debug.paint(" DEBUG")),
+        6..=9 => write!(w, "{}", theme.info.paint("  INFO")),
+        10..=13 => write!(w, "{}", theme.warn.paint("  WARN")),
+        14.. => write!(w, "{}", theme.error.paint(" ERROR")),
+        _ => write!(w, "{}", theme.unknown.paint(" -----")),
     }
 }
 
-#[derive(Debug)]
 pub struct ConsoleWriter {
     options: ConsoleOptions,
+    theme: &'static Theme,
 }
 
 impl ConsoleWriter {
     pub fn new(options: ConsoleOptions) -> Self {
-        Self { options }
+        let use_colors = match options.colors {
+            crate::config::ConsoleColors::Always => true,
+            crate::config::ConsoleColors::Never => false,
+            crate::config::ConsoleColors::Auto => match options.target {
+                Target::Stdout => std::io::stdout().is_terminal(),
+                Target::Stderr => std::io::stderr().is_terminal(),
+                Target::Pipe(_) => false,
+            },
+        };
+        let theme = if use_colors {
+            &THEME_COLORS
+        } else {
+            &THEME_PLAIN
+        };
+        Self { options, theme }
     }
 
     pub fn write_batch(&self, batch: &[opentelemetry_sdk::trace::SpanData]) {
@@ -232,6 +297,7 @@ impl ConsoleWriter {
                 }
                 "logfire.level_num" => {
                     if let Value::I64(level_num) = kv.value {
+                        #[expect(deprecated)]
                         if level_num < tracing_level_to_severity(self.options.min_log_level) as i64
                         {
                             return Ok(());
@@ -261,32 +327,35 @@ impl ConsoleWriter {
             msg = Some(span.name.clone());
         }
 
+        #[expect(deprecated)]
         if self.options.include_timestamps {
             let timestamp: DateTime<Utc> = span.start_time.into();
             write!(
                 w,
                 "{}",
-                DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+                self.theme
+                    .dimmed
+                    .paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
             )?;
         }
 
         if let Some(level) = level {
-            level_int_to_text(level, w)?;
+            level_int_to_text(level, w, self.theme)?;
         }
 
         if let Some(target) = target {
-            write!(w, " {}", DIMMED_AND_ITALIC.paint(target))?;
+            write!(w, " {}", self.theme.dimmed_and_italic.paint(target))?;
         }
 
         if let Some(msg) = msg {
-            write!(w, " {}", BOLD.paint(msg))?;
+            write!(w, " {}", self.theme.bold.paint(msg))?;
         }
 
         if !fields.is_empty() {
             for (idx, kv) in fields.iter().enumerate() {
                 let key = kv.key.as_str();
                 let value = kv.value.as_str();
-                write!(w, " {}={value}", ITALIC.paint(key))?;
+                write!(w, " {}={value}", self.theme.italic.paint(key))?;
                 if idx < fields.len() - 1 {
                     write!(w, ",")?;
                 }
@@ -336,35 +405,38 @@ impl ConsoleWriter {
             }
         }
 
+        #[expect(deprecated)]
         if self.options.include_timestamps {
             if let Some(timestamp) = log_record.timestamp() {
                 let timestamp: DateTime<Utc> = timestamp.into();
                 write!(
                     w,
                     "{}",
-                    DIMMED.paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+                    self.theme
+                        .dimmed
+                        .paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
                 )?;
             }
         }
 
         if let Some(level) = log_record.severity_number() {
-            level_int_to_text(level as i64, w)?;
+            level_int_to_text(level as i64, w, self.theme)?;
         }
 
         if let Some(target) = target {
-            write!(w, " {}", DIMMED_AND_ITALIC.paint(target))?;
+            write!(w, " {}", self.theme.dimmed_and_italic.paint(target))?;
         }
 
         if let Some(msg) = msg {
-            write!(w, " {}", BOLD.paint(msg))?;
+            write!(w, " {}", self.theme.bold.paint(msg))?;
         }
 
         if !fields.is_empty() {
             for (idx, (key, value)) in fields.iter().enumerate() {
                 let key = key.as_str();
 
-                write!(w, " {}=", ITALIC.paint(key))?;
-                write_any_value(w, value)?;
+                write!(w, " {}=", self.theme.italic.paint(key))?;
+                write_any_value(w, value, self.theme)?;
 
                 if idx < fields.len() - 1 {
                     write!(w, ",")?;
@@ -376,7 +448,7 @@ impl ConsoleWriter {
     }
 }
 
-fn write_any_value<W: io::Write>(w: &mut W, value: &AnyValue) -> io::Result<()> {
+fn write_any_value<W: io::Write>(w: &mut W, value: &AnyValue, theme: &Theme) -> io::Result<()> {
     match value {
         AnyValue::Int(i) => {
             write!(w, "{i}")?;
@@ -391,11 +463,15 @@ fn write_any_value<W: io::Write>(w: &mut W, value: &AnyValue) -> io::Result<()> 
             write!(w, "{b}")?;
         }
         AnyValue::Bytes(items) => {
-            write!(w, "{}", DIMMED.paint(format!("<bytes:{}>", items.len())))?;
+            write!(
+                w,
+                "{}",
+                theme.dimmed.paint(format!("<bytes:{}>", items.len()))
+            )?;
         }
         AnyValue::ListAny(list_values) => {
             for (idx, val) in list_values.iter().enumerate() {
-                write_any_value(w, val)?;
+                write_any_value(w, val, theme)?;
 
                 if idx < list_values.len() - 1 {
                     write!(w, ",")?;
@@ -406,8 +482,8 @@ fn write_any_value<W: io::Write>(w: &mut W, value: &AnyValue) -> io::Result<()> 
             write!(w, "{{")?;
 
             for (idx, (key, val)) in (**hash_map).iter().enumerate() {
-                write!(w, "{}=", ITALIC.paint(key.as_str()))?;
-                write_any_value(w, val)?;
+                write!(w, "{}=", theme.italic.paint(key.as_str()))?;
+                write_any_value(w, val, theme)?;
 
                 if idx < hash_map.len() - 1 {
                     write!(w, ",")?;
@@ -428,7 +504,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::{
-        config::{ConsoleOptions, Target},
+        config::{ConsoleColors, ConsoleOptions, Target},
         set_local_logfire,
         test_utils::remap_timestamps_in_console_output,
     };
@@ -440,6 +516,54 @@ mod tests {
         let output = Arc::new(Mutex::new(Vec::new()));
 
         let console_options = ConsoleOptions::default()
+            .with_target(Target::Pipe(output.clone()))
+            .with_min_log_level(Level::TRACE);
+
+        let logfire = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_console(Some(console_options))
+            .with_default_level_filter(LevelFilter::TRACE)
+            .finish()
+            .unwrap();
+
+        let guard = set_local_logfire(logfire);
+
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let root = crate::span!("root span").entered();
+            let _ = crate::span!("hello world span").entered();
+            let _ = crate::span!(level: Level::DEBUG, "debug span");
+            let _ =
+                crate::span!(parent: &root, level: Level::DEBUG, "debug span with explicit parent");
+            crate::info!("log with values", foo = 42, bar = 33);
+            crate::info!("hello world log");
+            panic!("oh no!");
+        }))
+        .unwrap_err();
+
+        guard.shutdown().unwrap();
+
+        let output = output.lock().unwrap();
+        let output = std::str::from_utf8(&output).unwrap();
+        let output = remap_timestamps_in_console_output(output);
+
+        assert_snapshot!(output, @r"
+        1970-01-01T00:00:00.000000Z  INFO logfire::internal::exporters::console::tests root span
+        1970-01-01T00:00:00.000001Z  INFO logfire::internal::exporters::console::tests hello world span
+        1970-01-01T00:00:00.000002Z DEBUG logfire::internal::exporters::console::tests debug span
+        1970-01-01T00:00:00.000003Z DEBUG logfire::internal::exporters::console::tests debug span with explicit parent
+        1970-01-01T00:00:00.000004Z  INFO logfire::internal::exporters::console::tests log with values foo=42, bar=33
+        1970-01-01T00:00:00.000005Z  INFO logfire::internal::exporters::console::tests hello world log
+        1970-01-01T00:00:00.000006Z ERROR panic: oh no! backtrace=disabled backtrace
+        ");
+    }
+
+    #[test]
+    fn test_print_to_console_force_colors() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+
+        let console_options = ConsoleOptions::default()
+            .with_colors(ConsoleColors::Always)
             .with_target(Target::Pipe(output.clone()))
             .with_min_log_level(Level::TRACE);
 
@@ -519,12 +643,12 @@ mod tests {
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @r"
-        [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
-        [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
-        [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
-        [34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
-        [32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [31m ERROR[0m [1mpanic: oh no![0m [3mbacktrace[0m=disabled backtrace
+         INFO logfire::internal::exporters::console::tests root span
+         INFO logfire::internal::exporters::console::tests hello world span
+        DEBUG logfire::internal::exporters::console::tests debug span
+        DEBUG logfire::internal::exporters::console::tests debug span with explicit parent
+         INFO logfire::internal::exporters::console::tests hello world log
+        ERROR panic: oh no! backtrace=disabled backtrace
         ");
     }
 
@@ -564,10 +688,10 @@ mod tests {
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @r"
-        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
-        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
-        [2m1970-01-01T00:00:00.000002Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
-        [2m1970-01-01T00:00:00.000003Z[0m[31m ERROR[0m [1mpanic: oh no![0m [3mbacktrace[0m=disabled backtrace
+        1970-01-01T00:00:00.000000Z  INFO logfire::internal::exporters::console::tests root span
+        1970-01-01T00:00:00.000001Z  INFO logfire::internal::exporters::console::tests hello world span
+        1970-01-01T00:00:00.000002Z  INFO logfire::internal::exporters::console::tests hello world log
+        1970-01-01T00:00:00.000003Z ERROR panic: oh no! backtrace=disabled backtrace
         ");
     }
 
