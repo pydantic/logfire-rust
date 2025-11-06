@@ -1,3 +1,17 @@
+## [v0.9.0] (2025-11-06)
+
+* support setting service resource attributes from environment variable by @davidhewitt in [#109](https://github.com/pydantic/logfire-rust/pull/109)
+* add more `LogfireConverter` by @gabrielhsc95 in [#110](https://github.com/pydantic/logfire-rust/pull/110)
+* properly handle options and type inference in macros by @davidhewitt in [#112](https://github.com/pydantic/logfire-rust/pull/112)
+* implement `ConsoleOptions::with_colors` option by @davidhewitt in [#115](https://github.com/pydantic/logfire-rust/pull/115)
+* add `force_flush` and documentation to support running on AWS Lambda by @davidhewitt in [#114](https://github.com/pydantic/logfire-rust/pull/114)
+
+## [v0.8.2] (2025-09-10)
+
+* removed unused import from README example by @PoorlyDefinedBehaviour in [#102](https://github.com/pydantic/logfire-rust/pull/102)
+* Fix the `test_log_bridge_console_output` by @cetra3 in [#104](https://github.com/pydantic/logfire-rust/pull/104)
+* Fix console logging with values by @cetra3 in [#108](https://github.com/pydantic/logfire-rust/pull/108)
+
 ## [v0.8.1] (2025-08-21)
 
 * make macros hygienic by @davidhewitt in [#100](https://github.com/pydantic/logfire-rust/pull/100)
@@ -95,3 +109,5 @@ Initial release.
 [v0.7.1]: https://github.com/pydantic/logfire-rust/compare/v0.7.0..v0.7.1
 [v0.8.0]: https://github.com/pydantic/logfire-rust/compare/v0.7.1..v0.8.0
 [v0.8.1]: https://github.com/pydantic/logfire-rust/compare/v0.8.0..v0.8.1
+[v0.8.2]: https://github.com/pydantic/logfire-rust/compare/v0.8.1..v0.8.2
+[v0.9.0]: https://github.com/pydantic/logfire-rust/compare/v0.8.2..v0.9.0
