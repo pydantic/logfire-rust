@@ -310,7 +310,7 @@ impl Logfire {
             SendToLogfire::No => false,
         };
 
-        let mut tracer_provider_builder = SdkTracerProvider::builder();
+        let mut tracer_provider_builder = advanced_options.trace_provider;
         let mut logger_provider_builder = SdkLoggerProvider::builder();
         let mut meter_provider_builder = SdkMeterProvider::builder();
 
