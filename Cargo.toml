@@ -19,11 +19,11 @@ tonic = { version = "0.13", optional = true }
 
 rand = "0.9.0"
 
-opentelemetry = { version = "0.30", default-features = false, features = [
+opentelemetry = { version = "0.31", default-features = false, features = [
     "trace",
     "logs",
 ] }
-opentelemetry_sdk = { version = "0.30", default-features = false, features = [
+opentelemetry_sdk = { version = "0.31", default-features = false, features = [
     "trace",
     "experimental_metrics_custom_reader",
     "experimental_trace_batch_span_processor_with_async_runtime",
@@ -33,7 +33,7 @@ opentelemetry_sdk = { version = "0.30", default-features = false, features = [
     "logs",
     "spec_unstable_metrics_views"
 ] }
-opentelemetry-otlp = { version = "0.30", default-features = false, features = [
+opentelemetry-otlp = { version = "0.31", default-features = false, features = [
     "trace",
     "metrics",
     "logs",
@@ -45,7 +45,7 @@ tokio = { version = "1.44.1", default-features = false, features = [
 ] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.31"
+tracing-opentelemetry = "0.32"
 
 thiserror = "2"
 
@@ -59,7 +59,7 @@ regex = "1.11.1"
 async-trait = "0.1.88"
 futures = { version = "0.3.31", features = ["futures-executor"] }
 insta = "1.42.1"
-opentelemetry_sdk = { version = "0.30", default-features = false, features = [
+opentelemetry_sdk = { version = "0.31", default-features = false, features = [
     "testing",
 ] }
 regex = "1.11.1"
@@ -70,10 +70,10 @@ tokio = { version = "1.44.1", features = [
 ] }
 ulid = "1.2.0"
 wiremock = "=0.6.4"
-tonic-build = "0.13"
-tonic = { version = "0.13", features = ["transport"] }
-prost = "0.13"
-opentelemetry-proto = { version = "0.30", features = [
+tonic-build = "0.14"
+tonic = { version = "0.14", features = ["transport"] }
+prost = "0.14"
+opentelemetry-proto = { version = "0.31", features = [
     "tonic",
     "gen-tonic-messages",
 ] }
@@ -81,12 +81,12 @@ tokio-stream = { version = "0.1", features = ["net"] }
 
 # Dependencies for examples
 axum = { version = "0.8", features = ["macros"] }
-axum-tracing-opentelemetry = { version = "0.29", features = [
+axum-tracing-opentelemetry = { version = "0.32", features = [
     "tracing_level_info",
 ] }
-axum-otel-metrics = "0.12.0"
+axum-otel-metrics = { git = "https://github.com/ttys3/axum-otel-metrics", branch = "main" }
 actix-web = "4.0"
-opentelemetry-instrumentation-actix-web = { version = "0.22", features = [
+opentelemetry-instrumentation-actix-web = { version = "0.23", features = [
     "metrics",
 ] }
 serde = { version = "1.0", features = ["derive"] }
