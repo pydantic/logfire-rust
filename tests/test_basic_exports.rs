@@ -104,7 +104,7 @@ fn test_basic_span() {
             attributes: [
                 KeyValue {
                     key: Static(
-                        "code.filepath",
+                        "code.file.path",
                     ),
                     value: String(
                         Static(
@@ -114,7 +114,7 @@ fn test_basic_span() {
                 },
                 KeyValue {
                     key: Static(
-                        "code.namespace",
+                        "code.module.name",
                     ),
                     value: String(
                         Static(
@@ -386,7 +386,7 @@ fn test_basic_span() {
             attributes: [
                 KeyValue {
                     key: Static(
-                        "code.filepath",
+                        "code.file.path",
                     ),
                     value: String(
                         Static(
@@ -396,7 +396,7 @@ fn test_basic_span() {
                 },
                 KeyValue {
                     key: Static(
-                        "code.namespace",
+                        "code.module.name",
                     ),
                     value: String(
                         Static(
@@ -548,7 +548,7 @@ fn test_basic_span() {
             attributes: [
                 KeyValue {
                     key: Static(
-                        "code.filepath",
+                        "code.file.path",
                     ),
                     value: String(
                         Static(
@@ -558,7 +558,7 @@ fn test_basic_span() {
                 },
                 KeyValue {
                     key: Static(
-                        "code.namespace",
+                        "code.module.name",
                     ),
                     value: String(
                         Static(
@@ -684,7 +684,7 @@ fn test_basic_span() {
             attributes: [
                 KeyValue {
                     key: Static(
-                        "code.filepath",
+                        "code.file.path",
                     ),
                     value: String(
                         Static(
@@ -694,7 +694,7 @@ fn test_basic_span() {
                 },
                 KeyValue {
                     key: Static(
-                        "code.namespace",
+                        "code.module.name",
                     ),
                     value: String(
                         Static(

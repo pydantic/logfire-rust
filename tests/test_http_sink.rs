@@ -186,7 +186,7 @@ async fn test_http_protobuf_export() {
                                         ),
                                     },
                                     KeyValue {
-                                        key: "code.filepath",
+                                        key: "code.file.path",
                                         value: Some(
                                             AnyValue {
                                                 value: Some(
@@ -198,7 +198,7 @@ async fn test_http_protobuf_export() {
                                         ),
                                     },
                                     KeyValue {
-                                        key: "code.lineno",
+                                        key: "code.line.number",
                                         value: Some(
                                             AnyValue {
                                                 value: Some(
@@ -210,7 +210,7 @@ async fn test_http_protobuf_export() {
                                         ),
                                     },
                                     KeyValue {
-                                        key: "code.namespace",
+                                        key: "code.module.name",
                                         value: Some(
                                             AnyValue {
                                                 value: Some(

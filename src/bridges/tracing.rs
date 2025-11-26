@@ -589,7 +589,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -599,7 +599,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -933,7 +933,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -943,7 +943,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -953,7 +953,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.lineno",
+                            "code.line.number",
                         ),
                         value: I64(
                             29,
@@ -1171,7 +1171,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -1181,7 +1181,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -1409,7 +1409,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -1419,7 +1419,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
