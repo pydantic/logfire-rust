@@ -6,8 +6,8 @@ use opentelemetry::{
     logs::Severity,
     trace::{SamplingDecision, TraceContextExt},
 };
-use tracing::{Subscriber, field::Visit};
-use tracing_opentelemetry::{OtelData, PreSampledTracer};
+use tracing::{Span, Subscriber, field::Visit};
+use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData, PreSampledTracer};
 use tracing_subscriber::{EnvFilter, Layer, filter::Filtered, layer::Filter, registry::LookupSpan};
 
 use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer};
@@ -168,21 +168,8 @@ where
         // Delegate to MetricsLayer as well
         self.metrics_layer.on_new_span(attrs, id, ctx.clone());
 
-        // Add Logfire-specific attributes
-        let span = ctx.span(id).expect("span not found");
-        let mut extensions = span.extensions_mut();
-        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
-            let attributes = otel_data
-                .builder
-                .attributes
-                .get_or_insert_with(Default::default);
-
-            attributes.push(opentelemetry::KeyValue::new(
-                "logfire.level_num",
-                tracing_level_to_severity(*attrs.metadata().level()) as i64,
-            ));
-            attributes.push(KeyValue::new("logfire.span_type", "span"));
-        }
+        // We used to be able to inject our attributes here, but this has not been possible since
+        // `tracing_opentelemetry 0.32`, thus we do this `on_enter` now.
     }
 
     /// Emit a pending span when this span is first entered, if this span will be sampled.
@@ -195,14 +182,27 @@ where
         // Delegate to OpenTelemetry layer first
         self.otel_layer.on_enter(id, ctx.clone());
 
-        let span = ctx.span(id).expect("span not found");
-        let mut extensions = span.extensions_mut();
+        let span_ref = ctx.span(id).expect("span not found");
+        let mut extensions = span_ref.extensions_mut();
 
         if extensions.get_mut::<LogfirePendingSpanSent>().is_some() {
             return;
         }
 
         extensions.insert(LogfirePendingSpanSent);
+
+        // Add Logfire-specific attributes
+        let span = Span::current();
+
+        if let Some(metadata) = span.metadata() {
+            OpenTelemetrySpanExt::set_attribute(
+                &span,
+                "logfire.level_num",
+                tracing_level_to_severity(*metadata.level()) as i64,
+            );
+        } // If we cannot determine the level, just omit the attribute.
+
+        OpenTelemetrySpanExt::set_attribute(&span, "logfire.span_type", "span");
 
         // Guaranteed to be on first entering of the span
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
