@@ -1,13 +1,13 @@
 use std::{any::TypeId, borrow::Cow, sync::Arc};
 
 use opentelemetry::{
-    Context, KeyValue,
+    Context,
     global::ObjectSafeSpan,
     logs::Severity,
     trace::{SamplingDecision, TraceContextExt},
 };
 use tracing::{Span, Subscriber, field::Visit};
-use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData, PreSampledTracer};
+use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData};
 use tracing_subscriber::{EnvFilter, Layer, filter::Filtered, layer::Filter, registry::LookupSpan};
 
 use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer};
