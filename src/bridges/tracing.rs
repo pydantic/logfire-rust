@@ -6,6 +6,7 @@ use opentelemetry::{
     logs::Severity,
     trace::{SamplingDecision, TraceContextExt},
 };
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use tracing::{Span, Subscriber, field::Visit};
 use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData};
 use tracing_subscriber::{EnvFilter, Layer, filter::Filtered, layer::Filter, registry::LookupSpan};
@@ -53,7 +54,7 @@ struct LogfireTracingLayerInner<S> {
     /// This odd structure with two inner layers is deliberate; we don't want to send any events
     /// to the `otel_layer` and we only send (some) events to the `metrics_layer`.
     otel_layer: tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
-    metrics_layer: Option<tracing_opentelemetry::MetricsLayer<S>>,
+    metrics_layer: Option<tracing_opentelemetry::MetricsLayer<S, SdkMeterProvider>>,
 }
 
 impl<S> Layer<S> for LogfireTracingLayer<S>
