@@ -211,7 +211,9 @@ where
         } // If we cannot determine the level, just omit the attribute.
 
         otel_span.set_attribute(opentelemetry::KeyValue::new("logfire.span_type", "span"));
-        emit_pending_span(&self.tracer);
+        if let Some(metadata) = tracing_span.metadata() {
+            emit_pending_span(&self.tracer, metadata);
+        }
     }
 
     /// Tracing events currently are recorded as span events, so do not get printed by the span emitter.
@@ -253,7 +255,8 @@ where
         // We write pending spans to the console; if the pending span was never created then
         // we have to manually write it now.
         if extensions.get_mut::<LogfirePendingSpanSent>().is_none() {
-            emit_pending_span(&self.tracer);
+            let metadata = span.metadata();
+            emit_pending_span(&self.tracer, metadata);
         }
 
         // Delegate to OpenTelemetry layer after handling pending span (it will remove the
@@ -331,8 +334,7 @@ where
 struct LogfirePendingSpanSent;
 
 /// Samples and emits a pending span if the span is sampled.
-fn emit_pending_span(tracer: &LogfireTracer) {
-    let tracing_span = Span::current();
+fn emit_pending_span(tracer: &LogfireTracer, span_metadata: &tracing::Metadata<'static>) {
     let otel_ctx = Context::current();
     let otel_span = otel_ctx.span();
     let otel_span_context = otel_span.span_context();
@@ -342,15 +344,8 @@ fn emit_pending_span(tracer: &LogfireTracer) {
         return;
     }
 
-    // Get current span metadata from tracing span
-    let span_name = tracing_span
-        .metadata()
-        .map(|m| m.name())
-        .unwrap_or("unknown");
-    let span_level = tracing_span
-        .metadata()
-        .map(|m| *m.level())
-        .unwrap_or(tracing::Level::INFO);
+    let span_name = span_metadata.name();
+    let span_level = *span_metadata.level();
 
     let mut attributes = vec![
         opentelemetry::KeyValue::new("logfire.span_type", "pending_span"),
@@ -361,12 +356,10 @@ fn emit_pending_span(tracer: &LogfireTracer) {
     ];
 
     // Add module target for console output
-    if let Some(metadata) = tracing_span.metadata() {
-        attributes.push(opentelemetry::KeyValue::new(
-            "code.namespace",
-            metadata.target(),
-        ));
-    }
+    attributes.push(opentelemetry::KeyValue::new(
+        "code.namespace",
+        span_metadata.target(),
+    ));
 
     // Record parent relationship
     if otel_span_context.is_valid() {
