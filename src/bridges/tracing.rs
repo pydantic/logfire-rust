@@ -183,27 +183,25 @@ where
         // Delegate to OpenTelemetry layer first
         self.otel_layer.on_enter(id, ctx.clone());
 
+        // Mark pending span sent if not already marked.
         let span_ref = ctx.span(id).expect("span not found");
         let mut extensions = span_ref.extensions_mut();
-
         if extensions.get_mut::<LogfirePendingSpanSent>().is_some() {
             return;
         }
-
         extensions.insert(LogfirePendingSpanSent);
 
-        // Add Logfire-specific attributes
-        let span = Span::current();
+        // Now we actually need to create and send the pending span.
+        let otel_context = Context::current();
+        let otel_span = otel_context.span();
+        let tracing_span = Span::current();
 
-        if let Some(metadata) = span.metadata() {
-            OpenTelemetrySpanExt::set_attribute(
-                &span,
-                "logfire.level_num",
-                tracing_level_to_severity(*metadata.level()) as i64,
-            );
+        if let Some(metadata) = tracing_span.metadata() {
+            let severity_value = tracing_level_to_severity(*metadata.level()) as i64;
+            otel_span.set_attribute(opentelemetry::KeyValue::new("logfire.level_num", severity_value));
         } // If we cannot determine the level, just omit the attribute.
 
-        OpenTelemetrySpanExt::set_attribute(&span, "logfire.span_type", "span");
+        otel_span.set_attribute(opentelemetry::KeyValue::new("logfire.span_type", "span"));
 
         // Guaranteed to be on first entering of the span
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
@@ -334,7 +332,7 @@ struct LogfirePendingSpanSent;
 /// Samples and emits a pending span if the span is sampled.
 fn emit_pending_span(tracer: &LogfireTracer, _otel_data: &mut tracing_opentelemetry::OtelData) {
     let tracing_span = Span::current();
-    let otel_ctx = tracing_span.context();
+    let otel_ctx = Context::current();
     let otel_span = otel_ctx.span();
     let otel_span_context = otel_span.span_context();
 
