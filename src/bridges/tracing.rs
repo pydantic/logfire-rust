@@ -215,6 +215,7 @@ where
     ///
     /// Instead we need to handle them here and write them to the logfire writer.
     fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
+        // Determine whether this is strictly a metrics event:
         let is_metrics_event = self.metrics_layer.is_some()
             && event.fields().any(|field| {
                 let name = field.name();
@@ -225,13 +226,13 @@ where
                     || name.starts_with("monotonic_histogram.")
             });
 
-        // Allow the metrics layer to see all events, so it can record metrics as needed.
+        // Allow the metrics layer to see all metrics events, so it can record metrics as needed.
         if is_metrics_event {
             self.metrics_layer.on_event(event, ctx.clone());
         }
 
         // However we don't want to allow the opentelemetry layer to see events, it will record them
-        // as span events. Instead we handle them here and emit them as log spans.
+        // as span events. We handle them here and emit them as log spans.
         let event_span = ctx.event_span(event).and_then(|span| ctx.span(&span.id()));
         let mut event_span_extensions = event_span.as_ref().map(|s| s.extensions_mut());
 
