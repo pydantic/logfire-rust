@@ -198,15 +198,14 @@ where
 
         if let Some(metadata) = tracing_span.metadata() {
             let severity_value = tracing_level_to_severity(*metadata.level()) as i64;
-            otel_span.set_attribute(opentelemetry::KeyValue::new("logfire.level_num", severity_value));
+            otel_span.set_attribute(opentelemetry::KeyValue::new(
+                "logfire.level_num",
+                severity_value,
+            ));
         } // If we cannot determine the level, just omit the attribute.
 
         otel_span.set_attribute(opentelemetry::KeyValue::new("logfire.span_type", "span"));
-
-        // Guaranteed to be on first entering of the span
-        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
-            emit_pending_span(&self.tracer, otel_data);
-        }
+        emit_pending_span(&self.tracer);
     }
 
     /// Tracing events currently are recorded as span events, so do not get printed by the span emitter.
@@ -248,11 +247,7 @@ where
         // We write pending spans to the console; if the pending span was never created then
         // we have to manually write it now.
         if extensions.get_mut::<LogfirePendingSpanSent>().is_none() {
-            if let Some(otel_data) = extensions.get_mut::<OtelData>() {
-                // emit pending span now just before it is closed, assume the processor will
-                // deduplicate as needed
-                emit_pending_span(&self.tracer, otel_data);
-            }
+            emit_pending_span(&self.tracer);
         }
 
         // Delegate to OpenTelemetry layer after handling pending span (it will remove the
@@ -330,7 +325,7 @@ where
 struct LogfirePendingSpanSent;
 
 /// Samples and emits a pending span if the span is sampled.
-fn emit_pending_span(tracer: &LogfireTracer, _otel_data: &mut tracing_opentelemetry::OtelData) {
+fn emit_pending_span(tracer: &LogfireTracer) {
     let tracing_span = Span::current();
     let otel_ctx = Context::current();
     let otel_span = otel_ctx.span();
