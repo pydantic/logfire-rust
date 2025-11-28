@@ -4,7 +4,7 @@ use opentelemetry::{
     Context,
     global::ObjectSafeSpan,
     logs::Severity,
-    trace::{SamplingDecision, TraceContextExt},
+    trace::{TraceContextExt, Tracer},
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use tracing::{Span, Subscriber, field::Visit};
@@ -332,70 +332,53 @@ where
 struct LogfirePendingSpanSent;
 
 /// Samples and emits a pending span if the span is sampled.
-fn emit_pending_span(tracer: &LogfireTracer, otel_data: &mut tracing_opentelemetry::OtelData) {
-    let context = tracer.inner.sampled_context(otel_data);
-    let sampling_result = otel_data
-        .builder
-        .sampling_result
-        .as_ref()
-        .expect("we just asked for sampling to happen");
+fn emit_pending_span(tracer: &LogfireTracer, _otel_data: &mut tracing_opentelemetry::OtelData) {
+    let tracing_span = Span::current();
+    let otel_ctx = tracing_span.context();
+    let otel_span = otel_ctx.span();
+    let otel_span_context = otel_span.span_context();
 
-    // Deliberately match on all cases here so that if the enum changes in the future,
-    // we can update this code to match the possible decisions.
-    let span_is_sampled = match &sampling_result.decision {
-        SamplingDecision::Drop | SamplingDecision::RecordOnly => false,
-        SamplingDecision::RecordAndSample => true,
-    };
-
-    if !span_is_sampled {
+    // Exit early not emitting a span if sampling is disabled.
+    if !otel_span_context.is_sampled() {
         return;
     }
 
-    let mut pending_span_builder = otel_data.builder.clone();
+    // Get current span metadata from tracing span
+    let span_name = tracing_span
+        .metadata()
+        .map(|m| m.name())
+        .unwrap_or("unknown");
+    let span_level = tracing_span
+        .metadata()
+        .map(|m| *m.level())
+        .unwrap_or(tracing::Level::INFO);
 
-    // Pending span is sent as a child of the actual span with kind pending_span.
-    // - The parent id is the actual span we want.
-    // - The pending_parent_id is the parent of the pending span.
+    let mut attributes = vec![
+        opentelemetry::KeyValue::new("logfire.span_type", "pending_span"),
+        opentelemetry::KeyValue::new(
+            "logfire.level_num",
+            tracing_level_to_severity(span_level) as i64,
+        ),
+    ];
 
-    let span_id = otel_data.builder.span_id.expect("otel SDK sets span ID");
-    pending_span_builder.span_id = Some(span_id);
-
-    let attributes = pending_span_builder
-        .attributes
-        .get_or_insert_with(Default::default);
-
-    // update type of the pending span export
-    if let Some(attr) = attributes
-        .iter_mut()
-        .find(|kv| kv.key.as_str() == "logfire.span_type")
-    {
-        attr.value = "pending_span".into();
-    } else {
-        attributes.push(opentelemetry::KeyValue::new(
-            "logfire.span_type",
-            "pending_span",
-        ));
-    }
-
-    // record the real parent ID
-    let parent_span = otel_data.parent_cx.span();
-    let parent_span_context = parent_span.span_context();
-
-    if parent_span_context.is_valid() {
+    // Record parent relationship
+    if otel_span_context.is_valid() {
         attributes.push(opentelemetry::KeyValue::new(
             "logfire.pending_parent_id",
-            parent_span_context.span_id().to_string(),
+            otel_span_context.span_id().to_string(),
         ));
     }
 
-    pending_span_builder.span_id = Some(tracer.inner.new_span_id());
+    // Create the pending span builder
+    let start_time = std::time::SystemTime::now();
+    let span_builder = tracer
+        .inner
+        .span_builder(span_name)
+        .with_kind(opentelemetry::trace::SpanKind::Internal)
+        .with_start_time(start_time)
+        .with_attributes(attributes);
 
-    let start_time = pending_span_builder
-        .start_time
-        .expect("otel SDK sets start time");
-
-    // emit pending span
-    let mut pending_span = pending_span_builder.start_with_context(&tracer.inner, &context);
+    let mut pending_span = span_builder.start_with_context(&tracer.inner, &otel_ctx);
     pending_span.end_with_timestamp(start_time);
 }
 
