@@ -339,23 +339,14 @@ fn emit_pending_span(tracer: &LogfireTracer, span_metadata: &tracing::Metadata<'
     let otel_span = otel_ctx.span();
     let otel_span_context = otel_span.span_context();
 
-    // Exit early not emitting a span if sampling is disabled.
-    if !otel_span_context.is_sampled() {
-        return;
-    }
-
-    let span_name = span_metadata.name();
-    let span_level = *span_metadata.level();
-
     let mut attributes = vec![
         opentelemetry::KeyValue::new("logfire.span_type", "pending_span"),
         opentelemetry::KeyValue::new(
             "logfire.level_num",
-            tracing_level_to_severity(span_level) as i64,
+            tracing_level_to_severity(*span_metadata.level()) as i64,
         ),
     ];
 
-    // Add module target for console output
     attributes.push(opentelemetry::KeyValue::new(
         "code.namespace",
         span_metadata.target(),
@@ -369,11 +360,10 @@ fn emit_pending_span(tracer: &LogfireTracer, span_metadata: &tracing::Metadata<'
         ));
     }
 
-    // Create the pending span builder
     let start_time = std::time::SystemTime::now();
     let span_builder = tracer
         .inner
-        .span_builder(span_name)
+        .span_builder(span_metadata.name())
         .with_kind(opentelemetry::trace::SpanKind::Internal)
         .with_start_time(start_time)
         .with_attributes(attributes);
