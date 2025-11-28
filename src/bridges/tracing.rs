@@ -234,17 +234,8 @@ where
         // However we don't want to allow the opentelemetry layer to see events, it will record them
         // as span events. We handle them here and emit them as log spans.
         let event_span = ctx.event_span(event).and_then(|span| ctx.span(&span.id()));
-        let mut event_span_extensions = event_span.as_ref().map(|s| s.extensions_mut());
 
-        let context = if let Some(otel_data) = event_span_extensions
-            .as_mut()
-            .and_then(|e| e.get_mut::<OtelData>())
-        {
-            self.tracer.inner.sampled_context(otel_data)
-        } else {
-            Context::new()
-        };
-
+        let context = Span::current().context();
         emit_event_as_log_span(&self.tracer, event, &context);
     }
 
