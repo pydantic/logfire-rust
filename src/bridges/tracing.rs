@@ -8,7 +8,7 @@ use opentelemetry::{
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use tracing::{Span, Subscriber, field::Visit};
-use tracing_opentelemetry::{OpenTelemetrySpanExt, OtelData};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::{EnvFilter, Layer, filter::Filtered, layer::Filter, registry::LookupSpan};
 
 use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer};
@@ -202,6 +202,12 @@ where
                 "logfire.level_num",
                 severity_value,
             ));
+
+            // Set the module target for console output
+            otel_span.set_attribute(opentelemetry::KeyValue::new(
+                "code.namespace",
+                metadata.target(),
+            ));
         } // If we cannot determine the level, just omit the attribute.
 
         otel_span.set_attribute(opentelemetry::KeyValue::new("logfire.span_type", "span"));
@@ -353,6 +359,14 @@ fn emit_pending_span(tracer: &LogfireTracer) {
             tracing_level_to_severity(span_level) as i64,
         ),
     ];
+
+    // Add module target for console output
+    if let Some(metadata) = tracing_span.metadata() {
+        attributes.push(opentelemetry::KeyValue::new(
+            "code.namespace",
+            metadata.target(),
+        ));
+    }
 
     // Record parent relationship
     if otel_span_context.is_valid() {
