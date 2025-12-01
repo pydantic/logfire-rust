@@ -15,7 +15,7 @@ env_filter = "0.1"
 
 # deps for grpc export
 http = { version = "1.2", optional = true }
-tonic = { version = "0.13", optional = true }
+tonic = { version = "0.14", optional = true }
 
 rand = "0.9.0"
 
@@ -70,9 +70,9 @@ tokio = { version = "1.44.1", features = [
 ] }
 ulid = "1.2.0"
 wiremock = "=0.6.4"
-tonic-build = "0.13"
-tonic = { version = "0.13", features = ["transport"] }
-prost = "0.13"
+tonic-build = "0.14"
+tonic = { version = "0.14", features = ["transport"] }
+prost = "0.14"
 opentelemetry-proto = { version = "0.31", features = [
     "tonic",
     "gen-tonic-messages",
