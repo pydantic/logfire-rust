@@ -15,15 +15,15 @@ env_filter = "0.1"
 
 # deps for grpc export
 http = { version = "1.2", optional = true }
-tonic = { version = "0.13", optional = true }
+tonic = { version = "0.14", optional = true }
 
 rand = "0.9.0"
 
-opentelemetry = { version = "0.30", default-features = false, features = [
+opentelemetry = { version = "0.31", default-features = false, features = [
     "trace",
     "logs",
 ] }
-opentelemetry_sdk = { version = "0.30", default-features = false, features = [
+opentelemetry_sdk = { version = "0.31", default-features = false, features = [
     "trace",
     "experimental_metrics_custom_reader",
     "experimental_trace_batch_span_processor_with_async_runtime",
@@ -33,7 +33,7 @@ opentelemetry_sdk = { version = "0.30", default-features = false, features = [
     "logs",
     "spec_unstable_metrics_views"
 ] }
-opentelemetry-otlp = { version = "0.30", default-features = false, features = [
+opentelemetry-otlp = { version = "0.31", default-features = false, features = [
     "trace",
     "metrics",
     "logs",
@@ -45,7 +45,7 @@ tokio = { version = "1.44.1", default-features = false, features = [
 ] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.31"
+tracing-opentelemetry = { git = "https://github.com/marc-pydantic/tracing-opentelemetry", branch = "marc/opentelemetry-0.31" }
 
 thiserror = "2"
 
@@ -59,7 +59,7 @@ regex = "1.11.1"
 async-trait = "0.1.88"
 futures = { version = "0.3.31", features = ["futures-executor"] }
 insta = "1.42.1"
-opentelemetry_sdk = { version = "0.30", default-features = false, features = [
+opentelemetry_sdk = { version = "0.31", default-features = false, features = [
     "testing",
 ] }
 regex = "1.11.1"
@@ -70,10 +70,10 @@ tokio = { version = "1.44.1", features = [
 ] }
 ulid = "1.2.0"
 wiremock = "=0.6.4"
-tonic-build = "0.13"
-tonic = { version = "0.13", features = ["transport"] }
-prost = "0.13"
-opentelemetry-proto = { version = "0.30", features = [
+tonic-build = "0.14"
+tonic = { version = "0.14", features = ["transport"] }
+prost = "0.14"
+opentelemetry-proto = { version = "0.31", features = [
     "tonic",
     "gen-tonic-messages",
 ] }

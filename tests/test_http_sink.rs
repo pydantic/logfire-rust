@@ -114,7 +114,7 @@ async fn test_http_protobuf_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "0.30.0",
+                                                "0.31.0",
                                             ),
                                         ),
                                     },
@@ -167,7 +167,7 @@ async fn test_http_protobuf_export() {
                                 ],
                                 trace_state: "",
                                 parent_span_id: [],
-                                flags: 1,
+                                flags: 257,
                                 name: "test_span",
                                 kind: Internal,
                                 start_time_unix_nano: 0,
@@ -430,7 +430,7 @@ async fn test_http_json_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "0.30.0",
+                                                "0.31.0",
                                             ),
                                         ),
                                     },
@@ -483,7 +483,7 @@ async fn test_http_json_export() {
                                 ],
                                 trace_state: "",
                                 parent_span_id: [],
-                                flags: 1,
+                                flags: 257,
                                 name: "json_test_span",
                                 kind: Internal,
                                 start_time_unix_nano: 0,
