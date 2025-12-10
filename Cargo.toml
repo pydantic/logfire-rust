@@ -45,7 +45,7 @@ tokio = { version = "1.44.1", default-features = false, features = [
 ] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = { git = "https://github.com/marc-pydantic/tracing-opentelemetry", branch = "marc/opentelemetry-0.31" }
+tracing-opentelemetry = { git = "https://github.com/pydantic/tracing-opentelemetry", branch = "marc/opentelemetry-0.31" }
 
 thiserror = "2"
 
