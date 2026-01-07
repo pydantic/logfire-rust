@@ -105,11 +105,11 @@ macro_rules! span {
 /// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! error {
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, $crate::__macros_impl::Level::ERROR, $format, $($($path).+ $(= $value)?),*)
+    (parent: $parent:expr, $format:expr $(, $($args:tt)*)?) => {
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::ERROR, $format $(, $($args)*)?)
     };
-    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!($crate::__macros_impl::Level::ERROR, $format, $($($path).+ $(= $value)?),*)
+    ($format:expr $(, $($args:tt)*)?) => {
+        $crate::log!($crate::__macros_impl::Level::ERROR, $format $(, $($args)*)?)
     };
 }
 
@@ -118,11 +118,11 @@ macro_rules! error {
 /// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! warn {
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, $crate::__macros_impl::Level::WARN, $format, $($($path).+ $(= $value)?),*)
+    (parent: $parent:expr, $format:expr $(, $($args:tt)*)?) => {
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::WARN, $format $(, $($args)*)?)
     };
-    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!($crate::__macros_impl::Level::WARN, $format, $($($path).+ $(= $value)?),*)
+    ($format:expr $(, $($args:tt)*)?) => {
+        $crate::log!($crate::__macros_impl::Level::WARN, $format $(, $($args)*)?)
     };
 }
 
@@ -130,12 +130,13 @@ macro_rules! warn {
 ///
 /// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
+#[allow(clippy::module_name_repetitions)]
 macro_rules! info {
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, $crate::__macros_impl::Level::INFO, $format, $($($path).+ $(= $value)?),*)
+    (parent: $parent:expr, $format:expr $(, $($args:tt)*)?) => {
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::INFO, $format $(, $($args)*)?)
     };
-    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!($crate::__macros_impl::Level::INFO, $format, $($($path).+ $(= $value)?),*)
+    ($format:expr $(, $($args:tt)*)?) => {
+        $crate::log!($crate::__macros_impl::Level::INFO, $format $(, $($args)*)?)
     };
 }
 
@@ -144,11 +145,11 @@ macro_rules! info {
 /// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! debug {
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, $crate::__macros_impl::Level::DEBUG, $format, $($($path).+ $(= $value)?),*)
+    (parent: $parent:expr, $format:expr $(, $($args:tt)*)?) => {
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::DEBUG, $format $(, $($args)*)?)
     };
-    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!($crate::__macros_impl::Level::DEBUG, $format, $($($path).+ $(= $value)?),*)
+    ($format:expr $(, $($args:tt)*)?) => {
+        $crate::log!($crate::__macros_impl::Level::DEBUG, $format $(, $($args)*)?)
     };
 }
 
@@ -157,11 +158,11 @@ macro_rules! debug {
 /// See the [`log!`][macro@crate::log] macro for more details.
 #[macro_export]
 macro_rules! trace {
-    (parent: $parent:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!(parent: $parent, $crate::__macros_impl::Level::TRACE, $format, $($($path).+ $(= $value)?),*)
+    (parent: $parent:expr, $format:expr $(, $($args:tt)*)?) => {
+        $crate::log!(parent: $parent, $crate::__macros_impl::Level::TRACE, $format $(, $($args)*)?)
     };
-    ($format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::log!($crate::__macros_impl::Level::TRACE, $format, $($($path).+ $(= $value)?),*)
+    ($format:expr $(, $($args:tt)*)?) => {
+        $crate::log!($crate::__macros_impl::Level::TRACE, $format $(, $($args)*)?)
     };
 }
 
@@ -261,11 +262,11 @@ macro_rules! trace {
 /// [attributes]: https://opentelemetry.io/docs/concepts/signals/traces/#attributes
 #[macro_export]
 macro_rules! log {
-    (parent: $parent:expr, $level:expr, $format:expr $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::__macros_impl::log!(parent: $parent, $level, $format, $($($path).+ $(= $value)?),*)
+    (parent: $parent:expr, $level:expr, $format:expr $(, $($args:tt)*)?) => {
+        $crate::__macros_impl::log!(parent: $parent, $level, $format $(, $($args)*)?)
     };
-    ($level:expr, $format:expr  $(, $($path:ident).+ $(= $value:expr)?)* $(,)?) => {
-        $crate::__macros_impl::log!(parent: $crate::__macros_impl::Span::current(), $level, $format, $($($path).+ $(= $value)?),*)
+    ($level:expr, $format:expr $(, $($args:tt)*)?) => {
+        $crate::__macros_impl::log!(parent: $crate::__macros_impl::Span::current(), $level, $format $(, $($args)*)?)
     };
 }
 
@@ -733,7 +734,7 @@ mod tests {
             ),
             (
                 "float: 5.6",
-                "Double(5.599999904632568)",
+                "Double(5.6)",
             ),
             (
                 "optional integer: Some(12)",
@@ -741,7 +742,123 @@ mod tests {
             ),
             (
                 "optional float: Some(5.6)",
-                "Double(5.599999904632568)",
+                "Double(5.6)",
+            ),
+        ]
+        "#);
+    }
+
+    #[test]
+    fn test_sigil_formatting() {
+        use serde::Serialize;
+
+        #[derive(Debug, Serialize)]
+        struct User {
+            id: u64,
+            name: String,
+        }
+
+        impl std::fmt::Display for User {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "User #{}: {}", self.id, self.name)
+            }
+        }
+
+        let log_exporter = InMemoryLogExporter::default();
+
+        let logfire = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_advanced_options(
+                AdvancedOptions::default()
+                    .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
+            )
+            .finish()
+            .unwrap();
+
+        let guard = crate::set_local_logfire(logfire);
+
+        let user = User {
+            id: 123,
+            name: "Alice".to_string(),
+        };
+
+        // Test Display (default, no sigil)
+        crate::info!("User (display): {user}", user = &user);
+
+        // Test Display (explicit % sigil)
+        crate::info!("User (display explicit): {user}", %user);
+
+        // Test Debug (? sigil)
+        crate::info!("User (debug): {user}", ?user);
+
+        // Test Serialize (# sigil)
+        crate::info!("User (json): {user}", #user);
+
+        // Test with explicit values
+        crate::info!("User display: {u}", u = % user);
+        crate::info!("User debug: {u}", u = ? user);
+        crate::info!("User json: {u}", u = # user);
+
+        guard.shutdown().unwrap();
+
+        let logs = log_exporter.get_emitted_logs().unwrap();
+
+        let messages_and_value = logs
+            .iter()
+            .map(|log| {
+                let AnyValue::String(message) = log.record.body().unwrap() else {
+                    panic!("Expected String body");
+                };
+                // Get the first attribute value (user or u)
+                let value = log
+                    .record
+                    .attributes_iter()
+                    .next()
+                    .map(|(k, v)| (k.as_str(), format!("{v:?}")))
+                    .unwrap();
+                (message.as_str(), value.0, value.1)
+            })
+            .collect::<Vec<_>>();
+
+        // Note: The format string message always uses Display (the {user} placeholder),
+        // but the sigils control how the attribute VALUE is formatted in structured logs
+        assert_debug_snapshot!(messages_and_value, @r#"
+        [
+            (
+                "User (display): User #123: Alice",
+                "user",
+                "String(Owned(\"User #123: Alice\"))",
+            ),
+            (
+                "User (display explicit): User #123: Alice",
+                "user",
+                "String(Owned(\"User #123: Alice\"))",
+            ),
+            (
+                "User (debug): User #123: Alice",
+                "user",
+                "String(Owned(\"User { id: 123, name: \\\"Alice\\\" }\"))",
+            ),
+            (
+                "User (json): User #123: Alice",
+                "user",
+                "String(Owned(\"{\\\"id\\\":123,\\\"name\\\":\\\"Alice\\\"}\"))",
+            ),
+            (
+                "User display: User #123: Alice",
+                "u",
+                "String(Owned(\"User #123: Alice\"))",
+            ),
+            (
+                "User debug: User #123: Alice",
+                "u",
+                "String(Owned(\"User { id: 123, name: \\\"Alice\\\" }\"))",
+            ),
+            (
+                "User json: User #123: Alice",
+                "u",
+                "String(Owned(\"{\\\"id\\\":123,\\\"name\\\":\\\"Alice\\\"}\"))",
             ),
         ]
         "#);

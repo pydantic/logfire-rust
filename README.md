@@ -92,9 +92,63 @@ fn main() -> Result<()> {
 
 (Read the [Logfire concepts documentation](https://logfire.pydantic.dev/docs/concepts/) for additional detail on spans, events, and further Logfire concepts.)
 
+### Logging Custom Types
+
+Logfire supports multiple ways to log custom types using `Display`, `Debug`, or `Serialize`. You can use sigils (similar to the `tracing` crate) to specify the formatting:
+
+```rust
+use serde::Serialize;
+
+#[derive(Debug, Serialize)]
+struct User {
+    id: u64,
+    name: String,
+    email: String,
+}
+
+impl std::fmt::Display for User {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "User #{}: {}", self.id, self.name)
+    }
+}
+
+let user = User {
+    id: 123,
+    name: "Alice".to_string(),
+    email: "alice@example.com".to_string(),
+};
+
+// Using Display (default, concise, human-readable)
+logfire::info!("User logged in: {user}", user = &user);
+// Output: "User logged in: User #123: Alice"
+
+// Using sigils for different formatting
+logfire::info!("User (display): {user}", %user);  // % = Display
+// Output: "User (display): User #123: Alice"
+
+logfire::info!("User (debug): {user}", ?user);    // ? = Debug
+// Output: "User (debug): User { id: 123, name: \"Alice\", email: \"alice@example.com\" }"
+
+logfire::info!("User (json): {user}", #user);     // # = Serialize (requires serde)
+// Output: "User (json): {\"id\":123,\"name\":\"Alice\",\"email\":\"alice@example.com\"}"
+
+// You can also use explicit field names with sigils
+logfire::info!("User: {u}", u = ? user);          // Explicit field name with Debug
+logfire::info!("User: {u}", u = % user);          // Explicit field name with Display
+logfire::info!("User: {u}", u = # user);          // Explicit field name with Serialize
+```
+
+**Sigil Reference:**
+- No sigil or `%`: Use `Display` trait (human-readable output)
+- `?`: Use `Debug` trait (developer-friendly, detailed output)
+- `#`: Use `Serialize` trait (JSON format, requires `serde` feature)
+
+The sigil syntax is inspired by the `tracing` crate and provides a concise way to control how values are formatted without explicit helper macros.
+
 See additional examples in the [examples directory](https://github.com/pydantic/logfire-rust/tree/main/examples):
 
-- [basic](https://github.com/pydantic/logfire-rust/tree/main/examples/basic.rs)
+- [basic](https://github.com/pydantic/logfire-rust/tree/main/examples/basic.rs) - Simple file size counting example
+- [custom_types](https://github.com/pydantic/logfire-rust/tree/main/examples/custom_types.rs) - Logging custom types with Display, Debug, and Serialize
 - [axum webserver](https://github.com/pydantic/logfire-rust/tree/main/examples/axum.rs)
 - [actix webserver](https://github.com/pydantic/logfire-rust/tree/main/examples/actix-web.rs)
 
