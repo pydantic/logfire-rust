@@ -105,6 +105,24 @@ impl LogfireConverter<Option<i32>> {
     }
 }
 
+impl LogfireConverter<f64> {
+    /// Cause type inference to pick the f64 specialization for float literals like info!("value: {value}", value = 3.14);
+    #[inline]
+    #[must_use]
+    pub fn handle_type_inference(&self) -> LogfireConverter<f64> {
+        LogfireConverter(ConvertValue(PhantomData))
+    }
+}
+
+impl LogfireConverter<Option<f64>> {
+    /// Cause type inference to pick the f64 specialization for float literals like info!("value: {value:?}", value = Some(3.14));
+    #[inline]
+    #[must_use]
+    pub fn handle_type_inference(&self) -> LogfireConverter<Option<f64>> {
+        LogfireConverter(ConvertValue(PhantomData))
+    }
+}
+
 impl<T> ConvertValue<T> {
     /// Base case for types where we don't care about type inference.
     #[inline]
@@ -119,15 +137,6 @@ impl<T> ConvertValue<T> {
     #[must_use]
     pub fn unpack_option(&self, value: T) -> Option<(T, LogfireConverter<T>)> {
         Some((value, LogfireConverter(ConvertValue(PhantomData))))
-    }
-}
-
-/// Convenience to take ownership of borrow on String
-impl LogfireConverter<&'_ String> {
-    #[inline]
-    #[must_use]
-    pub fn convert_value(&self, value: &String) -> Option<Value> {
-        Some(String::to_owned(value).into())
     }
 }
 
@@ -174,11 +183,35 @@ impl_into_from_i64_value!(i32);
 impl_into_try_into_i64_value!(i128);
 impl_into_try_into_i64_value!(isize);
 
+impl LogfireConverter<i64> {
+    #[inline]
+    #[must_use]
+    pub fn convert_value(&self, value: i64) -> Option<Value> {
+        Some(value.into())
+    }
+}
+
 impl LogfireConverter<f32> {
     #[inline]
     #[must_use]
     pub fn convert_value(&self, value: f32) -> Option<Value> {
         Some(f64::from(value).into())
+    }
+}
+
+impl LogfireConverter<f64> {
+    #[inline]
+    #[must_use]
+    pub fn convert_value(&self, value: f64) -> Option<Value> {
+        Some(value.into())
+    }
+}
+
+impl LogfireConverter<bool> {
+    #[inline]
+    #[must_use]
+    pub fn convert_value(&self, value: bool) -> Option<Value> {
+        Some(value.into())
     }
 }
 
@@ -199,12 +232,13 @@ impl<T> Deref for LogfireConverter<T> {
 }
 
 impl<T> ConvertValue<T> {
+    /// the default conversion using the Display trait
     #[inline]
     pub fn convert_value(&self, value: T) -> Option<Value>
     where
-        T: Into<Value>,
+        T: std::fmt::Display,
     {
-        Some(value.into())
+        Some(value.to_string().into())
     }
 
     #[inline]
@@ -222,6 +256,47 @@ impl<T> ConvertValue<T> {
         T: serde::Serialize,
     {
         serde_json::to_string(&value).ok().map(|s| s.into())
+    }
+}
+
+// implementations for reference types to support non-moving sigil syntax
+impl<'a, T> LogfireConverter<&'a T> {
+    #[inline]
+    pub fn convert_value(&self, value: &T) -> Option<Value>
+    where
+        T: std::fmt::Display,
+    {
+        Some(value.to_string().into())
+    }
+
+    #[inline]
+    pub fn convert_value_debug(&self, value: &T) -> Option<Value>
+    where
+        T: std::fmt::Debug,
+    {
+        Some(format!("{:?}", value).into())
+    }
+
+    #[cfg(feature = "data-dir")]
+    #[inline]
+    pub fn convert_value_serialize(&self, value: &T) -> Option<Value>
+    where
+        T: serde::Serialize,
+    {
+        serde_json::to_string(value).ok().map(|s| s.into())
+    }
+}
+
+impl<'a, T> LogfireConverter<&'a Option<T>> {
+    #[inline]
+    #[must_use]
+    pub fn unpack_option<'b>(
+        &self,
+        value: &'b Option<T>,
+    ) -> Option<(&'b T, LogfireConverter<&'b T>)> {
+        value
+            .as_ref()
+            .map(|v| (v, LogfireConverter(ConvertValue(PhantomData))))
     }
 }
 
@@ -438,5 +513,73 @@ mod tests {
         };
 
         insta::assert_snapshot!(s.as_ref(), @r#"{"id":123,"name":"Alice"}"#);
+    }
+
+    #[test]
+    fn test_reference_converter_display() {
+        #[allow(dead_code)]
+        struct User<'a> {
+            name: &'a str,
+        }
+
+        impl<'a> std::fmt::Display for User<'a> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "User: {}", self.name)
+            }
+        }
+
+        let user = User { name: "Bob" };
+
+        let v = converter(&&user)
+            .handle_type_inference()
+            .convert_value(&user)
+            .unwrap();
+
+        let s = match v {
+            Value::String(s) => s,
+            _ => panic!("Expected string"),
+        };
+
+        insta::assert_snapshot!(s.as_ref(), "User: Bob");
+
+        assert_eq!(user.name, "Bob");
+    }
+
+    #[test]
+    fn test_reference_converter_debug() {
+        #[allow(dead_code)]
+        #[derive(Debug)]
+        struct Point {
+            x: i32,
+            y: i32,
+        }
+
+        let point = Point { x: 5, y: 10 };
+
+        let v = converter(&&point)
+            .handle_type_inference()
+            .convert_value_debug(&point)
+            .unwrap();
+
+        let s = match v {
+            Value::String(s) => s,
+            _ => panic!("Expected string"),
+        };
+
+        insta::assert_snapshot!(s.as_ref(), @"Point { x: 5, y: 10 }");
+
+        assert_eq!(point.x, 5);
+    }
+
+    #[test]
+    fn test_reference_option_unpack() {
+        let opt = Some(42i32);
+
+        let result = converter(&&opt).handle_type_inference().unpack_option(&opt);
+        assert!(result.is_some());
+        let (value, _converter) = result.unwrap();
+        assert_eq!(*value, 42);
+
+        assert_eq!(opt, Some(42));
     }
 }

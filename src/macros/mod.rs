@@ -733,7 +733,7 @@ mod tests {
             ),
             (
                 "float: 5.6",
-                "Double(5.599999904632568)",
+                "Double(5.6)",
             ),
             (
                 "optional integer: Some(12)",
@@ -741,7 +741,7 @@ mod tests {
             ),
             (
                 "optional float: Some(5.6)",
-                "Double(5.599999904632568)",
+                "Double(5.6)",
             ),
         ]
         "#);
