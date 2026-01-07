@@ -206,6 +206,23 @@ impl<T> ConvertValue<T> {
     {
         Some(value.into())
     }
+
+    #[inline]
+    pub fn convert_value_debug(&self, value: T) -> Option<Value>
+    where
+        T: std::fmt::Debug,
+    {
+        Some(format!("{:?}", value).into())
+    }
+
+    #[cfg(feature = "data-dir")]
+    #[inline]
+    pub fn convert_value_serialize(&self, value: T) -> Option<Value>
+    where
+        T: serde::Serialize,
+    {
+        serde_json::to_string(&value).ok().map(|s| s.into())
+    }
 }
 
 #[must_use]
@@ -362,8 +379,64 @@ macro_rules! __log {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use opentelemetry::Value;
+
     #[test]
     fn test_schema_args() {
         assert_eq!(r#""arg1.a":{},"arg2.b":{}"#, __schema_args!(arg1.a, arg2.b));
+    }
+
+    #[test]
+    fn test_convert_value_debug() {
+        #[allow(dead_code)]
+        #[derive(Debug)]
+        struct Point {
+            x: i32,
+            y: i32,
+        }
+
+        let point = Point { x: 10, y: 20 };
+        let v = converter(&point)
+            .handle_type_inference()
+            .convert_value_debug(point)
+            .unwrap();
+
+        // Should convert using Debug formatting
+        let s = match v {
+            Value::String(s) => s,
+            _ => panic!("Expected string"),
+        };
+
+        insta::assert_snapshot!(s.as_ref(), @"Point { x: 10, y: 20 }");
+    }
+
+    #[cfg(feature = "data-dir")]
+    #[test]
+    fn test_convert_value_serialize() {
+        use serde::Serialize;
+
+        #[allow(dead_code)]
+        #[derive(Serialize)]
+        struct User {
+            id: u64,
+            name: String,
+        }
+
+        let user = User {
+            id: 123,
+            name: "Alice".to_string(),
+        };
+        let v = converter(&user)
+            .handle_type_inference()
+            .convert_value_serialize(user)
+            .unwrap();
+
+        let s = match v {
+            Value::String(s) => s,
+            _ => panic!("Expected string"),
+        };
+
+        insta::assert_snapshot!(s.as_ref(), @r#"{"id":123,"name":"Alice"}"#);
     }
 }
