@@ -1,7 +1,13 @@
 //! Builder for creating Logfire clients.
 
-use crate::Region;
 use std::time::Duration;
+
+use reqwest::header;
+
+use crate::{
+    Region,
+    client::{ClientError, LogfireClient},
+};
 
 const LOGFIRE_READ_TOKEN_ENV: &str = "LOGFIRE_READ_TOKEN";
 const LOGFIRE_BASE_URL_ENV: &str = "LOGFIRE_BASE_URL";
@@ -9,6 +15,12 @@ const LOGFIRE_BASE_URL_ENV: &str = "LOGFIRE_BASE_URL";
 /// Errors that can occur when building a Logfire client.
 #[derive(Debug, thiserror::Error)]
 pub enum BuilderError {
+    /// Failed to construct the HTTP client.
+    #[error("failed to build client")]
+    Client(#[source] ClientError),
+    /// Token contains invalid characters for HTTP headers.
+    #[error("token contains invalid header characters")]
+    InvalidToken,
     /// No token was configured on the builder.
     #[error("no token configured; call token() or use from_env()")]
     MissingToken,
@@ -71,8 +83,35 @@ impl LogfireClientBuilder {
         self
     }
 
+    /// Builds a [`LogfireClient`] from the current configuration.
+    pub fn build_client(&self) -> Result<LogfireClient, BuilderError> {
+        let token = self.token.as_ref().ok_or(BuilderError::MissingToken)?;
+        let base_url = self.resolve_base_url()?;
+
+        let mut headers = header::HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            header::HeaderValue::from_str(token).map_err(|_| BuilderError::InvalidToken)?,
+        );
+        headers.insert(
+            header::USER_AGENT,
+            header::HeaderValue::from_static(concat!(
+                "logfire-client-rust/",
+                env!("CARGO_PKG_VERSION")
+            )),
+        );
+
+        let client = reqwest::Client::builder()
+            .timeout(self.timeout)
+            .default_headers(headers)
+            .build()
+            .map_err(ClientError::ClientBuild)
+            .map_err(BuilderError::Client)?;
+
+        Ok(LogfireClient { client, base_url })
+    }
+
     /// Resolves the effective base URL.
-    #[allow(dead_code)] // Used by build methods in later steps.
     fn resolve_base_url(&self) -> Result<String, BuilderError> {
         let token = self.token.as_ref().ok_or(BuilderError::MissingToken)?;
         if let Some(url) = &self.base_url {
@@ -112,6 +151,32 @@ mod tests {
         assert!(matches!(
             builder.resolve_base_url(),
             Err(BuilderError::MissingToken)
+        ));
+    }
+
+    #[test]
+    fn build_client_requires_token() {
+        let builder = LogfireClientBuilder::new();
+        assert!(matches!(
+            builder.build_client(),
+            Err(BuilderError::MissingToken)
+        ));
+    }
+
+    #[test]
+    fn build_client_with_token() {
+        let mut builder = LogfireClientBuilder::new();
+        builder.token("pylf_v1_us_abc123");
+        assert!(builder.build_client().is_ok());
+    }
+
+    #[test]
+    fn build_client_rejects_invalid_token() {
+        let mut builder = LogfireClientBuilder::new();
+        builder.token("token\nwith\nnewlines");
+        assert!(matches!(
+            builder.build_client(),
+            Err(BuilderError::InvalidToken)
         ));
     }
 }
