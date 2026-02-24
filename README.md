@@ -27,7 +27,7 @@ struct ExceptionRecord {
     exception_message: Option<String>,
 }
 
-let client = LogfireClientBuilder::from_env()?.build_client()?;
+let client = LogfireClientBuilder::new().from_env().build_client()?;
 
 // Use serde_json::Value for ad-hoc queries without defining a struct
 let rows = client
@@ -118,11 +118,12 @@ Read tokens are created in the Logfire web UI under Settings > Read tokens.
 
 ```rust
 // Reads token from LOGFIRE_READ_TOKEN
-let builder = LogfireClientBuilder::from_env()?;
+let client = LogfireClientBuilder::new().from_env().build_client()?;
 
 // Or configure explicitly (base_url is optional, detected from token)
-let builder = LogfireClientBuilder::new()
-    .token("pylf_v1_us_...");
+let client = LogfireClientBuilder::new()
+    .token("pylf_v1_us_...")
+    .build_client()?;
 ```
 
 ## License
