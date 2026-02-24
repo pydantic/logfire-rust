@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-/// Metadata about a column in query results.
+/// Column metadata from query result responses.
 #[derive(Clone, Debug, Deserialize)]
-pub struct ColumnDetails {
+pub struct QueryColumnMeta {
     /// Column name.
     pub name: String,
     /// Data type information (kept as JSON since the format varies by backend).
@@ -68,7 +68,7 @@ pub struct SchemasResponse {
 #[derive(Clone, Debug, Deserialize)]
 pub struct RowQueryResults {
     /// Column metadata for the result set.
-    pub columns: Vec<ColumnDetails>,
+    pub columns: Vec<QueryColumnMeta>,
     /// Rows as key-value maps from column name to value.
     pub rows: Vec<HashMap<String, serde_json::Value>>,
 }
