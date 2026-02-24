@@ -1,6 +1,7 @@
 //! Logfire client SDK for querying Pydantic Logfire logs and metrics using SQL.
 
 mod builder;
+pub mod client;
 mod token;
 pub mod types;
 
