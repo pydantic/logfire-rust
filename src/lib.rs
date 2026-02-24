@@ -2,6 +2,7 @@
 
 mod builder;
 mod token;
+pub mod types;
 
 pub use builder::{BuilderError, LogfireClientBuilder};
 pub use token::Region;
