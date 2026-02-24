@@ -115,7 +115,7 @@ impl LogfireClient {
 #[cfg(test)]
 mod tests {
     use super::{ClientError, LogfireClient, StatusCode};
-    use crate::LogfireClientBuilder;
+    use crate::builder::LogfireClientBuilder;
 
     #[test]
     fn query_failed_error_format() {

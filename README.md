@@ -16,7 +16,7 @@ logfire-client = "0.1"
 The `records` table contains all spans and logs.
 
 ```rust
-use logfire_client::LogfireClientBuilder;
+use logfire_client::builder::LogfireClientBuilder;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -85,7 +85,7 @@ logfire-client = { version = "0.1", features = ["sqlx"] }
 ```
 
 ```rust
-use logfire_client::LogfireClientBuilder;
+use logfire_client::builder::LogfireClientBuilder;
 
 // The builder can be reused
 let builder = LogfireClientBuilder::from_env()?;

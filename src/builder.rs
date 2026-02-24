@@ -5,8 +5,8 @@ use std::time::Duration;
 use reqwest::header;
 
 use crate::{
-    Region,
     client::{ClientError, LogfireClient},
+    token::Region,
 };
 
 const LOGFIRE_READ_TOKEN_ENV: &str = "LOGFIRE_READ_TOKEN";
@@ -124,7 +124,8 @@ impl LogfireClientBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::{BuilderError, LogfireClientBuilder, Region};
+    use super::{BuilderError, LogfireClientBuilder};
+    use crate::token::Region;
 
     #[test]
     fn token_with_region_detection() {
