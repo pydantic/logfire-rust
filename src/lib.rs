@@ -7,3 +7,4 @@ pub mod types;
 
 pub use builder::{BuilderError, LogfireClientBuilder};
 pub use token::Region;
+pub use types::{ReadTokenInfo, SchemaColumn, SchemasResponse, TableSchema};

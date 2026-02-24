@@ -3,7 +3,7 @@
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
-use crate::types::RowQueryResults;
+use crate::types::{ReadTokenInfo, RowQueryResults, SchemasResponse};
 
 /// Errors that can occur when executing queries.
 #[derive(Debug, thiserror::Error)]
@@ -69,6 +69,46 @@ impl LogfireClient {
             })
             .collect::<Result<Vec<T>, _>>()
             .map_err(ClientError::RowDeserialize)
+    }
+
+    /// Fetches information about the read token used for authentication.
+    pub async fn read_token_info(&self) -> Result<ReadTokenInfo, ClientError> {
+        let url = format!("{}/v1/read-token-info", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(ClientError::Request)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ClientError::QueryFailed { status, body });
+        }
+
+        response.json().await.map_err(ClientError::Deserialize)
+    }
+
+    /// Fetches schema information for available tables.
+    pub async fn schemas(&self) -> Result<SchemasResponse, ClientError> {
+        let url = format!("{}/v1/schemas", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(ClientError::Request)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ClientError::QueryFailed { status, body });
+        }
+
+        response.json().await.map_err(ClientError::Deserialize)
     }
 }
 
@@ -176,5 +216,29 @@ mod tests {
             matches!(result, Err(ClientError::RowDeserialize(_))),
             "expected RowDeserialize, got {result:?}"
         );
+    }
+
+    /// Verifies read token info returns organization and project details.
+    #[tokio::test]
+    #[ignore]
+    async fn read_token_info_returns_project_details() {
+        let client = staging_client();
+        let info = client
+            .read_token_info()
+            .await
+            .expect("read_token_info failed");
+        assert!(!info.organization_name.is_empty());
+        assert!(!info.project_name.is_empty());
+    }
+
+    /// Verifies schemas returns table definitions including records and metrics.
+    #[tokio::test]
+    #[ignore]
+    async fn schemas_returns_table_list() {
+        let client = staging_client();
+        let response = client.schemas().await.expect("schemas failed");
+        let names: Vec<&str> = response.tables.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"records"), "expected 'records' table");
+        assert!(names.contains(&"metrics"), "expected 'metrics' table");
     }
 }
