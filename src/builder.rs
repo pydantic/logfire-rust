@@ -1,6 +1,7 @@
 //! Builder for creating Logfire clients.
 
 use crate::Region;
+use std::time::Duration;
 
 const LOGFIRE_READ_TOKEN_ENV: &str = "LOGFIRE_READ_TOKEN";
 const LOGFIRE_BASE_URL_ENV: &str = "LOGFIRE_BASE_URL";
@@ -20,6 +21,8 @@ pub struct LogfireClientBuilder {
     token: Option<String>,
     /// Override for the base URL (auto-detected from token if not set).
     base_url: Option<String>,
+    /// Request timeout.
+    timeout: Option<Duration>,
 }
 
 impl LogfireClientBuilder {
@@ -46,6 +49,12 @@ impl LogfireClientBuilder {
     /// Overrides the base URL.
     pub fn base_url(&mut self, url: impl Into<String>) -> &mut Self {
         self.base_url = Some(url.into());
+        self
+    }
+
+    /// Sets the request timeout.
+    pub fn timeout(&mut self, timeout: Duration) -> &mut Self {
+        self.timeout = Some(timeout);
         self
     }
 
