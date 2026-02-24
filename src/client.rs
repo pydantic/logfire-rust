@@ -83,25 +83,8 @@ impl LogfireClient {
 
     /// Executes a SQL query and deserializes each row to the target type.
     pub async fn query<T: DeserializeOwned>(&self, sql: &str) -> Result<Vec<T>, ClientError> {
-        let url = format!("{}/v1/query", self.base_url);
-        let response = self
-            .client
-            .get(&url)
-            .header(reqwest::header::ACCEPT, "application/json")
-            .query(&[("sql", sql), ("json_rows", "true")])
-            .send()
-            .await
-            .map_err(ClientError::Request)?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(ClientError::QueryFailed { status, body });
-        }
-
-        let results: RowQueryResults = response.json().await.map_err(ClientError::Deserialize)?;
-
-        results
+        self.query_raw(sql)
+            .await?
             .rows
             .into_iter()
             .map(|row| {
