@@ -51,7 +51,7 @@ impl Region {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{Region, parse_region};
 
     #[test]
     fn parse_region_extracts_region() {

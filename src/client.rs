@@ -74,7 +74,7 @@ impl LogfireClient {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{ClientError, StatusCode};
 
     #[test]
     fn query_failed_error_format() {

@@ -124,7 +124,7 @@ impl LogfireClientBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{BuilderError, LogfireClientBuilder, Region};
 
     #[test]
     fn token_with_region_detection() {
