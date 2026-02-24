@@ -14,15 +14,28 @@ pub enum BuilderError {
     MissingToken,
 }
 
+/// Default request timeout (30 seconds).
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Builder for creating Logfire clients.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LogfireClientBuilder {
     /// The authentication token.
     token: Option<String>,
     /// Override for the base URL (auto-detected from token if not set).
     base_url: Option<String>,
     /// Request timeout.
-    timeout: Option<Duration>,
+    timeout: Duration,
+}
+
+impl Default for LogfireClientBuilder {
+    fn default() -> Self {
+        Self {
+            token: None,
+            base_url: None,
+            timeout: DEFAULT_TIMEOUT,
+        }
+    }
 }
 
 impl LogfireClientBuilder {
@@ -54,7 +67,7 @@ impl LogfireClientBuilder {
 
     /// Sets the request timeout.
     pub fn timeout(&mut self, timeout: Duration) -> &mut Self {
-        self.timeout = Some(timeout);
+        self.timeout = timeout;
         self
     }
 
