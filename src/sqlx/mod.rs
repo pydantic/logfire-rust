@@ -6,11 +6,10 @@
 //!
 //! # Constraints
 //!
-//! - **No bind parameters**: Queries must be complete SQL strings.
 //! - **Runtime only**: Compile-time `sqlx::query!` macros are not supported.
 //! - **Read-only**: Transactions are no-ops.
 
-mod arguments;
+pub mod arguments;
 mod column;
 mod connection;
 mod error;
@@ -22,7 +21,7 @@ mod type_info;
 mod types;
 mod value;
 
-pub use arguments::LogfireArguments;
+pub use arguments::{LogfireArgumentBuffer, LogfireArguments};
 pub use column::LogfireColumn;
 pub use connection::{LogfireConnectOptions, LogfireConnection};
 pub use row::LogfireRow;
@@ -46,7 +45,7 @@ impl Database for Logfire {
     type Value = LogfireValue;
     type ValueRef<'r> = LogfireValueRef<'r>;
     type Arguments<'q> = LogfireArguments;
-    type ArgumentBuffer<'q> = ();
+    type ArgumentBuffer<'q> = LogfireArgumentBuffer;
     type Statement<'q> = LogfireStatement<'q>;
 
     const NAME: &'static str = "Logfire";

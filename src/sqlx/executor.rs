@@ -15,15 +15,25 @@ impl<'c> Executor<'c> for &'c mut LogfireConnection {
 
     fn fetch_many<'e, 'q: 'e, E>(
         self,
-        query: E,
+        mut query: E,
     ) -> BoxStream<'e, Result<Either<LogfireQueryResult, LogfireRow>, sqlx_core::Error>>
     where
         'c: 'e,
         E: sqlx_core::executor::Execute<'q, Self::Database> + 'q,
     {
-        let sql = query.sql().to_string();
+        let sql_template = query.sql().to_string();
+        let arguments = query.take_arguments();
 
         Box::pin(async_stream::try_stream! {
+            let sql = match arguments {
+                Ok(Some(args)) => args.interpolate(&sql_template),
+                Ok(None) => sql_template,
+                Err(e) => {
+                    Err(sqlx_core::Error::Encode(e))?;
+                    unreachable!()
+                }
+            };
+
             let results = self.client.query_raw(&sql).await?;
             let columns = Arc::new(
                 results
@@ -53,15 +63,22 @@ impl<'c> Executor<'c> for &'c mut LogfireConnection {
 
     fn fetch_optional<'e, 'q: 'e, E>(
         self,
-        query: E,
+        mut query: E,
     ) -> BoxFuture<'e, Result<Option<LogfireRow>, sqlx_core::Error>>
     where
         'c: 'e,
         E: sqlx_core::executor::Execute<'q, Self::Database> + 'q,
     {
-        let sql = query.sql().to_string();
+        let sql_template = query.sql().to_string();
+        let arguments = query.take_arguments();
 
         Box::pin(async move {
+            let sql = match arguments {
+                Ok(Some(args)) => args.interpolate(&sql_template),
+                Ok(None) => sql_template,
+                Err(e) => return Err(sqlx_core::Error::Encode(e)),
+            };
+
             let results = self.client.query_raw(&sql).await?;
 
             if results.rows.is_empty() {
