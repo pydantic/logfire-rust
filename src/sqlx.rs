@@ -4,9 +4,14 @@
 //! familiar sqlx patterns for querying Logfire. The integration wraps the existing
 //! [`LogfireClient`](crate::client::LogfireClient) infrastructure.
 //!
+//! # Compile-time macros
+//!
+//! The `sqlx::query!` macros are supported with SQLite-style parameter handling:
+//! parameter arity is validated at compile time, but parameter types are not
+//! (similar to SQLite). Result column types are fully validated.
+//!
 //! # Constraints
 //!
-//! - **Runtime only**: Compile-time `sqlx::query!` macros are not supported.
 //! - **Read-only**: Transactions are no-ops.
 
 pub mod arguments;
