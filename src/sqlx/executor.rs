@@ -46,6 +46,9 @@ fn count_placeholders(sql: &str) -> usize {
 ///
 /// Used by `describe` to execute a query and retrieve column metadata without
 /// needing actual parameter values.
+///
+/// Note: This does not account for placeholders inside SQL string literals or
+/// comments (e.g., `'$1'` or `-- $1`), which would be incorrectly substituted.
 fn substitute_nulls(sql: &str) -> String {
     let mut result = String::with_capacity(sql.len());
     let mut chars = sql.char_indices().peekable();
