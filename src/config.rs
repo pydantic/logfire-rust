@@ -751,6 +751,12 @@ pub(crate) static LOGFIRE_SERVICE_VERSION: OptionalConfigValue<String> =
 pub(crate) static LOGFIRE_ENVIRONMENT: OptionalConfigValue<String> =
     OptionalConfigValue::new(&["LOGFIRE_ENVIRONMENT"]);
 
+pub(crate) static LOGFIRE_BASE_URL: OptionalConfigValue<String> =
+    OptionalConfigValue::new(&["LOGFIRE_BASE_URL"]);
+
+pub(crate) static LOGFIRE_TOKEN_VALUE: OptionalConfigValue<String> =
+    OptionalConfigValue::new(&["LOGFIRE_TOKEN"]);
+
 #[cfg(test)]
 mod tests {
     use crate::config::SendToLogfire;
