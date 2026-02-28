@@ -1218,7 +1218,10 @@ mod tests {
     #[test]
     fn test_base_url_from_env_var() {
         let env: std::collections::HashMap<String, String> = [
-            ("LOGFIRE_BASE_URL".into(), "https://custom.example.com".into()),
+            (
+                "LOGFIRE_BASE_URL".into(),
+                "https://custom.example.com".into(),
+            ),
             ("LOGFIRE_TOKEN".into(), "test-token".into()),
         ]
         .into_iter()
