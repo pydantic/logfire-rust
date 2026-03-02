@@ -37,8 +37,8 @@ use crate::{
     ConfigureError, LogfireConfigBuilder, ShutdownError,
     bridges::tracing::LogfireTracingLayer,
     config::{
-        LOGFIRE_ENVIRONMENT, LOGFIRE_SEND_TO_LOGFIRE, LOGFIRE_SERVICE_NAME,
-        LOGFIRE_SERVICE_VERSION, SendToLogfire, get_base_url_from_token,
+        LOGFIRE_BASE_URL, LOGFIRE_ENVIRONMENT, LOGFIRE_SEND_TO_LOGFIRE, LOGFIRE_SERVICE_NAME,
+        LOGFIRE_SERVICE_VERSION, LOGFIRE_TOKEN_VALUE, SendToLogfire, get_base_url_from_token,
     },
     internal::{
         env::get_optional_env,
@@ -278,16 +278,18 @@ impl Logfire {
         config: LogfireConfigBuilder,
         env: Option<&HashMap<String, String>>,
     ) -> Result<LogfireParts, ConfigureError> {
-        let mut token = config.token;
-        if token.is_none() {
-            token = get_optional_env("LOGFIRE_TOKEN", env)?;
-        }
+        let mut token = LOGFIRE_TOKEN_VALUE.resolve(config.token, env)?;
 
         #[cfg_attr(
             not(feature = "data-dir"),
             expect(unused_mut, reason = "only mutated on data-dir feature")
         )]
         let mut advanced_options = config.advanced.unwrap_or_default();
+
+        // Resolve LOGFIRE_BASE_URL env var (takes precedence over credentials file)
+        if advanced_options.base_url.is_none() {
+            advanced_options.base_url = LOGFIRE_BASE_URL.resolve(None, env)?;
+        }
 
         // Try loading from credentials file if still no token
         #[cfg(feature = "data-dir")]
@@ -1211,5 +1213,99 @@ mod tests {
             data,
             opentelemetry_sdk::metrics::data::MetricData::ExponentialHistogram(_)
         )
+    }
+
+    #[test]
+    fn test_base_url_from_env_var() {
+        let env: std::collections::HashMap<String, String> = [
+            (
+                "LOGFIRE_BASE_URL".into(),
+                "https://custom.example.com".into(),
+            ),
+            ("LOGFIRE_TOKEN".into(), "test-token".into()),
+        ]
+        .into_iter()
+        .collect();
+
+        let config = crate::configure().local().send_to_logfire(true);
+        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+
+        assert_eq!(
+            md.logfire_base_url.as_deref(),
+            Some("https://custom.example.com")
+        );
+        assert_eq!(md.logfire_token.as_deref(), Some("test-token"));
+    }
+
+    #[test]
+    fn test_base_url_programmatic_overrides_env() {
+        use crate::config::AdvancedOptions;
+
+        let env: std::collections::HashMap<String, String> = [
+            ("LOGFIRE_BASE_URL".into(), "https://env.example.com".into()),
+            ("LOGFIRE_TOKEN".into(), "test-token".into()),
+        ]
+        .into_iter()
+        .collect();
+
+        let config = crate::configure()
+            .local()
+            .send_to_logfire(true)
+            .with_advanced_options(
+                AdvancedOptions::default().with_base_url("https://programmatic.example.com"),
+            );
+        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+
+        assert_eq!(
+            md.logfire_base_url.as_deref(),
+            Some("https://programmatic.example.com")
+        );
+    }
+
+    #[test]
+    fn test_token_from_env_var() {
+        let env: std::collections::HashMap<String, String> =
+            [("LOGFIRE_TOKEN".into(), "env-token".into())]
+                .into_iter()
+                .collect();
+
+        let config = crate::configure().local().send_to_logfire(true);
+        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+
+        assert_eq!(md.logfire_token.as_deref(), Some("env-token"));
+    }
+
+    #[test]
+    #[cfg(feature = "data-dir")]
+    fn test_base_url_env_overrides_credentials_file() {
+        const CREDENTIALS_JSON: &str = r#"{
+    "token": "test_token_123",
+    "project_name": "test-project",
+    "project_url": "https://logfire-eu.pydantic.dev/test-org/test-project",
+    "logfire_api_url": "https://from-credentials.example.com"
+}"#;
+
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let credentials_path = temp_dir.path().join("logfire_credentials.json");
+        std::fs::write(&credentials_path, CREDENTIALS_JSON).unwrap();
+
+        let env: std::collections::HashMap<String, String> = [(
+            "LOGFIRE_BASE_URL".into(),
+            "https://from-env.example.com".into(),
+        )]
+        .into_iter()
+        .collect();
+
+        let config = crate::configure()
+            .local()
+            .send_to_logfire(SendToLogfire::IfTokenPresent)
+            .with_data_dir(temp_dir.path());
+
+        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+
+        assert_eq!(
+            md.logfire_base_url.as_deref(),
+            Some("https://from-env.example.com")
+        );
     }
 }

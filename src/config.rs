@@ -477,6 +477,8 @@ pub(crate) fn get_base_url_from_token(token: &str) -> &'static str {
         .map(|region| region.as_str())
     {
         Some("eu") => EU_REGION.base_url,
+        Some("stagingus") => "https://logfire-us.pydantic.info",
+        Some("stagingeu") => "https://logfire-eu.pydantic.info",
         // fallback to US region if the token / region is not recognized
         Some("us") | _ => US_REGION.base_url,
     }
@@ -751,6 +753,12 @@ pub(crate) static LOGFIRE_SERVICE_VERSION: OptionalConfigValue<String> =
 pub(crate) static LOGFIRE_ENVIRONMENT: OptionalConfigValue<String> =
     OptionalConfigValue::new(&["LOGFIRE_ENVIRONMENT"]);
 
+pub(crate) static LOGFIRE_BASE_URL: OptionalConfigValue<String> =
+    OptionalConfigValue::new(&["LOGFIRE_BASE_URL"]);
+
+pub(crate) static LOGFIRE_TOKEN_VALUE: OptionalConfigValue<String> =
+    OptionalConfigValue::new(&["LOGFIRE_TOKEN"]);
+
 #[cfg(test)]
 mod tests {
     use crate::config::SendToLogfire;
@@ -778,5 +786,37 @@ mod tests {
         let console_options =
             super::ConsoleOptions::default().with_min_log_level(tracing::Level::DEBUG);
         assert_eq!(console_options.min_log_level, tracing::Level::DEBUG);
+    }
+
+    #[test]
+    fn test_get_base_url_from_token_regions() {
+        use super::get_base_url_from_token;
+
+        assert_eq!(
+            get_base_url_from_token("pylf_v1_us_abc123"),
+            "https://logfire-us.pydantic.dev"
+        );
+        assert_eq!(
+            get_base_url_from_token("pylf_v1_eu_abc123"),
+            "https://logfire-eu.pydantic.dev"
+        );
+        assert_eq!(
+            get_base_url_from_token("pylf_v1_stagingus_abc123"),
+            "https://logfire-us.pydantic.info"
+        );
+        assert_eq!(
+            get_base_url_from_token("pylf_v1_stagingeu_abc123"),
+            "https://logfire-eu.pydantic.info"
+        );
+        // unknown region falls back to US
+        assert_eq!(
+            get_base_url_from_token("pylf_v1_unknown_abc123"),
+            "https://logfire-us.pydantic.dev"
+        );
+        // old format token falls back to US
+        assert_eq!(
+            get_base_url_from_token("old_format_token"),
+            "https://logfire-us.pydantic.dev"
+        );
     }
 }
