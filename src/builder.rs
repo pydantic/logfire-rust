@@ -120,23 +120,6 @@ impl LogfireClientBuilder {
             Ok(Region::from_token(token).base_url().to_owned())
         }
     }
-
-    /// Builds sqlx-compatible connect options.
-    #[cfg(feature = "sqlx")]
-    pub fn build_sqlx_options(
-        &self,
-    ) -> Result<crate::sqlx::LogfireConnectOptions, sqlx_core::Error> {
-        crate::sqlx::LogfireConnectOptions::from_builder(self)
-    }
-
-    /// Builds a sqlx-compatible connection.
-    #[cfg(feature = "sqlx")]
-    pub async fn build_sqlx_connection(
-        &self,
-    ) -> Result<crate::sqlx::LogfireConnection, sqlx_core::Error> {
-        use sqlx_core::connection::ConnectOptions;
-        self.build_sqlx_options()?.connect().await
-    }
 }
 
 #[cfg(test)]

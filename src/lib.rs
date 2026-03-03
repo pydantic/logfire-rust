@@ -2,7 +2,5 @@
 
 pub mod builder;
 pub mod client;
-#[cfg(feature = "sqlx")]
-pub mod sqlx;
 pub mod token;
 pub mod types;

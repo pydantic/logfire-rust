@@ -73,43 +73,6 @@ let latency = client
     .await?;
 ```
 
-## sqlx Integration
-
-The examples above use serde to deserialize JSON responses. This works, but the SQL query is just a string - typos in column names or type mismatches only surface at runtime.
-
-With sqlx, queries are checked at compile time:
-
-```toml
-[dependencies]
-logfire-client = { version = "0.1", features = ["sqlx"] }
-```
-
-```rust
-use logfire_client::builder::LogfireClientBuilder;
-
-// The builder can be reused
-let builder = LogfireClientBuilder::from_env()?;
-let pool = builder.build_sqlx_pool().await?;
-
-// This query is verified at compile time:
-// - Column names are checked against the schema
-// - Return types match the struct fields
-// - SQL syntax is validated
-let records = sqlx::query_as!(
-    ExceptionRecord,
-    "SELECT start_timestamp, message, exception_type, exception_message
-     FROM records
-     WHERE service_name = $1
-     LIMIT $2",
-    "api-server",
-    100i64
-)
-.fetch_all(&pool)
-.await?;
-```
-
-If you rename a column or misspell `exception_type`, the compiler catches it before your code runs.
-
 ## Configuration
 
 Set `LOGFIRE_READ_TOKEN` to your read token. The base URL is auto-detected from the token's region (`us`, `eu`, etc.).
