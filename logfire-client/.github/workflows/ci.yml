@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    container:
+      image: nixpkgs/nix-flakes:latest
+    steps:
+      - name: Checkout
+        run: |
+          git config --global --add safe.directory $(pwd)
+          git init
+          git remote add origin https://x-access-token:${{ github.token }}@github.com/$GITHUB_REPOSITORY.git
+          git fetch origin +${{ github.ref }}:refs/remotes/origin/branch
+          git checkout ${{ github.sha }}
+      - name: Check
+        run: |
+          nix develop --command ./check.sh
+      - name: Test
+        run: |
+          nix develop --command cargo test
+      - name: Build
+        run: |-
+          nix build
