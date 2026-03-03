@@ -47,7 +47,7 @@ jobs:
       - name: resolve MSRV
         id: resolve-msrv
         run:
-          echo MSRV=`python -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["rust-version"])'` >> $GITHUB_OUTPUT
+          echo MSRV=`python -c 'import tomllib; print(tomllib.load(open("logfire/Cargo.toml", "rb"))["package"]["rust-version"])'` >> $GITHUB_OUTPUT
 
   test:
     needs: [resolve]
@@ -77,14 +77,16 @@ jobs:
     - uses: taiki-e/install-action@cargo-llvm-cov
 
     - run: cargo llvm-cov --all-features --codecov --output-path codecov.json
+      working-directory: logfire
 
     # rust doctests (not included in cargo llvm-cov, see https://github.com/taiki-e/cargo-llvm-cov/issues/2)
     - run: cargo test --doc
+      working-directory: logfire
 
     - uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: codecov.json
+        files: logfire/codecov.json
         env_vars: RUST_VERSION
 
   # https://github.com/marketplace/actions/alls-green#why used for branch protection checks
@@ -113,5 +115,6 @@ jobs:
     - uses: Swatinem/rust-cache@v2
 
     - run: cargo publish
+      working-directory: logfire
       env:
         CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

@@ -4,7 +4,7 @@
   <a href="https://github.com/pydantic/logfire-rust/actions?query=event%3Apush+branch%3Amain+workflow%3ACI"><img src="https://github.com/pydantic/logfire-rust/actions/workflows/main.yml/badge.svg?event=push" alt="CI" /></a>
   <a href="https://codecov.io/gh/pydantic/logfire-rust"><img src="https://codecov.io/gh/pydantic/logfire-rust/graph/badge.svg?token=735CNGCGFD" alt="codecov" /></a>
   <a href="https://crates.io/crates/logfire"><img src="https://img.shields.io/crates/v/logfire.svg?logo=rust" alt="crates.io" /></a>
-  <a href="https://github.com/pydantic/logfire-rust/blob/main/LICENSE"><img src="https://img.shields.io/github/license/pydantic/logfire-rust.svg" alt="license" /></a>
+  <a href="https://github.com/pydantic/logfire-rust/blob/main/logfire/LICENSE"><img src="https://img.shields.io/github/license/pydantic/logfire-rust.svg" alt="license" /></a>
   <a href="https://github.com/pydantic/logfire"><img src="https://img.shields.io/crates/msrv/logfire.svg?logo=rust" alt="MSRV" /></a>
   <a href="https://logfire.pydantic.dev/docs/join-slack/"><img src="https://img.shields.io/badge/Slack-Join%20Slack-4A154B?logo=slack" alt="Join Slack" /></a>
 </p>
@@ -92,11 +92,11 @@ fn main() -> Result<()> {
 
 (Read the [Logfire concepts documentation](https://logfire.pydantic.dev/docs/concepts/) for additional detail on spans, events, and further Logfire concepts.)
 
-See additional examples in the [examples directory](https://github.com/pydantic/logfire-rust/tree/main/examples):
+See additional examples in the [examples directory](https://github.com/pydantic/logfire-rust/tree/main/logfire/examples):
 
-- [basic](https://github.com/pydantic/logfire-rust/tree/main/examples/basic.rs)
-- [axum webserver](https://github.com/pydantic/logfire-rust/tree/main/examples/axum.rs)
-- [actix webserver](https://github.com/pydantic/logfire-rust/tree/main/examples/actix-web.rs)
+- [basic](https://github.com/pydantic/logfire-rust/tree/main/logfire/examples/basic.rs)
+- [axum webserver](https://github.com/pydantic/logfire-rust/tree/main/logfire/examples/axum.rs)
+- [actix webserver](https://github.com/pydantic/logfire-rust/tree/main/logfire/examples/actix-web.rs)
 
 ### Integration
 
