@@ -60,8 +60,10 @@ impl LogfireClient {
         response.json().await.map_err(ClientError::Deserialize)
     }
 
-    /// Executes a SQL query and returns raw results with column metadata.
-    pub async fn query_raw(&self, sql: &str) -> Result<RowQueryResults, ClientError> {
+    /// Executes a SQL query and returns results as dynamic JSON values.
+    ///
+    /// Use [`Self::query`] to deserialize rows directly into a typed struct.
+    pub async fn query_untyped(&self, sql: &str) -> Result<RowQueryResults, ClientError> {
         let url = format!("{}/v1/query", self.base_url);
         let response = self
             .client
@@ -83,7 +85,7 @@ impl LogfireClient {
 
     /// Executes a SQL query and deserializes each row to the target type.
     pub async fn query<T: DeserializeOwned>(&self, sql: &str) -> Result<Vec<T>, ClientError> {
-        self.query_raw(sql)
+        self.query_untyped(sql)
             .await?
             .rows
             .into_iter()
