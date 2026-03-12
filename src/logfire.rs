@@ -170,7 +170,7 @@ impl Logfire {
         LogfireTracingLayer::new(
             self.tracer.clone(),
             self.enable_tracing_metrics,
-            self.env_filter.clone(),
+            self.env_filter.clone() as _,
         )
     }
 
@@ -469,17 +469,26 @@ impl Logfire {
             filter: Arc::new(filter_builder.build()),
         };
 
-        let filter = Arc::new(
+        let env_filter = Arc::new(
             tracing_subscriber::EnvFilter::builder()
                 .with_default_directive(default_level_filter.into())
                 // but allow the user to override this with `RUST_LOG`
                 .from_env()?,
         );
 
+        let tracing_filter: Arc<
+            dyn tracing_subscriber::layer::Filter<tracing_subscriber::Registry>
+                + Send
+                + Sync
+                + 'static,
+        > = config
+            .custom_tracing_filter
+            .unwrap_or_else(|| env_filter.clone() as _);
+
         let subscriber = tracing_subscriber::registry().with(LogfireTracingLayer::new(
             tracer.clone(),
             advanced_options.enable_tracing_metrics,
-            filter.clone(),
+            tracing_filter,
         ));
 
         if config.install_panic_handler {
@@ -489,7 +498,7 @@ impl Logfire {
         Ok(LogfireParts {
             local: config.local,
             tracer,
-            env_filter: filter,
+            env_filter,
             subscriber: Arc::new(subscriber),
             tracer_provider,
             meter_provider,

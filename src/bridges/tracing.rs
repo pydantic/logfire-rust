@@ -8,7 +8,7 @@ use opentelemetry::{
 };
 use tracing::{Subscriber, field::Visit};
 use tracing_opentelemetry::{OtelData, PreSampledTracer};
-use tracing_subscriber::{EnvFilter, Layer, filter::Filtered, layer::Filter, registry::LookupSpan};
+use tracing_subscriber::{Layer, filter::Filtered, layer::Filter, registry::LookupSpan};
 
 use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer};
 
@@ -29,7 +29,7 @@ where
     pub(crate) fn new(
         tracer: LogfireTracer,
         enable_tracing_metrics: bool,
-        filter: Arc<EnvFilter>,
+        filter: Arc<dyn Filter<S> + Send + Sync + 'static>,
     ) -> Self {
         let otel_layer = tracing_opentelemetry::layer()
             .with_error_records_to_exceptions(true)
@@ -44,7 +44,7 @@ where
             metrics_layer,
         };
 
-        Self(inner.with_filter(filter as Arc<dyn Filter<S> + Send + Sync + 'static>))
+        Self(inner.with_filter(filter))
     }
 }
 
@@ -2477,5 +2477,147 @@ mod tests {
             },
         ]
         "#);
+    }
+
+    #[test]
+    fn test_with_tracing_filter_custom_filter() {
+        // Test that `with_tracing_filter` replaces the default EnvFilter
+        // and only passes events matching the custom filter.
+        let log_exporter = InMemoryLogExporter::default();
+
+        let logfire = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_advanced_options(
+                AdvancedOptions::default()
+                    .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
+            )
+            // Use a custom filter that only allows WARN and above
+            .with_tracing_filter(LevelFilter::WARN)
+            .finish()
+            .unwrap();
+
+        let guard = set_local_logfire(logfire);
+
+        {
+            tracing::trace!("trace event should be filtered");
+            tracing::debug!("debug event should be filtered");
+            tracing::info!("info event should be filtered");
+            tracing::warn!("warn event should pass");
+            tracing::error!("error event should pass");
+        }
+
+        guard.shutdown().unwrap();
+
+        let logs = log_exporter.get_emitted_logs().unwrap();
+        let log_bodies: Vec<String> = logs
+            .iter()
+            .filter_map(|l| l.record.body().map(|b| format!("{b:?}")))
+            .collect();
+
+        assert!(
+            !log_bodies.iter().any(|b| b.contains("info")),
+            "INFO event should have been filtered out, got: {log_bodies:?}"
+        );
+        assert!(
+            !log_bodies.iter().any(|b| b.contains("trace")),
+            "TRACE event should have been filtered out, got: {log_bodies:?}"
+        );
+        assert!(
+            log_bodies.iter().any(|b| b.contains("warn")),
+            "WARN event should have passed, got: {log_bodies:?}"
+        );
+        assert!(
+            log_bodies.iter().any(|b| b.contains("error")),
+            "ERROR event should have passed, got: {log_bodies:?}"
+        );
+    }
+
+    #[test]
+    fn test_with_tracing_filter_reload() {
+        // Test that a `reload::Layer` filter can be dynamically swapped
+        // from INFO down to DEBUG and back (the fusionfire use case).
+        use tracing_subscriber::{EnvFilter, reload};
+
+        let log_exporter = InMemoryLogExporter::default();
+
+        let initial_filter = EnvFilter::new("info");
+        let (filter, reload_handle) = reload::Layer::new(initial_filter);
+
+        let logfire = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_advanced_options(
+                AdvancedOptions::default()
+                    .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
+            )
+            .with_tracing_filter(filter)
+            .finish()
+            .unwrap();
+
+        let guard = set_local_logfire(logfire);
+
+        // Phase 1: filter is INFO — DEBUG events should be dropped
+        tracing::info!("info before reload");
+        tracing::debug!("debug before reload should be filtered");
+
+        // Phase 2: reload to DEBUG — DEBUG events should now pass
+        reload_handle
+            .modify(|f| *f = EnvFilter::new("debug"))
+            .unwrap();
+
+        tracing::info!("info after reload");
+        tracing::debug!("debug after reload");
+        tracing::trace!("trace after reload should be filtered");
+
+        // Phase 3: reload back to INFO — DEBUG events should be dropped again
+        reload_handle
+            .modify(|f| *f = EnvFilter::new("info"))
+            .unwrap();
+
+        tracing::info!("info after restore");
+        tracing::debug!("debug after restore should be filtered");
+
+        guard.shutdown().unwrap();
+
+        let logs = log_exporter.get_emitted_logs().unwrap();
+        let log_bodies: Vec<String> = logs
+            .iter()
+            .filter_map(|l| l.record.body().map(|b| format!("{b:?}")))
+            .collect();
+
+        // Phase 1 assertions
+        assert!(
+            log_bodies.iter().any(|b| b.contains("info before")),
+            "INFO event before reload should have passed, got: {log_bodies:?}"
+        );
+        assert!(
+            !log_bodies.iter().any(|b| b.contains("debug before")),
+            "DEBUG event before reload should have been filtered, got: {log_bodies:?}"
+        );
+
+        // Phase 2 assertions
+        assert!(
+            log_bodies.iter().any(|b| b.contains("info after reload")),
+            "INFO event after reload should have passed, got: {log_bodies:?}"
+        );
+        assert!(
+            log_bodies.iter().any(|b| b.contains("debug after reload")),
+            "DEBUG event after reload should have passed, got: {log_bodies:?}"
+        );
+        assert!(
+            !log_bodies.iter().any(|b| b.contains("trace after")),
+            "TRACE event after reload should have been filtered, got: {log_bodies:?}"
+        );
+
+        // Phase 3 assertions — filter restored to INFO
+        assert!(
+            log_bodies.iter().any(|b| b.contains("info after restore")),
+            "INFO event after restore should have passed, got: {log_bodies:?}"
+        );
+        assert!(
+            !log_bodies.iter().any(|b| b.contains("debug after restore")),
+            "DEBUG event after restore should have been filtered, got: {log_bodies:?}"
+        );
     }
 }

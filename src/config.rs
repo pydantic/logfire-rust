@@ -20,6 +20,8 @@ use opentelemetry_sdk::{
 use regex::Regex;
 use tracing::{Level, level_filters::LevelFilter};
 
+use tracing_subscriber::layer::Filter;
+
 use crate::{ConfigureError, internal::env::get_optional_env, logfire::Logfire};
 
 /// Builder for logfire configuration, returned from [`logfire::configure()`][crate::configure].
@@ -52,6 +54,8 @@ pub struct LogfireConfigBuilder {
     // Rust specific options
     pub(crate) install_panic_handler: bool,
     pub(crate) default_level_filter: Option<LevelFilter>,
+    pub(crate) custom_tracing_filter:
+        Option<Arc<dyn Filter<tracing_subscriber::Registry> + Send + Sync + 'static>>,
 }
 
 impl Default for LogfireConfigBuilder {
@@ -70,6 +74,7 @@ impl Default for LogfireConfigBuilder {
             metrics: None,
             install_panic_handler: true,
             default_level_filter: None,
+            custom_tracing_filter: None,
         }
     }
 }
@@ -186,6 +191,38 @@ impl LogfireConfigBuilder {
     /// Set to `None` to disable metrics.
     pub fn with_metrics(mut self, metrics: Option<MetricsOptions>) -> Self {
         self.metrics = metrics;
+        self
+    }
+
+    /// Provide a custom tracing filter to use instead of the default [`EnvFilter`][tracing_subscriber::EnvFilter].
+    ///
+    /// When set, this filter replaces the default filter that Logfire constructs from
+    /// [`with_default_level_filter`][Self::with_default_level_filter] and `RUST_LOG`.
+    /// This is useful for dynamic filter reloading, e.g. via [`tracing_subscriber::reload::Layer`].
+    ///
+    /// # Example — reloadable filter
+    ///
+    /// ```rust,no_run
+    /// use tracing_subscriber::{EnvFilter, reload};
+    ///
+    /// let initial_filter = EnvFilter::builder()
+    ///     .with_default_directive(tracing::level_filters::LevelFilter::INFO.into())
+    ///     .from_env_lossy();
+    /// let (filter, reload_handle) = reload::Layer::new(initial_filter);
+    ///
+    /// let logfire = logfire::configure()
+    ///     .with_tracing_filter(filter)
+    ///     .finish()
+    ///     .expect("Failed to configure logfire");
+    ///
+    /// // Later, to switch to debug:
+    /// reload_handle.modify(|f| *f = EnvFilter::new("debug")).unwrap();
+    /// ```
+    pub fn with_tracing_filter<F>(mut self, filter: F) -> Self
+    where
+        F: Filter<tracing_subscriber::Registry> + Send + Sync + 'static,
+    {
+        self.custom_tracing_filter = Some(Arc::new(filter));
         self
     }
 
