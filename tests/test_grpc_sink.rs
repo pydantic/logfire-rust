@@ -254,7 +254,7 @@ async fn test_grpc_protobuf_export() {
                                         AnyValue {
                                             value: Some(
                                                 StringValue(
-                                                    "0.30.0",
+                                                    "0.31.0",
                                                 ),
                                             ),
                                         },
@@ -307,7 +307,7 @@ async fn test_grpc_protobuf_export() {
                                     ],
                                     trace_state: "",
                                     parent_span_id: [],
-                                    flags: 1,
+                                    flags: 257,
                                     name: "grpc_test_span",
                                     kind: Internal,
                                     start_time_unix_nano: 0,
@@ -523,7 +523,7 @@ async fn test_grpc_protobuf_export() {
                                         AnyValue {
                                             value: Some(
                                                 StringValue(
-                                                    "0.30.0",
+                                                    "0.31.0",
                                                 ),
                                             ),
                                         },

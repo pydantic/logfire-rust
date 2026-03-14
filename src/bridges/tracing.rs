@@ -576,6 +576,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f0,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "root span",
                 start_time: SystemTime {
@@ -682,6 +683,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f2,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "hello world span",
                 start_time: SystemTime {
@@ -798,6 +800,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f0,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "hello world span",
                 start_time: SystemTime {
@@ -920,6 +923,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f4,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "debug span",
                 start_time: SystemTime {
@@ -1036,6 +1040,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f0,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "debug span",
                 start_time: SystemTime {
@@ -1158,6 +1163,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f6,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "debug span with explicit parent",
                 start_time: SystemTime {
@@ -1274,6 +1280,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f0,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "debug span with explicit parent",
                 start_time: SystemTime {
@@ -1396,6 +1403,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 0000000000000000,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "root span",
                 start_time: SystemTime {
