@@ -18,6 +18,10 @@ pub enum Region {
     Us,
     /// EU production region.
     Eu,
+    /// US staging region.
+    StagingUs,
+    /// EU staging region.
+    StagingEu,
     /// Custom base URL for self-hosted deployments.
     Other(String),
 }
@@ -27,6 +31,10 @@ impl Region {
     pub const US_URL: &str = "https://logfire-us.pydantic.dev";
     /// Base URL for the EU production region.
     pub const EU_URL: &str = "https://logfire-eu.pydantic.dev";
+    /// Base URL for the US staging region.
+    pub const STAGING_US_URL: &str = "https://logfire-us.pydantic.info";
+    /// Base URL for the EU staging region.
+    pub const STAGING_EU_URL: &str = "https://logfire-eu.pydantic.info";
 
     /// Detects the region from a Logfire token.
     ///
@@ -35,6 +43,8 @@ impl Region {
         match parse_region(token) {
             Some("us") => Self::Us,
             Some("eu") => Self::Eu,
+            Some("stagingus") => Self::StagingUs,
+            Some("stagingeu") => Self::StagingEu,
             _ => Self::Us,
         }
     }
@@ -44,6 +54,8 @@ impl Region {
         match self {
             Self::Us => Self::US_URL,
             Self::Eu => Self::EU_URL,
+            Self::StagingUs => Self::STAGING_US_URL,
+            Self::StagingEu => Self::STAGING_EU_URL,
             Self::Other(url) => url,
         }
     }
@@ -71,6 +83,14 @@ mod tests {
     fn from_token_parses_regions() {
         assert_eq!(Region::from_token("pylf_v1_us_abc123"), Region::Us);
         assert_eq!(Region::from_token("pylf_v1_eu_abc123"), Region::Eu);
+        assert_eq!(
+            Region::from_token("pylf_v1_stagingus_abc123"),
+            Region::StagingUs
+        );
+        assert_eq!(
+            Region::from_token("pylf_v1_stagingeu_abc123"),
+            Region::StagingEu
+        );
     }
 
     #[test]
