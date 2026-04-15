@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["logfire", "logfire-client", "logfire-core"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+repository = "https://github.com/pydantic/logfire-rust"
+
+[workspace.dependencies]
+logfire-core = { path = "logfire-core", version = "0.1.0" }
+thiserror = "2"

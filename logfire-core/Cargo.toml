@@ -1,0 +1,16 @@
+[package]
+name = "logfire-core"
+version = "0.1.0"
+description = "Shared types for Pydantic Logfire SDKs"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[lints.rust]
+missing_docs = "warn"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
