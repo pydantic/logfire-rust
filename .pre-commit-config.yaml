@@ -14,19 +14,19 @@ repos:
   hooks:
   - id: format
     name: Format
-    entry: cargo fmt
+    entry: cargo fmt --manifest-path logfire/Cargo.toml
     types: [rust]
     language: system
     pass_filenames: false
   - id: clippy
     name: Clippy
-    entry: cargo clippy --all-features -- -D warnings
+    entry: cargo clippy --manifest-path logfire/Cargo.toml --all-features -- -D warnings
     types: [rust]
     language: system
     pass_filenames: false
   - id: docs
     name: Check docs
-    entry: env RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --no-deps
+    entry: env RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --manifest-path logfire/Cargo.toml --no-deps
     types: [rust]
     language: system
     pass_filenames: false
