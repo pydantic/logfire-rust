@@ -41,15 +41,22 @@ pub struct LogfireClient {
 
 impl LogfireClient {
     /// Sends a GET request to the specified path and deserializes the JSON response.
-    async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T, ClientError> {
+    async fn get_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query_params: &[(&str, &str)],
+    ) -> Result<T, ClientError> {
         let url = format!("{}{}", self.base_url, path);
-        let response = self
+        let mut request = self
             .client
             .get(&url)
-            .header(reqwest::header::ACCEPT, "application/json")
-            .send()
-            .await
-            .map_err(ClientError::Request)?;
+            .header(reqwest::header::ACCEPT, "application/json");
+
+        if !query_params.is_empty() {
+            request = request.query(query_params);
+        }
+
+        let response = request.send().await.map_err(ClientError::Request)?;
 
         let status = response.status();
         if !status.is_success() {
@@ -64,23 +71,8 @@ impl LogfireClient {
     ///
     /// Use [`Self::query`] to deserialize rows directly into a typed struct.
     pub async fn query_untyped(&self, sql: &str) -> Result<RowQueryResults, ClientError> {
-        let url = format!("{}/v1/query", self.base_url);
-        let response = self
-            .client
-            .get(&url)
-            .header(reqwest::header::ACCEPT, "application/json")
-            .query(&[("sql", sql), ("json_rows", "true")])
-            .send()
+        self.get_json("/v1/query", &[("sql", sql), ("json_rows", "true")])
             .await
-            .map_err(ClientError::Request)?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(ClientError::QueryFailed { status, body });
-        }
-
-        response.json().await.map_err(ClientError::Deserialize)
     }
 
     /// Executes a SQL query and deserializes each row to the target type.
@@ -99,12 +91,12 @@ impl LogfireClient {
 
     /// Fetches information about the read token used for authentication.
     pub async fn read_token_info(&self) -> Result<ReadTokenInfo, ClientError> {
-        self.get_json("/v1/read-token-info").await
+        self.get_json("/v1/read-token-info", &[]).await
     }
 
     /// Fetches schema information for available tables.
     pub async fn schemas(&self) -> Result<SchemasResponse, ClientError> {
-        self.get_json("/v1/schemas").await
+        self.get_json("/v1/schemas", &[]).await
     }
 }
 
