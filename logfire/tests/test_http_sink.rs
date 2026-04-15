@@ -191,7 +191,7 @@ async fn test_http_protobuf_export() {
                                             AnyValue {
                                                 value: Some(
                                                     StringValue(
-                                                        "tests/test_http_sink.rs",
+                                                        "logfire/tests/test_http_sink.rs",
                                                     ),
                                                 ),
                                             },
@@ -507,7 +507,7 @@ async fn test_http_json_export() {
                                             AnyValue {
                                                 value: Some(
                                                     StringValue(
-                                                        "tests/test_http_sink.rs",
+                                                        "logfire/tests/test_http_sink.rs",
                                                     ),
                                                 ),
                                             },

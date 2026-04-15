@@ -169,7 +169,7 @@ mod tests {
                                     ),
                                     String(
                                         Owned(
-                                            "src/bridges/log.rs",
+                                            "logfire/src/bridges/log.rs",
                                         ),
                                     ),
                                 ),
@@ -302,7 +302,7 @@ mod tests {
                                     ),
                                     String(
                                         Owned(
-                                            "src/bridges/log.rs",
+                                            "logfire/src/bridges/log.rs",
                                         ),
                                     ),
                                 ),
@@ -435,7 +435,7 @@ mod tests {
                                     ),
                                     String(
                                         Owned(
-                                            "src/bridges/log.rs",
+                                            "logfire/src/bridges/log.rs",
                                         ),
                                     ),
                                 ),
@@ -568,7 +568,7 @@ mod tests {
                                     ),
                                     String(
                                         Owned(
-                                            "src/bridges/log.rs",
+                                            "logfire/src/bridges/log.rs",
                                         ),
                                     ),
                                 ),
@@ -701,7 +701,7 @@ mod tests {
                                     ),
                                     String(
                                         Owned(
-                                            "src/bridges/log.rs",
+                                            "logfire/src/bridges/log.rs",
                                         ),
                                     ),
                                 ),
@@ -834,7 +834,7 @@ mod tests {
                                     ),
                                     String(
                                         Owned(
-                                            "src/bridges/log.rs",
+                                            "logfire/src/bridges/log.rs",
                                         ),
                                     ),
                                 ),
@@ -967,7 +967,7 @@ mod tests {
                                     ),
                                     String(
                                         Owned(
-                                            "src/bridges/log.rs",
+                                            "logfire/src/bridges/log.rs",
                                         ),
                                     ),
                                 ),

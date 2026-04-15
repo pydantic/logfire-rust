@@ -11,6 +11,8 @@ use std::{
 #[cfg(feature = "data-dir")]
 use std::path::{Path, PathBuf};
 
+use logfire_core::Region;
+
 use opentelemetry::{
     Context,
     logs::{LoggerProvider as _, Severity},
@@ -38,7 +40,7 @@ use crate::{
     bridges::tracing::LogfireTracingLayer,
     config::{
         LOGFIRE_BASE_URL, LOGFIRE_ENVIRONMENT, LOGFIRE_SEND_TO_LOGFIRE, LOGFIRE_SERVICE_NAME,
-        LOGFIRE_SERVICE_VERSION, LOGFIRE_TOKEN_VALUE, SendToLogfire, get_base_url_from_token,
+        LOGFIRE_SERVICE_VERSION, LOGFIRE_TOKEN_VALUE, SendToLogfire,
     },
     internal::{
         env::get_optional_env,
@@ -369,14 +371,13 @@ impl Logfire {
             Some(
                 advanced_options
                     .base_url
-                    .as_deref()
-                    .unwrap_or_else(|| get_base_url_from_token(token)),
+                    .unwrap_or_else(|| Region::from_token(token).base_url().to_owned()),
             )
         } else {
             None
         };
 
-        let shutdown_sender = if let Some(logfire_base_url) = logfire_base_url {
+        let shutdown_sender = if let Some(ref logfire_base_url) = logfire_base_url {
             let (shutdown_tx, span_processor, log_processor, metrics_processor) =
                 spawn_runtime_and_exporters(
                     logfire_base_url,
@@ -500,7 +501,7 @@ impl Logfire {
             metadata: TestMetadata {
                 send_to_logfire,
                 logfire_token: token,
-                logfire_base_url: logfire_base_url.map(str::to_string),
+                logfire_base_url,
             },
         })
     }

@@ -108,7 +108,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "tests/test_basic_exports.rs",
+                            "logfire/tests/test_basic_exports.rs",
                         ),
                     ),
                 },
@@ -234,7 +234,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "tests/test_basic_exports.rs",
+                            "logfire/tests/test_basic_exports.rs",
                         ),
                     ),
                 },
@@ -390,7 +390,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "tests/test_basic_exports.rs",
+                            "logfire/tests/test_basic_exports.rs",
                         ),
                     ),
                 },
@@ -552,7 +552,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "tests/test_basic_exports.rs",
+                            "logfire/tests/test_basic_exports.rs",
                         ),
                     ),
                 },
@@ -688,7 +688,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "tests/test_basic_exports.rs",
+                            "logfire/tests/test_basic_exports.rs",
                         ),
                     ),
                 },
@@ -830,7 +830,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "tests/test_basic_exports.rs",
+                            "logfire/tests/test_basic_exports.rs",
                         ),
                     ),
                 },
@@ -966,7 +966,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "tests/test_basic_exports.rs",
+                            "logfire/tests/test_basic_exports.rs",
                         ),
                     ),
                 },
@@ -1108,7 +1108,7 @@ fn test_basic_span() {
                     ),
                     value: String(
                         Static(
-                            "tests/test_basic_exports.rs",
+                            "logfire/tests/test_basic_exports.rs",
                         ),
                     ),
                 },
@@ -1290,7 +1290,7 @@ fn test_basic_span() {
                                 ),
                                 String(
                                     Static(
-                                        "tests/test_basic_exports.rs",
+                                        "logfire/tests/test_basic_exports.rs",
                                     ),
                                 ),
                             ),
@@ -1445,7 +1445,7 @@ fn test_basic_span() {
                                 ),
                                 String(
                                     Owned(
-                                        "tests/test_basic_exports.rs",
+                                        "logfire/tests/test_basic_exports.rs",
                                     ),
                                 ),
                             ),

@@ -1,15 +1,17 @@
 [package]
 name = "logfire"
 version = "0.9.0"
-edition = "2024"
-license = "MIT"
-rust-version = "1.85"
 description = "Rust SDK for Pydantic Logfire"
 documentation = "https://docs.rs/logfire"
 homepage = "https://github.com/pydantic/logfire-rust"
-repository = "https://github.com/pydantic/logfire-rust"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
 
 [dependencies]
+logfire-core.workspace = true
+
 log = "0.4"
 env_filter = "0.1"
 
@@ -47,13 +49,12 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-opentelemetry = "0.31"
 
-thiserror = "2"
+thiserror.workspace = true
 
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 nu-ansi-term = "0.50.1"
 chrono = "0.4.39"
-regex = "1.11.1"
 
 [dev-dependencies]
 async-trait = "0.1.88"

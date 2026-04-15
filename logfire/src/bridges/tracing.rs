@@ -593,7 +593,7 @@ mod tests {
                         ),
                         value: String(
                             Static(
-                                "src/bridges/tracing.rs",
+                                "logfire/src/bridges/tracing.rs",
                             ),
                         ),
                     },
@@ -699,7 +699,7 @@ mod tests {
                         ),
                         value: String(
                             Static(
-                                "src/bridges/tracing.rs",
+                                "logfire/src/bridges/tracing.rs",
                             ),
                         ),
                     },
@@ -815,7 +815,7 @@ mod tests {
                         ),
                         value: String(
                             Static(
-                                "src/bridges/tracing.rs",
+                                "logfire/src/bridges/tracing.rs",
                             ),
                         ),
                     },
@@ -937,7 +937,7 @@ mod tests {
                         ),
                         value: String(
                             Static(
-                                "src/bridges/tracing.rs",
+                                "logfire/src/bridges/tracing.rs",
                             ),
                         ),
                     },
@@ -1053,7 +1053,7 @@ mod tests {
                         ),
                         value: String(
                             Static(
-                                "src/bridges/tracing.rs",
+                                "logfire/src/bridges/tracing.rs",
                             ),
                         ),
                     },
@@ -1175,7 +1175,7 @@ mod tests {
                         ),
                         value: String(
                             Static(
-                                "src/bridges/tracing.rs",
+                                "logfire/src/bridges/tracing.rs",
                             ),
                         ),
                     },
@@ -1291,7 +1291,7 @@ mod tests {
                         ),
                         value: String(
                             Static(
-                                "src/bridges/tracing.rs",
+                                "logfire/src/bridges/tracing.rs",
                             ),
                         ),
                     },
@@ -1413,7 +1413,7 @@ mod tests {
                         ),
                         value: String(
                             Static(
-                                "src/bridges/tracing.rs",
+                                "logfire/src/bridges/tracing.rs",
                             ),
                         ),
                     },
@@ -1561,7 +1561,7 @@ mod tests {
                                     ),
                                     String(
                                         Static(
-                                            "src/bridges/tracing.rs",
+                                            "logfire/src/bridges/tracing.rs",
                                         ),
                                     ),
                                 ),
@@ -1694,7 +1694,7 @@ mod tests {
                                     ),
                                     String(
                                         Static(
-                                            "src/bridges/tracing.rs",
+                                            "logfire/src/bridges/tracing.rs",
                                         ),
                                     ),
                                 ),
@@ -1837,7 +1837,7 @@ mod tests {
                                     ),
                                     String(
                                         Static(
-                                            "src/bridges/tracing.rs",
+                                            "logfire/src/bridges/tracing.rs",
                                         ),
                                     ),
                                 ),
@@ -1970,7 +1970,7 @@ mod tests {
                                     ),
                                     String(
                                         Static(
-                                            "src/bridges/tracing.rs",
+                                            "logfire/src/bridges/tracing.rs",
                                         ),
                                     ),
                                 ),

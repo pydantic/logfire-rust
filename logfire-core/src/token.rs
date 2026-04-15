@@ -4,6 +4,7 @@
 ///
 /// Token format: `pylf_v{version}_{region}_{token}`
 /// Returns `None` if the token format is invalid.
+#[allow(clippy::must_use_candidate)]
 pub fn parse_region(token: &str) -> Option<&str> {
     let rest = token.strip_prefix("pylf_v")?;
     let (_, rest) = rest.split_once('_')?;
@@ -42,11 +43,10 @@ impl Region {
     #[must_use]
     pub fn from_token(token: &str) -> Self {
         match parse_region(token) {
-            Some("us") => Self::Us,
             Some("eu") => Self::Eu,
             Some("stagingus") => Self::StagingUs,
             Some("stagingeu") => Self::StagingEu,
-            _ => Self::Us,
+            Some("us" | _) | None => Self::Us,
         }
     }
 
