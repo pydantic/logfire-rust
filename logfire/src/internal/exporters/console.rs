@@ -406,17 +406,17 @@ impl ConsoleWriter {
         }
 
         #[expect(deprecated)]
-        if self.options.include_timestamps {
-            if let Some(timestamp) = log_record.timestamp() {
-                let timestamp: DateTime<Utc> = timestamp.into();
-                write!(
-                    w,
-                    "{}",
-                    self.theme
-                        .dimmed
-                        .paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-                )?;
-            }
+        if self.options.include_timestamps
+            && let Some(timestamp) = log_record.timestamp()
+        {
+            let timestamp: DateTime<Utc> = timestamp.into();
+            write!(
+                w,
+                "{}",
+                self.theme
+                    .dimmed
+                    .paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
+            )?;
         }
 
         if let Some(level) = log_record.severity_number() {

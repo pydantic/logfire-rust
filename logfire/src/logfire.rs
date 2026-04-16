@@ -11,6 +11,8 @@ use std::{
 #[cfg(feature = "data-dir")]
 use std::path::{Path, PathBuf};
 
+use logfire_core::Region;
+
 use opentelemetry::{
     Context,
     logs::{LoggerProvider as _, Severity},
@@ -38,7 +40,7 @@ use crate::{
     bridges::tracing::LogfireTracingLayer,
     config::{
         LOGFIRE_BASE_URL, LOGFIRE_ENVIRONMENT, LOGFIRE_SEND_TO_LOGFIRE, LOGFIRE_SERVICE_NAME,
-        LOGFIRE_SERVICE_VERSION, LOGFIRE_TOKEN_VALUE, SendToLogfire, get_base_url_from_token,
+        LOGFIRE_SERVICE_VERSION, LOGFIRE_TOKEN_VALUE, SendToLogfire,
     },
     internal::{
         env::get_optional_env,
@@ -128,10 +130,10 @@ impl Logfire {
         self.logger_provider.shutdown()?;
 
         // Send shutdown signal to the background runtime thread
-        if let Ok(mut sender_guard) = self.shutdown_sender.lock() {
-            if let Some(sender) = sender_guard.take() {
-                let _ = sender.send(());
-            }
+        if let Ok(mut sender_guard) = self.shutdown_sender.lock()
+            && let Some(sender) = sender_guard.take()
+        {
+            let _ = sender.send(());
         }
 
         Ok(())
@@ -293,15 +295,14 @@ impl Logfire {
 
         // Try loading from credentials file if still no token
         #[cfg(feature = "data-dir")]
-        if token.is_none() {
-            if let Some(credentials) =
+        if token.is_none()
+            && let Some(credentials) =
                 Self::load_token_from_credentials_file(config.data_dir.as_deref(), env)?
-            {
-                token = Some(credentials.token);
-                advanced_options.base_url = advanced_options
-                    .base_url
-                    .or(Some(credentials.logfire_api_url));
-            }
+        {
+            token = Some(credentials.token);
+            advanced_options.base_url = advanced_options
+                .base_url
+                .or(Some(credentials.logfire_api_url));
         }
 
         let send_to_logfire = LOGFIRE_SEND_TO_LOGFIRE.resolve(config.send_to_logfire, env)?;
@@ -369,14 +370,13 @@ impl Logfire {
             Some(
                 advanced_options
                     .base_url
-                    .as_deref()
-                    .unwrap_or_else(|| get_base_url_from_token(token)),
+                    .unwrap_or_else(|| Region::from_token(token).base_url().to_owned()),
             )
         } else {
             None
         };
 
-        let shutdown_sender = if let Some(logfire_base_url) = logfire_base_url {
+        let shutdown_sender = if let Some(ref logfire_base_url) = logfire_base_url {
             let (shutdown_tx, span_processor, log_processor, metrics_processor) =
                 spawn_runtime_and_exporters(
                     logfire_base_url,
@@ -500,7 +500,7 @@ impl Logfire {
             metadata: TestMetadata {
                 send_to_logfire,
                 logfire_token: token,
-                logfire_base_url: logfire_base_url.map(str::to_string),
+                logfire_base_url,
             },
         })
     }

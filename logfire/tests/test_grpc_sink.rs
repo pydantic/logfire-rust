@@ -331,7 +331,7 @@ async fn test_grpc_protobuf_export() {
                                                 AnyValue {
                                                     value: Some(
                                                         StringValue(
-                                                            "tests/test_grpc_sink.rs",
+                                                            "logfire/tests/test_grpc_sink.rs",
                                                         ),
                                                     ),
                                                 },
@@ -566,7 +566,7 @@ async fn test_grpc_protobuf_export() {
                                                 AnyValue {
                                                     value: Some(
                                                         StringValue(
-                                                            "tests/test_grpc_sink.rs",
+                                                            "logfire/tests/test_grpc_sink.rs",
                                                         ),
                                                     ),
                                                 },
@@ -686,7 +686,7 @@ async fn test_grpc_protobuf_export() {
                                                 AnyValue {
                                                     value: Some(
                                                         StringValue(
-                                                            "tests/test_grpc_sink.rs",
+                                                            "logfire/tests/test_grpc_sink.rs",
                                                         ),
                                                     ),
                                                 },

@@ -17,7 +17,6 @@ use opentelemetry_sdk::{
     metrics::reader::MetricReader,
     trace::{IdGenerator, SpanProcessor},
 };
-use regex::Regex;
 use tracing::{Level, level_filters::LevelFilter};
 
 use crate::{ConfigureError, internal::env::get_optional_env, logfire::Logfire};
@@ -447,43 +446,6 @@ impl AdvancedOptions {
     }
 }
 
-struct RegionData {
-    base_url: &'static str,
-    #[expect(dead_code)] // not used for the moment
-    gcp_region: &'static str,
-}
-
-const US_REGION: RegionData = RegionData {
-    base_url: "https://logfire-us.pydantic.dev",
-    gcp_region: "us-east4",
-};
-
-const EU_REGION: RegionData = RegionData {
-    base_url: "https://logfire-eu.pydantic.dev",
-    gcp_region: "europe-west4",
-};
-
-/// Get the base API URL from the token's region.
-pub(crate) fn get_base_url_from_token(token: &str) -> &'static str {
-    let pydantic_logfire_token_pattern = Regex::new(
-        r"^(?P<safe_part>pylf_v(?P<version>[0-9]+)_(?P<region>[a-z]+)_)(?P<token>[a-zA-Z0-9]+)$",
-    )
-    .expect("token regex is known to be valid");
-
-    #[expect(clippy::wildcard_in_or_patterns, reason = "being explicit about us")]
-    match pydantic_logfire_token_pattern
-        .captures(token)
-        .and_then(|captures| captures.name("region"))
-        .map(|region| region.as_str())
-    {
-        Some("eu") => EU_REGION.base_url,
-        Some("stagingus") => "https://logfire-us.pydantic.info",
-        Some("stagingeu") => "https://logfire-eu.pydantic.info",
-        // fallback to US region if the token / region is not recognized
-        Some("us") | _ => US_REGION.base_url,
-    }
-}
-
 /// Configuration of metrics.
 ///
 /// This only has one option for now, but it's a place to add more related options in the future.
@@ -786,37 +748,5 @@ mod tests {
         let console_options =
             super::ConsoleOptions::default().with_min_log_level(tracing::Level::DEBUG);
         assert_eq!(console_options.min_log_level, tracing::Level::DEBUG);
-    }
-
-    #[test]
-    fn test_get_base_url_from_token_regions() {
-        use super::get_base_url_from_token;
-
-        assert_eq!(
-            get_base_url_from_token("pylf_v1_us_abc123"),
-            "https://logfire-us.pydantic.dev"
-        );
-        assert_eq!(
-            get_base_url_from_token("pylf_v1_eu_abc123"),
-            "https://logfire-eu.pydantic.dev"
-        );
-        assert_eq!(
-            get_base_url_from_token("pylf_v1_stagingus_abc123"),
-            "https://logfire-us.pydantic.info"
-        );
-        assert_eq!(
-            get_base_url_from_token("pylf_v1_stagingeu_abc123"),
-            "https://logfire-eu.pydantic.info"
-        );
-        // unknown region falls back to US
-        assert_eq!(
-            get_base_url_from_token("pylf_v1_unknown_abc123"),
-            "https://logfire-us.pydantic.dev"
-        );
-        // old format token falls back to US
-        assert_eq!(
-            get_base_url_from_token("old_format_token"),
-            "https://logfire-us.pydantic.dev"
-        );
     }
 }
