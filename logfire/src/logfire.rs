@@ -130,10 +130,10 @@ impl Logfire {
         self.logger_provider.shutdown()?;
 
         // Send shutdown signal to the background runtime thread
-        if let Ok(mut sender_guard) = self.shutdown_sender.lock() {
-            if let Some(sender) = sender_guard.take() {
-                let _ = sender.send(());
-            }
+        if let Ok(mut sender_guard) = self.shutdown_sender.lock()
+            && let Some(sender) = sender_guard.take()
+        {
+            let _ = sender.send(());
         }
 
         Ok(())
@@ -295,15 +295,14 @@ impl Logfire {
 
         // Try loading from credentials file if still no token
         #[cfg(feature = "data-dir")]
-        if token.is_none() {
-            if let Some(credentials) =
+        if token.is_none()
+            && let Some(credentials) =
                 Self::load_token_from_credentials_file(config.data_dir.as_deref(), env)?
-            {
-                token = Some(credentials.token);
-                advanced_options.base_url = advanced_options
-                    .base_url
-                    .or(Some(credentials.logfire_api_url));
-            }
+        {
+            token = Some(credentials.token);
+            advanced_options.base_url = advanced_options
+                .base_url
+                .or(Some(credentials.logfire_api_url));
         }
 
         let send_to_logfire = LOGFIRE_SEND_TO_LOGFIRE.resolve(config.send_to_logfire, env)?;

@@ -256,12 +256,12 @@ where
 
         // We write pending spans to the console; if the pending span was never created then
         // we have to manually write it now.
-        if extensions.get_mut::<LogfirePendingSpanSent>().is_none() {
-            if let Some(otel_data) = extensions.get_mut::<OtelData>() {
-                // emit pending span now just before it is closed, assume the processor will
-                // deduplicate as needed
-                emit_pending_span(&self.tracer, otel_data);
-            }
+        if extensions.get_mut::<LogfirePendingSpanSent>().is_none()
+            && let Some(otel_data) = extensions.get_mut::<OtelData>()
+        {
+            // emit pending span now just before it is closed, assume the processor will
+            // deduplicate as needed
+            emit_pending_span(&self.tracer, otel_data);
         }
 
         // Delegate to OpenTelemetry layer after handling pending span (it will remove the
