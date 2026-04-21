@@ -70,9 +70,25 @@ impl LogfireClient {
     /// Executes a SQL query and returns results as dynamic JSON values.
     ///
     /// Use [`Self::query`] to deserialize rows directly into a typed struct.
+    /// Uses the default API limit of 100 rows.
     pub async fn query_untyped(&self, sql: &str) -> Result<RowQueryResults, ClientError> {
-        self.get_json("/v1/query", &[("sql", sql), ("json_rows", "true")])
-            .await
+        self.query_untyped_with_limit(sql, None).await
+    }
+
+    /// Executes a SQL query with a custom row limit.
+    ///
+    /// The API default is 100 rows, maximum is 10000.
+    pub async fn query_untyped_with_limit(
+        &self,
+        sql: &str,
+        limit: Option<u32>,
+    ) -> Result<RowQueryResults, ClientError> {
+        let limit_str = limit.map(|l| l.to_string());
+        let mut params = vec![("sql", sql), ("json_rows", "true")];
+        if let Some(ref l) = limit_str {
+            params.push(("limit", l.as_str()));
+        }
+        self.get_json("/v1/query", &params).await
     }
 
     /// Executes a SQL query and deserializes each row to the target type.
