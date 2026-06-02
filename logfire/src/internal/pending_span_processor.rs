@@ -90,4 +90,12 @@ impl<T: SpanProcessor> SpanProcessor for PendingSpanProcessor<T> {
     ) -> opentelemetry_sdk::error::OTelSdkResult {
         self.inner.shutdown_with_timeout(timeout)
     }
+
+    fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        self.inner.shutdown()
+    }
+
+    fn set_resource(&mut self, _resource: &opentelemetry_sdk::Resource) {
+        self.inner.set_resource(_resource);
+    }
 }

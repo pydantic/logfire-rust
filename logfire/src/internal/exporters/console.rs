@@ -305,13 +305,13 @@ impl ConsoleWriter {
                         level = Some(level_num);
                     }
                 }
-                "code.namespace" => target = Some(kv.value.as_str()),
+                "code.module.name" => target = Some(kv.value.as_str()),
                 // Filter out known values
                 ATTRIBUTES_SPAN_TYPE_KEY
                 | "logfire.json_schema"
                 | "logfire.pending_parent_id"
-                | "code.filepath"
-                | "code.lineno"
+                | "code.file.path"
+                | "code.line.number"
                 | "thread.id"
                 | "thread.name"
                 | "logfire.null_args"
@@ -548,10 +548,10 @@ mod tests {
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @"
-        1970-01-01T00:00:00.000000Z  INFO root span code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=533, target=logfire::internal::exporters::console::tests
-        1970-01-01T00:00:00.000001Z  INFO hello world span code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=534, target=logfire::internal::exporters::console::tests
-        1970-01-01T00:00:00.000002Z DEBUG debug span code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=535, target=logfire::internal::exporters::console::tests
-        1970-01-01T00:00:00.000003Z DEBUG debug span with explicit parent code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=537, target=logfire::internal::exporters::console::tests
+        1970-01-01T00:00:00.000000Z  INFO logfire::internal::exporters::console::tests root span
+        1970-01-01T00:00:00.000001Z  INFO logfire::internal::exporters::console::tests hello world span
+        1970-01-01T00:00:00.000002Z DEBUG logfire::internal::exporters::console::tests debug span
+        1970-01-01T00:00:00.000003Z DEBUG logfire::internal::exporters::console::tests debug span with explicit parent
         1970-01-01T00:00:00.000004Z  INFO logfire::internal::exporters::console::tests log with values foo=42, bar=33
         1970-01-01T00:00:00.000005Z  INFO logfire::internal::exporters::console::tests hello world log
         1970-01-01T00:00:00.000006Z ERROR panic: oh no! backtrace=disabled backtrace
@@ -596,10 +596,10 @@ mod tests {
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @"
-        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [1mroot span[0m [3mcode.file.path[0m=logfire/src/internal/exporters/console.rs, [3mcode.module.name[0m=logfire::internal::exporters::console::tests, [3mcode.line.number[0m=581, [3mtarget[0m=logfire::internal::exporters::console::tests
-        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [1mhello world span[0m [3mcode.file.path[0m=logfire/src/internal/exporters/console.rs, [3mcode.module.name[0m=logfire::internal::exporters::console::tests, [3mcode.line.number[0m=582, [3mtarget[0m=logfire::internal::exporters::console::tests
-        [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [1mdebug span[0m [3mcode.file.path[0m=logfire/src/internal/exporters/console.rs, [3mcode.module.name[0m=logfire::internal::exporters::console::tests, [3mcode.line.number[0m=583, [3mtarget[0m=logfire::internal::exporters::console::tests
-        [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [1mdebug span with explicit parent[0m [3mcode.file.path[0m=logfire/src/internal/exporters/console.rs, [3mcode.module.name[0m=logfire::internal::exporters::console::tests, [3mcode.line.number[0m=585, [3mtarget[0m=logfire::internal::exporters::console::tests
+        [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
+        [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
+        [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
+        [2m1970-01-01T00:00:00.000003Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span with explicit parent[0m
         [2m1970-01-01T00:00:00.000004Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mlog with values[0m [3mfoo[0m=42, [3mbar[0m=33
         [2m1970-01-01T00:00:00.000005Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world log[0m
         [2m1970-01-01T00:00:00.000006Z[0m[31m ERROR[0m [1mpanic: oh no![0m [3mbacktrace[0m=disabled backtrace
@@ -643,10 +643,10 @@ mod tests {
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @"
-         INFO root span code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=629, target=logfire::internal::exporters::console::tests
-         INFO hello world span code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=630, target=logfire::internal::exporters::console::tests
-        DEBUG debug span code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=631, target=logfire::internal::exporters::console::tests
-        DEBUG debug span with explicit parent code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=633, target=logfire::internal::exporters::console::tests
+         INFO logfire::internal::exporters::console::tests root span
+         INFO logfire::internal::exporters::console::tests hello world span
+        DEBUG logfire::internal::exporters::console::tests debug span
+        DEBUG logfire::internal::exporters::console::tests debug span with explicit parent
          INFO logfire::internal::exporters::console::tests hello world log
         ERROR panic: oh no! backtrace=disabled backtrace
         ");
@@ -688,8 +688,8 @@ mod tests {
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @"
-        1970-01-01T00:00:00.000000Z  INFO root span code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=674, target=logfire::internal::exporters::console::tests
-        1970-01-01T00:00:00.000001Z  INFO hello world span code.file.path=logfire/src/internal/exporters/console.rs, code.module.name=logfire::internal::exporters::console::tests, code.line.number=675, target=logfire::internal::exporters::console::tests
+        1970-01-01T00:00:00.000000Z  INFO logfire::internal::exporters::console::tests root span
+        1970-01-01T00:00:00.000001Z  INFO logfire::internal::exporters::console::tests hello world span
         1970-01-01T00:00:00.000002Z  INFO logfire::internal::exporters::console::tests hello world log
         1970-01-01T00:00:00.000003Z ERROR panic: oh no! backtrace=disabled backtrace
         ");
