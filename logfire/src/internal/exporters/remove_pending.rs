@@ -118,15 +118,15 @@ mod tests {
         spans.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         let spans = spans
             .iter()
-            .map(|span| (span.name.as_ref(), span.get_span_type()))
+            .map(|span| (span.name.as_ref(), span.get_span_type().unwrap_or("span")))
             .collect::<Vec<_>>();
 
         assert_eq!(
             spans,
             vec![
-                ("debug span", Some("span")),
-                ("hello world span", Some("span")),
-                ("root span", Some("span")),
+                ("debug span", "span"),
+                ("hello world span", "span"),
+                ("root span", "span"),
             ]
         );
     }

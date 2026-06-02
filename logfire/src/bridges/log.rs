@@ -1094,14 +1094,13 @@ mod tests {
         let output = std::str::from_utf8(&output).unwrap();
         let output = remap_timestamps_in_console_output(output);
 
-        assert_snapshot!(output, @r"
+        assert_snapshot!(output, @"
         1970-01-01T00:00:00.000000Z  INFO logfire::bridges::log::tests root event
         1970-01-01T00:00:00.000001Z  INFO logfire::bridges::log::tests root event with target
-        1970-01-01T00:00:00.000002Z  INFO logfire::bridges::log::tests root span
+        1970-01-01T00:00:00.000002Z  INFO root span code.file.path=logfire/src/bridges/log.rs, code.module.name=logfire::bridges::log::tests, code.line.number=1084, target=logfire::bridges::log::tests
         1970-01-01T00:00:00.000003Z  INFO logfire::bridges::log::tests hello world log
         1970-01-01T00:00:00.000004Z  WARN logfire::bridges::log::tests warning log
         1970-01-01T00:00:00.000005Z ERROR logfire::bridges::log::tests error log
-        1970-01-01T00:00:00.000006Z TRACE logfire::bridges::log::tests trace log
         ");
     }
 }

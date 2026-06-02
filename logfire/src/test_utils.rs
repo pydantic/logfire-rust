@@ -35,11 +35,16 @@ pub struct DeterministicIdGenerator {
 
 impl IdGenerator for DeterministicIdGenerator {
     fn new_trace_id(&self) -> opentelemetry::trace::TraceId {
-        TraceId::from_u128(self.next_trace_id.fetch_add(1, Ordering::Relaxed).into())
+        let trace_id: u128 = self.next_trace_id.fetch_add(1, Ordering::Relaxed).into();
+        TraceId::from_bytes(trace_id.to_be_bytes())
     }
 
     fn new_span_id(&self) -> opentelemetry::trace::SpanId {
-        SpanId::from_u64(self.next_span_id.fetch_add(1, Ordering::Relaxed))
+        SpanId::from_bytes(
+            self.next_span_id
+                .fetch_add(1, Ordering::Relaxed)
+                .to_be_bytes(),
+        )
     }
 }
 

@@ -40,13 +40,14 @@ use crate::{
     bridges::tracing::LogfireTracingLayer,
     config::{
         LOGFIRE_BASE_URL, LOGFIRE_ENVIRONMENT, LOGFIRE_SEND_TO_LOGFIRE, LOGFIRE_SERVICE_NAME,
-        LOGFIRE_SERVICE_VERSION, LOGFIRE_TOKEN_VALUE, SendToLogfire,
+        LOGFIRE_SERVICE_VERSION, LOGFIRE_TOKEN_VALUE, SendToLogfire, SharedIdGenerator,
     },
     internal::{
         env::get_optional_env,
         exporters::console::{ConsoleWriter, create_console_processors},
         log_processor_shutdown_hack::LogProcessorShutdownHack,
         logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer},
+        pending_span_processor::PendingSpanProcessor,
     },
     metrics,
     ulid_id_generator::UlidIdGenerator,
@@ -317,13 +318,6 @@ impl Logfire {
         let mut logger_provider_builder = SdkLoggerProvider::builder();
         let mut meter_provider_builder = SdkMeterProvider::builder();
 
-        if let Some(id_generator) = advanced_options.id_generator {
-            tracer_provider_builder = tracer_provider_builder.with_id_generator(id_generator);
-        } else {
-            tracer_provider_builder =
-                tracer_provider_builder.with_id_generator(UlidIdGenerator::new());
-        }
-
         // Add service-specific resources from config
         let mut service_resource_builder = opentelemetry_sdk::Resource::builder();
 
@@ -376,6 +370,11 @@ impl Logfire {
             None
         };
 
+        let id_generator = advanced_options
+            .id_generator
+            .clone()
+            .unwrap_or_else(|| SharedIdGenerator::new(Arc::new(UlidIdGenerator::new())));
+
         let shutdown_sender = if let Some(ref logfire_base_url) = logfire_base_url {
             let (shutdown_tx, span_processor, log_processor, metrics_processor) =
                 spawn_runtime_and_exporters(
@@ -384,7 +383,9 @@ impl Logfire {
                     config.metrics.is_some(),
                 )?;
 
-            tracer_provider_builder = tracer_provider_builder.with_span_processor(span_processor);
+            tracer_provider_builder = tracer_provider_builder.with_span_processor(
+                PendingSpanProcessor::new(span_processor, id_generator.clone()),
+            );
             logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
             if let Some(metrics_processor) = metrics_processor {
                 meter_provider_builder = meter_provider_builder.with_reader(metrics_processor);
@@ -400,13 +401,17 @@ impl Logfire {
             .map(|o| create_console_processors(Arc::new(ConsoleWriter::new(o))));
 
         if let Some((span_processor, log_processor)) = console_processors {
-            tracer_provider_builder = tracer_provider_builder.with_span_processor(span_processor);
+            tracer_provider_builder = tracer_provider_builder.with_span_processor(
+                PendingSpanProcessor::new(span_processor, id_generator.clone()),
+            );
             logger_provider_builder = logger_provider_builder.with_log_processor(log_processor);
         }
 
         for span_processor in config.additional_span_processors {
             tracer_provider_builder = tracer_provider_builder.with_span_processor(span_processor);
         }
+
+        tracer_provider_builder = tracer_provider_builder.with_id_generator(id_generator);
 
         let tracer_provider = tracer_provider_builder.build();
         let tracer = tracer_provider.tracer("logfire");
