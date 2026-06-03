@@ -16,6 +16,7 @@ use logfire_core::Region;
 use opentelemetry::{
     Context,
     logs::{LoggerProvider as _, Severity},
+    metrics::MeterProvider,
     trace::TracerProvider,
 };
 use opentelemetry_sdk::{
@@ -95,6 +96,17 @@ impl Logfire {
         ShutdownGuard {
             logfire: Some(self),
         }
+    }
+
+    /// Returns a builder for metric instruments scoped to this `Logfire` instance.
+    ///
+    /// Instruments built via this method record into this `Logfire`'s meter provider, regardless
+    /// of whether this instance is the globally-configured one. This is the only way to build
+    /// metric instruments against a [`.local()`][crate::config::LogfireConfigBuilder::local]
+    /// logfire.
+    #[must_use]
+    pub fn metrics(&self) -> crate::metrics::LogfireMetrics<'_> {
+        self.tracer.metrics()
     }
 
     /// Forcibly flush the current data captured by Logfire.
@@ -417,24 +429,28 @@ impl Logfire {
             }
         }
 
-        let view = |i: &Instrument| {
-            if i.kind() != InstrumentKind::Histogram {
-                return None;
+        let exponential_histograms = metrics::new_exponential_histogram_scales();
+        let view = {
+            let exponential_histograms = exponential_histograms.clone();
+            move |i: &Instrument| {
+                if i.kind() != InstrumentKind::Histogram {
+                    return None;
+                }
+
+                let scale = {
+                    let histograms = exponential_histograms.read().ok()?;
+                    *histograms.get(i.name())?
+                };
+
+                Stream::builder()
+                    .with_aggregation(Aggregation::Base2ExponentialHistogram {
+                        max_size: 160,
+                        max_scale: scale, // Upper bound on resolution
+                        record_min_max: true,
+                    })
+                    .build()
+                    .ok()
             }
-
-            let scale = {
-                let histograms = metrics::EXPONENTIAL_HISTOGRAMS.read().ok()?;
-                *histograms.get(i.name())?
-            };
-
-            Stream::builder()
-                .with_aggregation(Aggregation::Base2ExponentialHistogram {
-                    max_size: 160,
-                    max_scale: scale, // Upper bound on resolution
-                    record_min_max: true,
-                })
-                .build()
-                .ok()
         };
         meter_provider_builder = meter_provider_builder.with_view(view);
         let meter_provider = meter_provider_builder.build();
@@ -464,6 +480,8 @@ impl Logfire {
         let tracer = LogfireTracer {
             inner: tracer,
             meter_provider: meter_provider.clone(),
+            meter: meter_provider.meter("logfire"),
+            exponential_histograms,
             logger,
             handle_panics: config.install_panic_handler,
             filter: Arc::new(filter_builder.build()),
@@ -484,6 +502,13 @@ impl Logfire {
 
         if config.install_panic_handler {
             install_panic_handler();
+        }
+
+        if cfg!(test) {
+            assert!(
+                config.local,
+                "unit tests should always use `.local()` configuration to avoid intefering with each other"
+            );
         }
 
         Ok(LogfireParts {
@@ -654,8 +679,6 @@ pub fn set_local_logfire(logfire: Logfire) -> LocalLogfireGuard {
 
     let tracing_guard = tracing::subscriber::set_default(logfire.subscriber.clone());
 
-    // TODO: metrics??
-
     LocalLogfireGuard {
         prior,
         tracing_guard,
@@ -811,8 +834,7 @@ mod tests {
     use crate::{
         ConfigureError, Logfire,
         config::{BoxedMetricReader, MetricsOptions, SendToLogfire},
-        configure, f64_exponential_histogram, f64_histogram, u64_exponential_histogram,
-        u64_histogram,
+        configure,
     };
 
     #[test]
@@ -863,7 +885,7 @@ mod tests {
             let env: std::collections::HashMap<String, String> =
                 env.into_iter().map(|(k, v)| (k.into(), v.into())).collect();
 
-            let mut config = crate::configure();
+            let mut config = crate::configure().local();
             if let Some(value) = setting {
                 config = config.send_to_logfire(value);
             }
@@ -1153,6 +1175,7 @@ mod tests {
         let exporter = InMemoryMetricExporter::default();
         let reader = PeriodicReader::builder(exporter.clone()).build();
         let logfire = configure()
+            .local()
             .send_to_logfire(false)
             .with_metrics(Some(MetricsOptions {
                 additional_readers: vec![BoxedMetricReader::new(Box::new(reader.clone()))],
@@ -1160,21 +1183,21 @@ mod tests {
             .finish()
             .expect("failed to configure logfire");
 
-        let _guard = logfire.shutdown_guard();
+        let metrics = logfire.metrics();
 
-        let f64_hist = f64_histogram("f64_hist").build();
+        let f64_hist = metrics.f64_histogram("f64_hist").build();
         f64_hist.record(1.0, &[]);
-        let u64_hist = u64_histogram("u64_hist").build();
+        let u64_hist = metrics.u64_histogram("u64_hist").build();
         u64_hist.record(20, &[]);
 
-        let f64_exp = f64_exponential_histogram("f64_exp", 2).build();
+        let f64_exp = metrics.f64_exponential_histogram("f64_exp", 2).build();
         f64_exp.record(1.0, &[]);
         f64_exp.record(1.5, &[]);
         f64_exp.record(2.0, &[]);
         f64_exp.record(3.0, &[]);
         f64_exp.record(10.0, &[]);
 
-        let u64_exp = u64_exponential_histogram("u64_exp", 2).build();
+        let u64_exp = metrics.u64_exponential_histogram("u64_exp", 2).build();
         u64_exp.record(10, &[]);
 
         reader.force_flush().unwrap();
