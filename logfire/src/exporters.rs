@@ -101,17 +101,26 @@ pub fn span_exporter(
             }
         };
 
-    cfg_select! {
-        not(any(
-            feature = "export-grpc",
-            feature = "export-http-protobuf",
-            feature = "export-http-json"
-        )) => {
-            {
-                Ok(UnreachableExporter)
-            }
-        }
-        _ => Ok(crate::internal::exporters::remove_pending::RemovePendingSpansExporter::new(span_exporter))
+    #[cfg(not(any(
+        feature = "export-grpc",
+        feature = "export-http-protobuf",
+        feature = "export-http-json"
+    )))]
+    {
+        Ok(UnreachableExporter)
+    }
+
+    #[cfg(any(
+        feature = "export-grpc",
+        feature = "export-http-protobuf",
+        feature = "export-http-json"
+    ))]
+    {
+        Ok(
+            crate::internal::exporters::remove_pending::RemovePendingSpansExporter::new(
+                span_exporter,
+            ),
+        )
     }
 }
 
