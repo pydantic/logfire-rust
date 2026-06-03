@@ -76,6 +76,8 @@ jobs:
     - id: cache-rust
       uses: Swatinem/rust-cache@v2
 
+    - run: cargo test --workspace --no-default-features
+
     - uses: taiki-e/install-action@cargo-llvm-cov
 
     - run: cargo llvm-cov --workspace --all-features --codecov --output-path codecov.json
