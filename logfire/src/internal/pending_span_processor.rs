@@ -6,8 +6,8 @@ use crate::{config::SharedIdGenerator, internal::span_data_ext::SpanDataExt};
 /// Wrapper around a `SpanProcessor` which emits pending logfire spans on `on_start`.
 #[derive(Debug)]
 pub(crate) struct PendingSpanProcessor<T> {
-    id_generator: SharedIdGenerator,
     inner: T,
+    id_generator: SharedIdGenerator,
 }
 
 impl<T> PendingSpanProcessor<T> {
@@ -95,7 +95,7 @@ impl<T: SpanProcessor> SpanProcessor for PendingSpanProcessor<T> {
         self.inner.shutdown()
     }
 
-    fn set_resource(&mut self, _resource: &opentelemetry_sdk::Resource) {
-        self.inner.set_resource(_resource);
+    fn set_resource(&mut self, resource: &opentelemetry_sdk::Resource) {
+        self.inner.set_resource(resource);
     }
 }
