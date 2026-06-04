@@ -34,6 +34,8 @@ use tracing::{Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, registry::LookupSpan};
 
+#[cfg(feature = "data-dir")]
+use crate::internal::env::get_optional_env;
 use crate::{
     __macros_impl::LogfireValue,
     ConfigureError, LogfireConfigBuilder, ShutdownError,
@@ -43,7 +45,6 @@ use crate::{
         LOGFIRE_SERVICE_VERSION, LOGFIRE_TOKEN_VALUE, SendToLogfire,
     },
     internal::{
-        env::get_optional_env,
         exporters::console::{ConsoleWriter, create_console_processors},
         log_processor_shutdown_hack::LogProcessorShutdownHack,
         logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer},
@@ -151,6 +152,7 @@ impl Logfire {
     ///
     /// let logfire = logfire::configure()
     ///    .local()  // use local mode to avoid setting global state
+    /// #  .send_to_logfire(false)  // avoid sending to logfire in tests
     ///    .finish()
     ///    .expect("Failed to configure logfire");
     ///
@@ -280,12 +282,12 @@ impl Logfire {
         config: LogfireConfigBuilder,
         env: Option<&HashMap<String, String>>,
     ) -> Result<LogfireParts, ConfigureError> {
-        let mut token = LOGFIRE_TOKEN_VALUE.resolve(config.token, env)?;
-
         #[cfg_attr(
             not(feature = "data-dir"),
             expect(unused_mut, reason = "only mutated on data-dir feature")
         )]
+        let mut token = LOGFIRE_TOKEN_VALUE.resolve(config.token, env)?;
+
         let mut advanced_options = config.advanced.unwrap_or_default();
 
         // Resolve LOGFIRE_BASE_URL env var (takes precedence over credentials file)
@@ -860,6 +862,12 @@ mod tests {
                 Ok(false),
             ),
         ] {
+            if cfg!(not(feature = "export-http-protobuf")) && matches!(expected, Ok(true)) {
+                // if the expected result is to send to logfire, we will attempt to configure the
+                // HTTP exporter, so avoid the test if the feature is disabled (will error)
+                continue;
+            }
+
             let env: std::collections::HashMap<String, String> =
                 env.into_iter().map(|(k, v)| (k.into(), v.into())).collect();
 
@@ -1216,6 +1224,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "export-http-protobuf")]
     fn test_base_url_from_env_var() {
         let env: std::collections::HashMap<String, String> = [
             (
@@ -1238,6 +1247,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "export-http-protobuf")]
     fn test_base_url_programmatic_overrides_env() {
         use crate::config::AdvancedOptions;
 
@@ -1263,6 +1273,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "export-http-protobuf")]
     fn test_token_from_env_var() {
         let env: std::collections::HashMap<String, String> =
             [("LOGFIRE_TOKEN".into(), "env-token".into())]
