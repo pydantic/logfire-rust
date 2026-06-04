@@ -27,9 +27,14 @@ impl<T: SpanProcessor> SpanProcessor for PendingSpanProcessor<T> {
             return;
         };
 
-        // Only "real" spans should have pending spans emitted. `None` is handled transparently
-        // in the backend a "real" span. (This avoids "log" type in particular).
-        if data.get_span_type().is_some_and(|s| s != "span") {
+        // Only "real" spans should have pending spans emitted.
+        // None is treated as equivalent to "span" (is more efficient to omit the attribute).
+        //
+        // In particular "log" type might exist here and we don't want to emit pending spans for logs.
+        //
+        // TODO: it would be nice if this check could be done before the call to `exported_data()`,
+        // but that requires the otel SDK to support reading span attributes from `Span`.
+        if data.get_span_type().unwrap_or("span") != "span" {
             return;
         }
 

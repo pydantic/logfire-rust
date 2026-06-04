@@ -41,17 +41,19 @@ impl<Inner: SpanExporter> SpanExporter for RemovePendingSpansExporter<Inner> {
                         spans_by_id.entry(key).or_insert(span);
                         None
                     }
-                    Some("span") => {
+                    // None should be treated as equivalent to "span" (is more efficient to omit the attribute)
+                    Some("span") | None => {
                         let key = (span.span_context.trace_id(), span.span_context.span_id());
                         spans_by_id.insert(key, span);
                         None
                     }
-                    _ => Some(span),
+                    Some(_) => Some(span),
                 }
             })
             .collect();
 
         spans.extend(spans_by_id.into_values());
+
         self.0.export(spans).await
     }
 

@@ -9,7 +9,7 @@ use crate::{
     bridges::tracing::{tracing_level_to_log_level, tracing_level_to_severity},
     internal::logfire_tracer::LogfireTracer,
 };
-use opentelemetry::{Key, Value};
+use opentelemetry::{Context, Key, Value};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 // Re-export macros marked with `#[macro_export]` from this module, because `#[macro_export]` places
@@ -210,6 +210,11 @@ impl<T> ConvertValue<T> {
 
 #[must_use]
 pub fn enabled(level: tracing::Level, module_path: &'static str) -> bool {
+    // Don't bother doing any log processing is telemetry is suppressed
+    if Context::is_current_telemetry_suppressed() {
+        return false;
+    }
+
     LogfireTracer::try_with(|tracer| {
         tracer.enabled(
             &log::Metadata::builder()

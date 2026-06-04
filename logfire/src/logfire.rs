@@ -15,7 +15,7 @@ use logfire_core::Region;
 
 use opentelemetry::{
     Context,
-    logs::{LoggerProvider as _, Severity},
+    logs::{LoggerProvider, Severity},
     metrics::MeterProvider,
     trace::TracerProvider,
 };
@@ -32,7 +32,6 @@ use opentelemetry_sdk::{
     },
 };
 use tracing::{Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, registry::LookupSpan};
 
 #[cfg(feature = "data-dir")]
@@ -63,7 +62,7 @@ use crate::{
 pub struct Logfire {
     pub(crate) tracer_provider: SdkTracerProvider,
     pub(crate) tracer: LogfireTracer,
-    pub(crate) env_filter: Arc<EnvFilter>,
+    pub(crate) env_filter: EnvFilter,
     pub(crate) subscriber: Arc<dyn Subscriber + Send + Sync>,
     pub(crate) meter_provider: SdkMeterProvider,
     pub(crate) logger_provider: SdkLoggerProvider,
@@ -494,12 +493,10 @@ impl Logfire {
             filter: Arc::new(filter_builder.build()),
         };
 
-        let filter = Arc::new(
-            tracing_subscriber::EnvFilter::builder()
-                .with_default_directive(default_level_filter.into())
-                // but allow the user to override this with `RUST_LOG`
-                .from_env()?,
-        );
+        let filter = tracing_subscriber::EnvFilter::builder()
+            .with_default_directive(default_level_filter.into())
+            // but allow the user to override this with `RUST_LOG`
+            .from_env()?;
 
         let subscriber = tracing_subscriber::registry().with(LogfireTracingLayer::new(
             tracer.clone(),
@@ -578,7 +575,7 @@ impl Drop for ShutdownGuard {
 struct LogfireParts {
     local: bool,
     tracer: LogfireTracer,
-    env_filter: Arc<EnvFilter>,
+    env_filter: EnvFilter,
     subscriber: Arc<dyn Subscriber + Send + Sync>,
     tracer_provider: SdkTracerProvider,
     meter_provider: SdkMeterProvider,
@@ -616,7 +613,7 @@ fn install_panic_handler() {
             let location = info.location();
             tracer.export_log(
                 None,
-                &tracing::Span::current().context(),
+                &Context::current(),
                 format!("panic: {message}"),
                 Severity::Error,
                 crate::__json_schema!(backtrace),
@@ -770,8 +767,11 @@ fn spawn_runtime_and_exporters(
 
     let (span_processor, log_processor, metrics_processor) = std::thread::scope(|s| {
         s.spawn(|| -> Result<_, ConfigureError> {
+            // avoid telemetry logs being generated from exporter setup (or spans they create)
+            let _ctx_guard = Context::enter_telemetry_suppressed_scope();
+
             // all these processors spawn tasks on the runtime when they are created.
-            let _guard = handle.enter();
+            let _rt_guard = handle.enter();
 
             let span_processor = BatchSpanProcessor::builder(
                 crate::exporters::span_exporter(logfire_base_url, http_headers.clone())?,

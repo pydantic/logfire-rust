@@ -1,8 +1,13 @@
-use std::{any::TypeId, borrow::Cow, sync::Arc};
+use std::{any::TypeId, borrow::Cow};
 
 use opentelemetry::{Context, logs::Severity};
-use tracing::{Subscriber, field::Visit};
-use tracing_subscriber::{EnvFilter, Layer, filter::Filtered, layer::Filter, registry::LookupSpan};
+use tracing::{Subscriber, field::Visit, subscriber::Interest};
+use tracing_subscriber::{
+    EnvFilter, Layer,
+    filter::{FilterExt, Filtered, combinator::And},
+    layer::Filter,
+    registry::LookupSpan,
+};
 
 use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer};
 
@@ -12,7 +17,10 @@ use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer
 /// See [`Logfire::tracing_layer`][crate::Logfire::tracing_layer] for how to use
 /// this layer.
 pub struct LogfireTracingLayer<S>(
-    Filtered<LogfireTracingLayerInner<S>, Arc<dyn Filter<S> + Send + Sync + 'static>, S>,
+    // The `Filtered` wrapper means that the context suppression and env filters are applied
+    // before entering `LogfireTracingLayerInner`, so it doesn't need to care about any
+    // filtering logic on its methods.
+    Filtered<LogfireTracingLayerInner<S>, And<ContextSuppressionFilter, EnvFilter, S>, S>,
 );
 
 impl<S> LogfireTracingLayer<S>
@@ -23,7 +31,7 @@ where
     pub(crate) fn new(
         tracer: LogfireTracer,
         enable_tracing_metrics: bool,
-        filter: Arc<EnvFilter>,
+        filter: EnvFilter,
     ) -> Self {
         let otel_layer = tracing_opentelemetry::layer()
             .with_context_activation(true)
@@ -40,7 +48,27 @@ where
             metrics_layer,
         };
 
-        Self(inner.with_filter(filter as Arc<dyn Filter<S> + Send + Sync + 'static>))
+        Self(inner.with_filter(ContextSuppressionFilter.and(filter)))
+    }
+}
+
+/// A filter that suppresses all spans and events when Otel telemetry is suppressed in the current context.
+struct ContextSuppressionFilter;
+
+impl<S> Filter<S> for ContextSuppressionFilter
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
+    fn enabled(
+        &self,
+        _metadata: &tracing::Metadata<'_>,
+        _ctx: &tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        !Context::is_current_telemetry_suppressed()
+    }
+
+    fn callsite_enabled(&self, _meta: &'static tracing::Metadata<'static>) -> Interest {
+        Interest::sometimes()
     }
 }
 
@@ -66,10 +94,7 @@ where
         self.0.on_layer(subscriber);
     }
 
-    fn register_callsite(
-        &self,
-        metadata: &'static tracing::Metadata<'static>,
-    ) -> tracing::subscriber::Interest {
+    fn register_callsite(&self, metadata: &'static tracing::Metadata<'static>) -> Interest {
         self.0.register_callsite(metadata)
     }
 
@@ -524,7 +549,7 @@ mod tests {
                             "code.line.number",
                         ),
                         value: I64(
-                            464,
+                            33,
                         ),
                     },
                     KeyValue {
@@ -631,7 +656,7 @@ mod tests {
                             "code.line.number",
                         ),
                         value: I64(
-                            465,
+                            34,
                         ),
                     },
                     KeyValue {
@@ -748,7 +773,7 @@ mod tests {
                             "code.line.number",
                         ),
                         value: I64(
-                            465,
+                            34,
                         ),
                     },
                     KeyValue {
@@ -861,7 +886,7 @@ mod tests {
                             "code.line.number",
                         ),
                         value: I64(
-                            466,
+                            35,
                         ),
                     },
                     KeyValue {
@@ -978,7 +1003,7 @@ mod tests {
                             "code.line.number",
                         ),
                         value: I64(
-                            466,
+                            35,
                         ),
                     },
                     KeyValue {
@@ -1091,7 +1116,7 @@ mod tests {
                             "code.line.number",
                         ),
                         value: I64(
-                            467,
+                            36,
                         ),
                     },
                     KeyValue {
@@ -1208,7 +1233,7 @@ mod tests {
                             "code.line.number",
                         ),
                         value: I64(
-                            467,
+                            36,
                         ),
                     },
                     KeyValue {
@@ -1321,7 +1346,7 @@ mod tests {
                             "code.line.number",
                         ),
                         value: I64(
-                            464,
+                            33,
                         ),
                     },
                     KeyValue {
@@ -1436,7 +1461,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Static(
@@ -1448,7 +1473,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         30,
@@ -1458,7 +1483,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Static(
@@ -1569,7 +1594,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Static(
@@ -1581,7 +1606,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         31,
@@ -1591,7 +1616,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Static(
@@ -1712,7 +1737,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Static(
@@ -1724,7 +1749,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         38,
@@ -1734,7 +1759,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Static(
@@ -1845,7 +1870,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Static(
@@ -1857,7 +1882,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         39,
@@ -1867,7 +1892,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Static(

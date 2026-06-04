@@ -254,7 +254,7 @@ async fn test_grpc_protobuf_export() {
                                         AnyValue {
                                             value: Some(
                                                 StringValue(
-                                                    "0.30.0",
+                                                    "0.31.0",
                                                 ),
                                             ),
                                         },
@@ -307,7 +307,7 @@ async fn test_grpc_protobuf_export() {
                                     ],
                                     trace_state: "",
                                     parent_span_id: [],
-                                    flags: 1,
+                                    flags: 257,
                                     name: "grpc_test_span",
                                     kind: Internal,
                                     start_time_unix_nano: 0,
@@ -326,7 +326,7 @@ async fn test_grpc_protobuf_export() {
                                             ),
                                         },
                                         KeyValue {
-                                            key: "code.filepath",
+                                            key: "code.file.path",
                                             value: Some(
                                                 AnyValue {
                                                     value: Some(
@@ -338,7 +338,7 @@ async fn test_grpc_protobuf_export() {
                                             ),
                                         },
                                         KeyValue {
-                                            key: "code.lineno",
+                                            key: "code.line.number",
                                             value: Some(
                                                 AnyValue {
                                                     value: Some(
@@ -350,7 +350,7 @@ async fn test_grpc_protobuf_export() {
                                             ),
                                         },
                                         KeyValue {
-                                            key: "code.namespace",
+                                            key: "code.module.name",
                                             value: Some(
                                                 AnyValue {
                                                     value: Some(
@@ -404,18 +404,6 @@ async fn test_grpc_protobuf_export() {
                                                     value: Some(
                                                         StringValue(
                                                             "grpc_test_span",
-                                                        ),
-                                                    ),
-                                                },
-                                            ),
-                                        },
-                                        KeyValue {
-                                            key: "logfire.span_type",
-                                            value: Some(
-                                                AnyValue {
-                                                    value: Some(
-                                                        StringValue(
-                                                            "span",
                                                         ),
                                                     ),
                                                 },
@@ -523,7 +511,7 @@ async fn test_grpc_protobuf_export() {
                                         AnyValue {
                                             value: Some(
                                                 StringValue(
-                                                    "0.30.0",
+                                                    "0.31.0",
                                                 ),
                                             ),
                                         },
@@ -561,7 +549,7 @@ async fn test_grpc_protobuf_export() {
                                     ),
                                     attributes: [
                                         KeyValue {
-                                            key: "code.filepath",
+                                            key: "code.file.path",
                                             value: Some(
                                                 AnyValue {
                                                     value: Some(
@@ -573,7 +561,7 @@ async fn test_grpc_protobuf_export() {
                                             ),
                                         },
                                         KeyValue {
-                                            key: "code.lineno",
+                                            key: "code.line.number",
                                             value: Some(
                                                 AnyValue {
                                                     value: Some(
@@ -585,7 +573,7 @@ async fn test_grpc_protobuf_export() {
                                             ),
                                         },
                                         KeyValue {
-                                            key: "code.namespace",
+                                            key: "code.module.name",
                                             value: Some(
                                                 AnyValue {
                                                     value: Some(
@@ -681,7 +669,7 @@ async fn test_grpc_protobuf_export() {
                                     ),
                                     attributes: [
                                         KeyValue {
-                                            key: "code.filepath",
+                                            key: "code.file.path",
                                             value: Some(
                                                 AnyValue {
                                                     value: Some(
@@ -693,7 +681,7 @@ async fn test_grpc_protobuf_export() {
                                             ),
                                         },
                                         KeyValue {
-                                            key: "code.lineno",
+                                            key: "code.line.number",
                                             value: Some(
                                                 AnyValue {
                                                     value: Some(
@@ -705,7 +693,7 @@ async fn test_grpc_protobuf_export() {
                                             ),
                                         },
                                         KeyValue {
-                                            key: "code.namespace",
+                                            key: "code.module.name",
                                             value: Some(
                                                 AnyValue {
                                                     value: Some(

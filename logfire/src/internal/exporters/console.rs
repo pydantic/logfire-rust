@@ -378,15 +378,15 @@ impl ConsoleWriter {
                         msg = Some(s.as_str());
                     }
                 }
-                "code.namespace" => {
+                "code.module.name" => {
                     if let opentelemetry::logs::AnyValue::String(s) = value {
                         target = Some(s.as_str());
                     }
                 }
                 // Filter out known values
                 "logfire.json_schema"
-                | "code.filepath"
-                | "code.lineno"
+                | "code.file.path"
+                | "code.line.number"
                 | "thread.id"
                 | "thread.name"
                 | "logfire.null_args"
