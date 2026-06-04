@@ -1,3 +1,12 @@
+#![cfg_attr(
+    not(any(
+        feature = "export-grpc",
+        feature = "export-http-protobuf",
+        feature = "export-http-json"
+    )),
+    expect(dead_code)
+)]
+
 use std::collections::HashMap;
 
 use opentelemetry_sdk::{

@@ -1,16 +1,20 @@
-//! Helper functions to configure mo
+#![cfg_attr(
+    not(any(
+        feature = "export-grpc",
+        feature = "export-http-protobuf",
+        feature = "export-http-json"
+    )),
+    expect(unreachable_code, unused_variables)
+)]
+//! Helper functions to configure exporters via OTLP.
 use std::collections::HashMap;
 
-use opentelemetry_otlp::{LogExporter, MetricExporter, Protocol};
+use opentelemetry_otlp::Protocol;
 use opentelemetry_sdk::{
-    logs::LogExporter as LogExporterTrait, metrics::exporter::PushMetricExporter,
-    trace::SpanExporter,
+    logs::LogExporter, metrics::exporter::PushMetricExporter, trace::SpanExporter,
 };
 
-use crate::{
-    ConfigureError, internal::env::get_optional_env,
-    internal::exporters::remove_pending::RemovePendingSpansExporter,
-};
+use crate::{ConfigureError, internal::env::get_optional_env};
 
 macro_rules! feature_required {
     ($feature_name:literal, $functionality:expr, $if_enabled:expr) => {{
@@ -50,8 +54,6 @@ pub fn span_exporter(
 ) -> Result<impl SpanExporter + use<>, ConfigureError> {
     let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")?;
 
-    let builder = opentelemetry_otlp::SpanExporter::builder();
-
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
     // OTEL_EXPORTER_OTLP_PROTOCOL or OTEL_EXPORTER_OTLP_TRACES_PROTOCOL is set and let the SDK
     // make a builder. (If unset, we could supply our preferred exporter.)
@@ -63,7 +65,7 @@ pub fn span_exporter(
             Protocol::Grpc => {
                 feature_required!("export-grpc", source, {
                     use opentelemetry_otlp::WithTonicConfig;
-                    builder
+                    opentelemetry_otlp::SpanExporter::builder()
                         .with_tonic()
                         .with_channel(
                             tonic::transport::Channel::builder(endpoint.try_into().map_err(
@@ -78,7 +80,7 @@ pub fn span_exporter(
             Protocol::HttpBinary => {
                 feature_required!("export-http-protobuf", source, {
                     use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                    builder
+                    opentelemetry_otlp::SpanExporter::builder()
                         .with_http()
                         .with_protocol(Protocol::HttpBinary)
                         .with_headers(headers.unwrap_or_default())
@@ -89,7 +91,7 @@ pub fn span_exporter(
             Protocol::HttpJson => {
                 feature_required!("export-http-json", source, {
                     use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                    builder
+                    opentelemetry_otlp::SpanExporter::builder()
                         .with_http()
                         .with_protocol(Protocol::HttpJson)
                         .with_headers(headers.unwrap_or_default())
@@ -98,7 +100,28 @@ pub fn span_exporter(
                 })
             }
         };
-    Ok(RemovePendingSpansExporter::new(span_exporter))
+
+    #[cfg(not(any(
+        feature = "export-grpc",
+        feature = "export-http-protobuf",
+        feature = "export-http-json"
+    )))]
+    {
+        Ok(UnreachableExporter)
+    }
+
+    #[cfg(any(
+        feature = "export-grpc",
+        feature = "export-http-protobuf",
+        feature = "export-http-json"
+    ))]
+    {
+        Ok(
+            crate::internal::exporters::remove_pending::RemovePendingSpansExporter::new(
+                span_exporter,
+            ),
+        )
+    }
 }
 
 /// Build a [`PushMetricExporter`] for passing to
@@ -121,9 +144,6 @@ pub fn metric_exporter(
 ) -> Result<impl PushMetricExporter + use<>, ConfigureError> {
     let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")?;
 
-    let builder =
-        MetricExporter::builder().with_temporality(opentelemetry_sdk::metrics::Temporality::Delta);
-
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
     // OTEL_EXPORTER_OTLP_PROTOCOL or OTEL_EXPORTER_OTLP_METRICS_PROTOCOL is set and let the SDK
     // make a builder. (If unset, we could supply our preferred exporter.)
@@ -134,7 +154,8 @@ pub fn metric_exporter(
         Protocol::Grpc => {
             feature_required!("export-grpc", source, {
                 use opentelemetry_otlp::WithTonicConfig;
-                Ok(builder
+                Ok(opentelemetry_otlp::MetricExporter::builder()
+                    .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                     .with_tonic()
                     .with_channel(
                         tonic::transport::Channel::builder(
@@ -151,7 +172,8 @@ pub fn metric_exporter(
         Protocol::HttpBinary => {
             feature_required!("export-http-protobuf", source, {
                 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                Ok(builder
+                Ok(opentelemetry_otlp::MetricExporter::builder()
+                    .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                     .with_http()
                     .with_protocol(Protocol::HttpBinary)
                     .with_headers(headers.unwrap_or_default())
@@ -162,7 +184,8 @@ pub fn metric_exporter(
         Protocol::HttpJson => {
             feature_required!("export-http-json", source, {
                 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                Ok(builder
+                Ok(opentelemetry_otlp::MetricExporter::builder()
+                    .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                     .with_http()
                     .with_protocol(Protocol::HttpJson)
                     .with_headers(headers.unwrap_or_default())
@@ -170,6 +193,21 @@ pub fn metric_exporter(
                     .build()?)
             })
         }
+    }
+
+    #[cfg(not(any(
+        feature = "export-grpc",
+        feature = "export-http-protobuf",
+        feature = "export-http-json"
+    )))]
+    #[expect(unreachable_code)]
+    {
+        // suppress unused var warnings
+        let _ = endpoint;
+        let _ = headers;
+        let _ = source;
+        let _ = protocol;
+        Ok(UnreachableExporter)
     }
 }
 
@@ -189,10 +227,8 @@ pub fn metric_exporter(
 pub fn log_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
-) -> Result<impl LogExporterTrait + use<>, ConfigureError> {
+) -> Result<impl LogExporter + use<>, ConfigureError> {
     let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_LOGS_PROTOCOL")?;
-
-    let builder = LogExporter::builder();
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
     // OTEL_EXPORTER_OTLP_PROTOCOL or OTEL_EXPORTER_OTLP_LOGS_PROTOCOL is set and let the SDK
@@ -204,7 +240,7 @@ pub fn log_exporter(
         Protocol::Grpc => {
             feature_required!("export-grpc", source, {
                 use opentelemetry_otlp::WithTonicConfig;
-                Ok(builder
+                Ok(opentelemetry_otlp::LogExporter::builder()
                     .with_tonic()
                     .with_channel(
                         tonic::transport::Channel::builder(
@@ -221,7 +257,7 @@ pub fn log_exporter(
         Protocol::HttpBinary => {
             feature_required!("export-http-protobuf", source, {
                 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                Ok(builder
+                Ok(opentelemetry_otlp::LogExporter::builder()
                     .with_http()
                     .with_protocol(Protocol::HttpBinary)
                     .with_headers(headers.unwrap_or_default())
@@ -232,7 +268,7 @@ pub fn log_exporter(
         Protocol::HttpJson => {
             feature_required!("export-http-json", source, {
                 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                Ok(builder
+                Ok(opentelemetry_otlp::LogExporter::builder()
                     .with_http()
                     .with_protocol(Protocol::HttpJson)
                     .with_headers(headers.unwrap_or_default())
@@ -240,6 +276,21 @@ pub fn log_exporter(
                     .build()?)
             })
         }
+    }
+
+    #[cfg(not(any(
+        feature = "export-grpc",
+        feature = "export-http-protobuf",
+        feature = "export-http-json"
+    )))]
+    #[expect(unreachable_code)]
+    {
+        // suppress unused var warnings
+        let _ = endpoint;
+        let _ = headers;
+        let _ = source;
+        let _ = protocol;
+        Ok(UnreachableExporter)
     }
 }
 
@@ -302,4 +353,71 @@ fn protocol_from_env(data_env_var: &str) -> Result<(String, Protocol), Configure
             },
             |(var_name, value)| Ok((format!("`{var_name}={value}`"), protocol_from_str(&value)?)),
         )
+}
+
+/// Internal type used when no export features are available to allow for type inference
+/// for impl Trait return of `span_exporter()`, `metric_exporter()`, or `log_exporter()`.
+#[cfg(not(any(
+    feature = "export-grpc",
+    feature = "export-http-protobuf",
+    feature = "export-http-json"
+)))]
+#[derive(Debug)]
+struct UnreachableExporter;
+
+#[cfg(not(any(
+    feature = "export-grpc",
+    feature = "export-http-protobuf",
+    feature = "export-http-json"
+)))]
+impl SpanExporter for UnreachableExporter {
+    fn export(
+        &self,
+        _batch: Vec<opentelemetry_sdk::trace::SpanData>,
+    ) -> impl std::future::Future<Output = opentelemetry_sdk::error::OTelSdkResult> + Send {
+        async { unreachable!() }
+    }
+}
+
+#[cfg(not(any(
+    feature = "export-grpc",
+    feature = "export-http-protobuf",
+    feature = "export-http-json"
+)))]
+impl PushMetricExporter for UnreachableExporter {
+    fn export(
+        &self,
+        _metrics: &opentelemetry_sdk::metrics::data::ResourceMetrics,
+    ) -> impl std::future::Future<Output = opentelemetry_sdk::error::OTelSdkResult> + Send {
+        async { unreachable!() }
+    }
+
+    fn force_flush(&self) -> opentelemetry_sdk::error::OTelSdkResult {
+        unreachable!()
+    }
+
+    fn shutdown_with_timeout(
+        &self,
+        _timeout: std::time::Duration,
+    ) -> opentelemetry_sdk::error::OTelSdkResult {
+        unreachable!()
+    }
+
+    fn temporality(&self) -> opentelemetry_sdk::metrics::Temporality {
+        unreachable!()
+    }
+}
+
+#[cfg(not(any(
+    feature = "export-grpc",
+    feature = "export-http-protobuf",
+    feature = "export-http-json"
+)))]
+impl LogExporter for UnreachableExporter {
+    fn export(
+        &self,
+        _batch: opentelemetry_sdk::logs::LogBatch<'_>,
+    ) -> impl std::future::Future<Output = opentelemetry_sdk::error::OTelSdkResult> + Send {
+        async { unreachable!() }
+    }
 }
