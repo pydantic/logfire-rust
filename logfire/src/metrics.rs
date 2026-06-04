@@ -1,22 +1,34 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, RwLock};
 
 use opentelemetry::metrics::{
     AsyncInstrumentBuilder, Counter, Gauge, Histogram, HistogramBuilder, InstrumentBuilder, Meter,
     ObservableCounter, ObservableGauge, ObservableUpDownCounter, UpDownCounter,
 };
 
-static METER: LazyLock<Meter> = LazyLock::new(|| opentelemetry::global::meter("logfire"));
+use crate::internal::logfire_tracer::{GLOBAL_TRACER, LogfireTracer};
+
 type HistogramName = Cow<'static, str>;
+
 /// A map of histogram name to scale.
 ///
 /// Histograms that are members of this map will be forced to use `Base2ExponentialHistogram`
 /// for aggregation by the meter provider view.
 ///
 /// Histogram names are removed from the map when the [`ExponentialHistogram`] is dropped.
-pub static EXPONENTIAL_HISTOGRAMS: LazyLock<RwLock<HashMap<HistogramName, i8>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
+pub(crate) type ExponentialHistogramScales = Arc<RwLock<HashMap<HistogramName, i8>>>;
+
+pub(crate) fn new_exponential_histogram_scales() -> ExponentialHistogramScales {
+    Arc::new(RwLock::new(HashMap::new()))
+}
+
+fn global_tracer() -> &'static LogfireTracer {
+    GLOBAL_TRACER.get().expect(
+        "logfire is not configured; call logfire::configure().finish() before using metrics, \
+         or use `Logfire::metrics()` on a local logfire instance instead",
+    )
+}
 
 /// An instrument that records a distribution of values.
 ///
@@ -29,12 +41,14 @@ pub struct ExponentialHistogram<T> {
 
 struct Inner<T> {
     name: HistogramName,
+    scales: ExponentialHistogramScales,
     histogram: Histogram<T>,
 }
 
 impl<T> Drop for Inner<T> {
     fn drop(&mut self) {
-        let mut histograms = EXPONENTIAL_HISTOGRAMS
+        let mut histograms = self
+            .scales
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
@@ -53,13 +67,23 @@ impl<T> ExponentialHistogram<T> {
 pub struct ExponentialHistogramBuilder<'a, T> {
     name: HistogramName,
     scale: i8,
+    scales: ExponentialHistogramScales,
     inner: HistogramBuilder<'a, Histogram<T>>,
 }
 
 impl<'a, T> ExponentialHistogramBuilder<'a, T> {
-    /// Create a new instrument builder
-    fn new(name: HistogramName, scale: i8, inner: HistogramBuilder<'a, Histogram<T>>) -> Self {
-        Self { name, scale, inner }
+    fn new(
+        name: HistogramName,
+        scale: i8,
+        scales: ExponentialHistogramScales,
+        inner: HistogramBuilder<'a, Histogram<T>>,
+    ) -> Self {
+        Self {
+            name,
+            scale,
+            scales,
+            inner,
+        }
     }
 
     /// Set the description for this instrument
@@ -92,7 +116,8 @@ impl ExponentialHistogramBuilder<'_, u64> {
     #[must_use]
     pub fn build(self) -> ExponentialHistogram<u64> {
         {
-            let mut histograms = EXPONENTIAL_HISTOGRAMS
+            let mut histograms = self
+                .scales
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             histograms.insert(self.name.clone(), self.scale);
@@ -103,6 +128,7 @@ impl ExponentialHistogramBuilder<'_, u64> {
         ExponentialHistogram {
             inner: Arc::new(Inner {
                 name: self.name,
+                scales: self.scales,
                 histogram,
             }),
         }
@@ -118,7 +144,8 @@ impl ExponentialHistogramBuilder<'_, f64> {
     #[must_use]
     pub fn build(self) -> ExponentialHistogram<f64> {
         {
-            let mut histograms = EXPONENTIAL_HISTOGRAMS
+            let mut histograms = self
+                .scales
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             histograms.insert(self.name.clone(), self.scale);
@@ -129,6 +156,7 @@ impl ExponentialHistogramBuilder<'_, f64> {
         ExponentialHistogram {
             inner: Arc::new(Inner {
                 name: self.name,
+                scales: self.scales,
                 histogram,
             }),
         }
@@ -219,7 +247,7 @@ macro_rules! wrap_method {
     ($method:ident, $ty:ty, $var_name:literal, $usage:literal) => {
         #[doc = make_metric_doc!($method, $ty, $var_name, $usage, histogram)]
         pub fn $method(name: impl Into<Cow<'static, str>>) -> InstrumentBuilder<'static, $ty> {
-            METER.$method(name)
+            global_tracer().metrics().$method(name)
         }
     };
 }
@@ -228,7 +256,7 @@ macro_rules! wrap_histogram_method {
     ($method:ident, $ty:ty, $var_name:literal, $usage:literal) => {
         #[doc = make_metric_doc!($method, $ty, $var_name, $usage, histogram)]
         pub fn $method(name: impl Into<Cow<'static, str>>) -> HistogramBuilder<'static, $ty> {
-            METER.$method(name)
+            global_tracer().metrics().$method(name)
         }
     };
 }
@@ -274,8 +302,9 @@ pub fn f64_exponential_histogram(
     name: impl Into<Cow<'static, str>>,
     scale: i8,
 ) -> ExponentialHistogramBuilder<'static, f64> {
-    let name = name.into();
-    ExponentialHistogramBuilder::new(name.clone(), scale, f64_histogram(name))
+    global_tracer()
+        .metrics()
+        .f64_exponential_histogram(name, scale)
 }
 
 #[doc = make_metric_doc!(u64_exponential_histogram, ExponentialHistogram<u64>, "HISTOGRAM", "HISTOGRAM.record(1, &[])", exponential_histogram)]
@@ -283,8 +312,9 @@ pub fn u64_exponential_histogram(
     name: impl Into<Cow<'static, str>>,
     scale: i8,
 ) -> ExponentialHistogramBuilder<'static, u64> {
-    let name = name.into();
-    ExponentialHistogramBuilder::new(name.clone(), scale, u64_histogram(name))
+    global_tracer()
+        .metrics()
+        .u64_exponential_histogram(name, scale)
 }
 
 /// For observable methods which take a callback.
@@ -336,7 +366,7 @@ macro_rules! wrap_observable_method {
         pub fn $method(
             name: impl Into<Cow<'static, str>>,
         ) -> AsyncInstrumentBuilder<'static, $ty, $unit> {
-            METER.$method(name)
+            global_tracer().metrics().$method(name)
         }
     };
 }
@@ -391,19 +421,112 @@ wrap_observable_method!(
     "|gauge| gauge.observe(1, &[])"
 );
 
+/// Builders for metric instruments tied to a specific [`Logfire`][crate::Logfire] instance.
+///
+/// Obtain this via [`Logfire::metrics()`][crate::Logfire::metrics]. Unlike the free functions in
+/// this module (which route through the globally-configured logfire), instruments built here
+/// record into the meter provider of the [`Logfire`][crate::Logfire] they came from. This is the
+/// only way to build instruments against a `.local()` logfire.
+pub struct LogfireMetrics<'a> {
+    meter: &'a Meter,
+    exponential_histograms: &'a ExponentialHistogramScales,
+}
+
+impl<'a> LogfireMetrics<'a> {
+    pub(crate) fn new(
+        meter: &'a Meter,
+        exponential_histograms: &'a ExponentialHistogramScales,
+    ) -> Self {
+        Self {
+            meter,
+            exponential_histograms,
+        }
+    }
+}
+
+macro_rules! logfire_metrics_method {
+    ($method:ident -> $return_ty:ty) => {
+        #[doc = concat!("See [`", stringify!($method), "`][crate::", stringify!($method), "].")]
+        #[must_use]
+        pub fn $method(&self, name: impl Into<Cow<'static, str>>) -> $return_ty {
+            self.meter.$method(name)
+        }
+    };
+}
+
+impl<'a> LogfireMetrics<'a> {
+    logfire_metrics_method!(f64_counter -> InstrumentBuilder<'a, Counter<f64>>);
+    logfire_metrics_method!(f64_gauge -> InstrumentBuilder<'a, Gauge<f64>>);
+    logfire_metrics_method!(f64_up_down_counter -> InstrumentBuilder<'a, UpDownCounter<f64>>);
+    logfire_metrics_method!(i64_gauge -> InstrumentBuilder<'a, Gauge<i64>>);
+    logfire_metrics_method!(i64_up_down_counter -> InstrumentBuilder<'a, UpDownCounter<i64>>);
+    logfire_metrics_method!(u64_counter -> InstrumentBuilder<'a, Counter<u64>>);
+    logfire_metrics_method!(u64_gauge -> InstrumentBuilder<'a, Gauge<u64>>);
+
+    logfire_metrics_method!(f64_histogram -> HistogramBuilder<'a, Histogram<f64>>);
+    logfire_metrics_method!(u64_histogram -> HistogramBuilder<'a, Histogram<u64>>);
+
+    logfire_metrics_method!(f64_observable_counter -> AsyncInstrumentBuilder<'a, ObservableCounter<f64>, f64>);
+    logfire_metrics_method!(f64_observable_gauge -> AsyncInstrumentBuilder<'a, ObservableGauge<f64>, f64>);
+    logfire_metrics_method!(f64_observable_up_down_counter -> AsyncInstrumentBuilder<'a, ObservableUpDownCounter<f64>, f64>);
+    logfire_metrics_method!(i64_observable_gauge -> AsyncInstrumentBuilder<'a, ObservableGauge<i64>, i64>);
+    logfire_metrics_method!(i64_observable_up_down_counter -> AsyncInstrumentBuilder<'a, ObservableUpDownCounter<i64>, i64>);
+    logfire_metrics_method!(u64_observable_counter -> AsyncInstrumentBuilder<'a, ObservableCounter<u64>, u64>);
+    logfire_metrics_method!(u64_observable_gauge -> AsyncInstrumentBuilder<'a, ObservableGauge<u64>, u64>);
+
+    /// See [`f64_exponential_histogram`][crate::f64_exponential_histogram].
+    #[must_use]
+    pub fn f64_exponential_histogram(
+        &self,
+        name: impl Into<Cow<'static, str>>,
+        scale: i8,
+    ) -> ExponentialHistogramBuilder<'a, f64> {
+        let name = name.into();
+        ExponentialHistogramBuilder::new(
+            name.clone(),
+            scale,
+            self.exponential_histograms.clone(),
+            self.meter.f64_histogram(name),
+        )
+    }
+
+    /// See [`u64_exponential_histogram`][crate::u64_exponential_histogram].
+    #[must_use]
+    pub fn u64_exponential_histogram(
+        &self,
+        name: impl Into<Cow<'static, str>>,
+        scale: i8,
+    ) -> ExponentialHistogramBuilder<'a, u64> {
+        let name = name.into();
+        ExponentialHistogramBuilder::new(
+            name.clone(),
+            scale,
+            self.exponential_histograms.clone(),
+            self.meter.u64_histogram(name),
+        )
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::*;
+    use crate::configure;
 
     #[test]
     fn exponential_histograms_are_registered_and_removed_on_drop() {
-        let a = f64_exponential_histogram("f64_exp", 10).build();
-        let b = u64_exponential_histogram("u64_exp", 20).build();
+        let logfire = configure()
+            .local()
+            .send_to_logfire(false)
+            .finish()
+            .expect("failed to configure logfire");
 
-        // Exponential histograms have their names automatically added to EXPONENTIAL_HISTOGRAMS.
+        let metrics = logfire.metrics();
+        let a = metrics.f64_exponential_histogram("f64_exp", 10).build();
+        let b = metrics.u64_exponential_histogram("u64_exp", 20).build();
+
+        let scales = &logfire.tracer.exponential_histograms;
         {
-            let histograms = EXPONENTIAL_HISTOGRAMS.read().unwrap();
+            let histograms = scales.read().unwrap();
             assert!(histograms.contains_key("f64_exp"));
             assert!(histograms.contains_key("u64_exp"));
         }
@@ -411,9 +534,8 @@ mod tests {
         drop(a);
         drop(b);
 
-        // And have their names removed from the map on drop.
         {
-            let histograms = EXPONENTIAL_HISTOGRAMS.read().unwrap();
+            let histograms = scales.read().unwrap();
             assert!(!histograms.contains_key("f64_exp"));
             assert!(!histograms.contains_key("u64_exp"));
         }
