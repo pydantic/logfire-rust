@@ -504,12 +504,11 @@ impl Logfire {
             install_panic_handler();
         }
 
-        if cfg!(test) {
-            assert!(
-                config.local,
-                "unit tests should always use `.local()` configuration to avoid intefering with each other"
-            );
-        }
+        #[cfg(test)]
+        assert!(
+            config.local,
+            "unit tests should always use `.local()` configuration to avoid intefering with each other"
+        );
 
         Ok(LogfireParts {
             local: config.local,
