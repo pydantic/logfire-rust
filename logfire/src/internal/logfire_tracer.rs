@@ -6,10 +6,12 @@ use std::{
 };
 
 use crate::__macros_impl::LogfireValue;
+use crate::metrics::{ExponentialHistogramScales, LogfireMetrics};
 use log::Metadata;
 use opentelemetry::{
     Array, Value,
     logs::{AnyValue, LogRecord, Logger, Severity},
+    metrics::Meter,
     trace::TraceContextExt,
 };
 use opentelemetry_sdk::{logs::SdkLogger, metrics::SdkMeterProvider, trace::Tracer};
@@ -18,6 +20,8 @@ use opentelemetry_sdk::{logs::SdkLogger, metrics::SdkMeterProvider, trace::Trace
 pub(crate) struct LogfireTracer {
     pub(crate) inner: Tracer,
     pub(crate) meter_provider: SdkMeterProvider,
+    pub(crate) meter: Meter,
+    pub(crate) exponential_histograms: ExponentialHistogramScales,
     pub(crate) logger: Arc<SdkLogger>,
     pub(crate) handle_panics: bool,
     pub(crate) filter: Arc<env_filter::Filter>,
@@ -31,6 +35,10 @@ thread_local! {
 }
 
 impl LogfireTracer {
+    pub(crate) fn metrics(&self) -> LogfireMetrics<'_> {
+        LogfireMetrics::new(&self.meter, &self.exponential_histograms)
+    }
+
     pub(crate) fn try_with<R>(f: impl FnOnce(&LogfireTracer) -> R) -> Option<R> {
         let mut f = Some(f);
         if let Some(result) = LOCAL_TRACER
