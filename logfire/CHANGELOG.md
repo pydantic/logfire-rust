@@ -1,3 +1,11 @@
+## [v0.10.0] (2026-06-08)
+
+* Add `LOGFIRE_BASE_URL` env var support and refactor `LOGFIRE_TOKEN` by @adriangb in [#119](https://github.com/pydantic/logfire-rust/pull/119)
+* Move `logfire` crate to subdirectory by @marc-pydantic in [#120](https://github.com/pydantic/logfire-rust/pull/120)
+* Add `logfire-client` crate by @marc-pydantic in [#121](https://github.com/pydantic/logfire-rust/pull/121)
+* add metrics interface scoped to local `Logfire` instance by @davidhewitt in [#126](https://github.com/pydantic/logfire-rust/pull/126)
+* update to opentelemetry 0.31 by @davidhewitt in [#124](https://github.com/pydantic/logfire-rust/pull/124)
+
 ## [v0.9.0] (2025-11-06)
 
 * support setting service resource attributes from environment variable by @davidhewitt in [#109](https://github.com/pydantic/logfire-rust/pull/109)
@@ -111,3 +119,4 @@ Initial release.
 [v0.8.1]: https://github.com/pydantic/logfire-rust/compare/v0.8.0..v0.8.1
 [v0.8.2]: https://github.com/pydantic/logfire-rust/compare/v0.8.1..v0.8.2
 [v0.9.0]: https://github.com/pydantic/logfire-rust/compare/v0.8.2..v0.9.0
+[v0.10.0]: https://github.com/pydantic/logfire-rust/compare/logfire-v0.9.0..logfire-v0.10.0
