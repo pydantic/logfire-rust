@@ -35,11 +35,16 @@ pub struct DeterministicIdGenerator {
 
 impl IdGenerator for DeterministicIdGenerator {
     fn new_trace_id(&self) -> opentelemetry::trace::TraceId {
-        TraceId::from_u128(self.next_trace_id.fetch_add(1, Ordering::Relaxed).into())
+        let trace_id: u128 = self.next_trace_id.fetch_add(1, Ordering::Relaxed).into();
+        TraceId::from_bytes(trace_id.to_be_bytes())
     }
 
     fn new_span_id(&self) -> opentelemetry::trace::SpanId {
-        SpanId::from_u64(self.next_span_id.fetch_add(1, Ordering::Relaxed))
+        SpanId::from_bytes(
+            self.next_span_id
+                .fetch_add(1, Ordering::Relaxed)
+                .to_be_bytes(),
+        )
     }
 }
 
@@ -93,14 +98,14 @@ impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
 
                 // to minimize churn on tests, remap line numbers in the test to be relative to
                 // the test function
-                if attr.key.as_str() == "code.filepath" && attr.value.as_str() == self.file {
+                if attr.key.as_str() == "code.file.path" && attr.value.as_str() == self.file {
                     remap_line = true;
                 }
             }
 
             if remap_line {
                 for attr in &mut span.attributes {
-                    if attr.key.as_str() == "code.lineno" {
+                    if attr.key.as_str() == "code.line.number" {
                         if let Value::I64(line) = &mut attr.value {
                             *line -= i64::from(self.line_offset);
                         }
@@ -379,7 +384,7 @@ pub fn make_deterministic_logs(
             // Check if we need to remap line numbers for this file
             let mut remap_line = false;
             for (key, value) in original_record.attributes_iter() {
-                if key.as_str() == "code.filepath" {
+                if key.as_str() == "code.file.path" {
                     if let opentelemetry::logs::AnyValue::String(s) = value {
                         if s.as_str() == file {
                             remap_line = true;
@@ -395,7 +400,7 @@ pub fn make_deterministic_logs(
             for (key, value) in original_record.attributes_iter() {
                 let new_value = match key.as_str() {
                     "thread.id" => opentelemetry::logs::AnyValue::Int(0),
-                    "code.lineno" if remap_line => {
+                    "code.line.number" if remap_line => {
                         if let opentelemetry::logs::AnyValue::Int(line) = value {
                             opentelemetry::logs::AnyValue::Int(line - i64::from(line_offset))
                         } else {

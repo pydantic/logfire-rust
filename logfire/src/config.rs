@@ -389,7 +389,7 @@ impl std::fmt::Debug for Target {
 #[derive(Default)]
 pub struct AdvancedOptions {
     pub(crate) base_url: Option<String>,
-    pub(crate) id_generator: Option<BoxedIdGenerator>,
+    pub(crate) id_generator: Option<SharedIdGenerator>,
     pub(crate) resources: Vec<opentelemetry_sdk::Resource>,
     pub(crate) log_record_processors: Vec<BoxedLogProcessor>,
     pub(crate) enable_tracing_metrics: bool,
@@ -415,7 +415,7 @@ impl AdvancedOptions {
         mut self,
         generator: T,
     ) -> Self {
-        self.id_generator = Some(BoxedIdGenerator::new(Box::new(generator)));
+        self.id_generator = Some(SharedIdGenerator::new(Arc::new(generator)));
         self
     }
 
@@ -505,16 +505,16 @@ impl SpanProcessor for BoxedSpanProcessor {
 }
 
 /// Wrapper around an `IdGenerator` to use in `id_generator`.
-#[derive(Debug)]
-pub(crate) struct BoxedIdGenerator(Box<dyn IdGenerator>);
+#[derive(Debug, Clone)]
+pub(crate) struct SharedIdGenerator(Arc<dyn IdGenerator>);
 
-impl BoxedIdGenerator {
-    pub fn new(generator: Box<dyn IdGenerator>) -> Self {
-        BoxedIdGenerator(generator)
+impl SharedIdGenerator {
+    pub fn new(generator: Arc<dyn IdGenerator>) -> Self {
+        SharedIdGenerator(generator)
     }
 }
 
-impl IdGenerator for BoxedIdGenerator {
+impl IdGenerator for SharedIdGenerator {
     fn new_trace_id(&self) -> opentelemetry::trace::TraceId {
         self.0.new_trace_id()
     }

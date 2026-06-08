@@ -305,13 +305,13 @@ impl ConsoleWriter {
                         level = Some(level_num);
                     }
                 }
-                "code.namespace" => target = Some(kv.value.as_str()),
+                "code.module.name" => target = Some(kv.value.as_str()),
                 // Filter out known values
                 ATTRIBUTES_SPAN_TYPE_KEY
                 | "logfire.json_schema"
                 | "logfire.pending_parent_id"
-                | "code.filepath"
-                | "code.lineno"
+                | "code.file.path"
+                | "code.line.number"
                 | "thread.id"
                 | "thread.name"
                 | "logfire.null_args"
@@ -378,15 +378,15 @@ impl ConsoleWriter {
                         msg = Some(s.as_str());
                     }
                 }
-                "code.namespace" => {
+                "code.module.name" => {
                     if let opentelemetry::logs::AnyValue::String(s) = value {
                         target = Some(s.as_str());
                     }
                 }
                 // Filter out known values
                 "logfire.json_schema"
-                | "code.filepath"
-                | "code.lineno"
+                | "code.file.path"
+                | "code.line.number"
                 | "thread.id"
                 | "thread.name"
                 | "logfire.null_args"
@@ -547,7 +547,7 @@ mod tests {
         let output = std::str::from_utf8(&output).unwrap();
         let output = remap_timestamps_in_console_output(output);
 
-        assert_snapshot!(output, @r"
+        assert_snapshot!(output, @"
         1970-01-01T00:00:00.000000Z  INFO logfire::internal::exporters::console::tests root span
         1970-01-01T00:00:00.000001Z  INFO logfire::internal::exporters::console::tests hello world span
         1970-01-01T00:00:00.000002Z DEBUG logfire::internal::exporters::console::tests debug span
@@ -595,7 +595,7 @@ mod tests {
         let output = std::str::from_utf8(&output).unwrap();
         let output = remap_timestamps_in_console_output(output);
 
-        assert_snapshot!(output, @r"
+        assert_snapshot!(output, @"
         [2m1970-01-01T00:00:00.000000Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mroot span[0m
         [2m1970-01-01T00:00:00.000001Z[0m[32m  INFO[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mhello world span[0m
         [2m1970-01-01T00:00:00.000002Z[0m[34m DEBUG[0m [2;3mlogfire::internal::exporters::console::tests[0m [1mdebug span[0m
@@ -642,7 +642,7 @@ mod tests {
         let output = std::str::from_utf8(&output).unwrap();
         let output = remap_timestamps_in_console_output(output);
 
-        assert_snapshot!(output, @r"
+        assert_snapshot!(output, @"
          INFO logfire::internal::exporters::console::tests root span
          INFO logfire::internal::exporters::console::tests hello world span
         DEBUG logfire::internal::exporters::console::tests debug span
@@ -687,7 +687,7 @@ mod tests {
         let output = std::str::from_utf8(&output).unwrap();
         let output = remap_timestamps_in_console_output(output);
 
-        assert_snapshot!(output, @r"
+        assert_snapshot!(output, @"
         1970-01-01T00:00:00.000000Z  INFO logfire::internal::exporters::console::tests root span
         1970-01-01T00:00:00.000001Z  INFO logfire::internal::exporters::console::tests hello world span
         1970-01-01T00:00:00.000002Z  INFO logfire::internal::exporters::console::tests hello world log

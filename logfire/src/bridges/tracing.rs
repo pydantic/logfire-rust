@@ -1,14 +1,13 @@
-use std::{any::TypeId, borrow::Cow, sync::Arc};
+use std::{any::TypeId, borrow::Cow};
 
-use opentelemetry::{
-    Context, KeyValue,
-    global::ObjectSafeSpan,
-    logs::Severity,
-    trace::{SamplingDecision, TraceContextExt},
+use opentelemetry::{Context, logs::Severity};
+use tracing::{Subscriber, field::Visit, subscriber::Interest};
+use tracing_subscriber::{
+    EnvFilter, Layer,
+    filter::{FilterExt, Filtered, combinator::And},
+    layer::Filter,
+    registry::LookupSpan,
 };
-use tracing::{Subscriber, field::Visit};
-use tracing_opentelemetry::{OtelData, PreSampledTracer};
-use tracing_subscriber::{EnvFilter, Layer, filter::Filtered, layer::Filter, registry::LookupSpan};
 
 use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer};
 
@@ -18,7 +17,10 @@ use crate::{__macros_impl::LogfireValue, internal::logfire_tracer::LogfireTracer
 /// See [`Logfire::tracing_layer`][crate::Logfire::tracing_layer] for how to use
 /// this layer.
 pub struct LogfireTracingLayer<S>(
-    Filtered<LogfireTracingLayerInner<S>, Arc<dyn Filter<S> + Send + Sync + 'static>, S>,
+    // The `Filtered` wrapper means that the context suppression and env filters are applied
+    // before entering `LogfireTracingLayerInner`, so it doesn't need to care about any
+    // filtering logic on its methods.
+    Filtered<LogfireTracingLayerInner<S>, And<ContextSuppressionFilter, EnvFilter, S>, S>,
 );
 
 impl<S> LogfireTracingLayer<S>
@@ -29,9 +31,11 @@ where
     pub(crate) fn new(
         tracer: LogfireTracer,
         enable_tracing_metrics: bool,
-        filter: Arc<EnvFilter>,
+        filter: EnvFilter,
     ) -> Self {
         let otel_layer = tracing_opentelemetry::layer()
+            .with_context_activation(true)
+            .with_target(false)
             .with_error_records_to_exceptions(true)
             .with_tracer(tracer.inner.clone());
 
@@ -44,7 +48,27 @@ where
             metrics_layer,
         };
 
-        Self(inner.with_filter(filter as Arc<dyn Filter<S> + Send + Sync + 'static>))
+        Self(inner.with_filter(ContextSuppressionFilter.and(filter)))
+    }
+}
+
+/// A filter that suppresses all spans and events when Otel telemetry is suppressed in the current context.
+struct ContextSuppressionFilter;
+
+impl<S> Filter<S> for ContextSuppressionFilter
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
+    fn enabled(
+        &self,
+        _metadata: &tracing::Metadata<'_>,
+        _ctx: &tracing_subscriber::layer::Context<'_, S>,
+    ) -> bool {
+        !Context::is_current_telemetry_suppressed()
+    }
+
+    fn callsite_enabled(&self, _meta: &'static tracing::Metadata<'static>) -> Interest {
+        Interest::sometimes()
     }
 }
 
@@ -53,7 +77,9 @@ struct LogfireTracingLayerInner<S> {
     /// This odd structure with two inner layers is deliberate; we don't want to send any events
     /// to the `otel_layer` and we only send (some) events to the `metrics_layer`.
     otel_layer: tracing_opentelemetry::OpenTelemetryLayer<S, opentelemetry_sdk::trace::Tracer>,
-    metrics_layer: Option<tracing_opentelemetry::MetricsLayer<S>>,
+    metrics_layer: Option<
+        tracing_opentelemetry::MetricsLayer<S, opentelemetry_sdk::metrics::SdkMeterProvider>,
+    >,
 }
 
 impl<S> Layer<S> for LogfireTracingLayer<S>
@@ -68,10 +94,7 @@ where
         self.0.on_layer(subscriber);
     }
 
-    fn register_callsite(
-        &self,
-        metadata: &'static tracing::Metadata<'static>,
-    ) -> tracing::subscriber::Interest {
+    fn register_callsite(&self, metadata: &'static tracing::Metadata<'static>) -> Interest {
         self.0.register_callsite(metadata)
     }
 
@@ -164,50 +187,13 @@ where
     ) {
         // Delegate to OpenTelemetry layer first
         self.otel_layer.on_new_span(attrs, id, ctx.clone());
-
-        // Delegate to MetricsLayer as well
         self.metrics_layer.on_new_span(attrs, id, ctx.clone());
 
-        // Add Logfire-specific attributes
-        let span = ctx.span(id).expect("span not found");
-        let mut extensions = span.extensions_mut();
-        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
-            let attributes = otel_data
-                .builder
-                .attributes
-                .get_or_insert_with(Default::default);
-
-            attributes.push(opentelemetry::KeyValue::new(
-                "logfire.level_num",
-                tracing_level_to_severity(*attrs.metadata().level()) as i64,
-            ));
-            attributes.push(KeyValue::new("logfire.span_type", "span"));
-        }
+        self.record_logfire_attributes(attrs, id, ctx);
     }
 
-    /// Emit a pending span when this span is first entered, if this span will be sampled.
-    ///
-    /// We do this on first enter, not on creation, because some SDKs set the parent span after
-    /// creation.
-    ///
-    /// e.g. <https://github.com/davidB/tracing-opentelemetry-instrumentation-sdk/blob/5830c9113b0d42b72167567bf8e5f4c6b20933c8/axum-tracing-opentelemetry/src/middleware/trace_extractor.rs#L132>
     fn on_enter(&self, id: &tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
-        // Delegate to OpenTelemetry layer first
         self.otel_layer.on_enter(id, ctx.clone());
-
-        let span = ctx.span(id).expect("span not found");
-        let mut extensions = span.extensions_mut();
-
-        if extensions.get_mut::<LogfirePendingSpanSent>().is_some() {
-            return;
-        }
-
-        extensions.insert(LogfirePendingSpanSent);
-
-        // Guaranteed to be on first entering of the span
-        if let Some(otel_data) = extensions.get_mut::<OtelData>() {
-            emit_pending_span(&self.tracer, otel_data);
-        }
     }
 
     /// Tracing events currently are recorded as span events, so do not get printed by the span emitter.
@@ -231,19 +217,7 @@ where
 
         // However we don't want to allow the opentelemetry layer to see events, it will record them
         // as span events. Instead we handle them here and emit them as log spans.
-        let event_span = ctx.event_span(event).and_then(|span| ctx.span(&span.id()));
-        let mut event_span_extensions = event_span.as_ref().map(|s| s.extensions_mut());
-
-        let context = if let Some(otel_data) = event_span_extensions
-            .as_mut()
-            .and_then(|e| e.get_mut::<OtelData>())
-        {
-            self.tracer.inner.sampled_context(otel_data)
-        } else {
-            Context::new()
-        };
-
-        emit_event_as_log_span(&self.tracer, event, &context);
+        emit_event_as_log_span(&self.tracer, event, &Context::current());
     }
 
     fn on_exit(&self, id: &tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
@@ -251,24 +225,8 @@ where
     }
 
     fn on_close(&self, id: tracing::span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
-        let span = ctx.span(&id).expect("span not found");
-        let mut extensions = span.extensions_mut();
-
-        // We write pending spans to the console; if the pending span was never created then
-        // we have to manually write it now.
-        if extensions.get_mut::<LogfirePendingSpanSent>().is_none()
-            && let Some(otel_data) = extensions.get_mut::<OtelData>()
-        {
-            // emit pending span now just before it is closed, assume the processor will
-            // deduplicate as needed
-            emit_pending_span(&self.tracer, otel_data);
-        }
-
-        // Delegate to OpenTelemetry layer after handling pending span (it will remove the
-        // `OtelData` so cannot do before).
-        drop(extensions);
-        drop(span);
-        self.otel_layer.on_close(id, ctx);
+        self.otel_layer.on_close(id.clone(), ctx.clone());
+        self.metrics_layer.on_close(id, ctx);
     }
 
     fn on_follows_from(
@@ -335,75 +293,46 @@ where
     }
 }
 
-/// Dummy struct to mark that we've already entered this span.
-struct LogfirePendingSpanSent;
+impl<S> LogfireTracingLayerInner<S>
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
+    /// Creates logfire-specific attributes from the tracing metadata
+    fn record_logfire_attributes(
+        &self,
+        attrs: &tracing::span::Attributes<'_>,
+        id: &tracing::span::Id,
+        ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        static LOGFIRE_BRIDGE_CALLSITE: tracing::callsite::DefaultCallsite =
+            tracing::callsite::DefaultCallsite::new(&LOGFIRE_BRIDGE_METADATA);
 
-/// Samples and emits a pending span if the span is sampled.
-fn emit_pending_span(tracer: &LogfireTracer, otel_data: &mut tracing_opentelemetry::OtelData) {
-    let context = tracer.inner.sampled_context(otel_data);
-    let sampling_result = otel_data
-        .builder
-        .sampling_result
-        .as_ref()
-        .expect("we just asked for sampling to happen");
+        static LOGFIRE_BRIDGE_METADATA: tracing::Metadata<'static> = tracing::Metadata::new(
+            "logfire_bridge_attrs",
+            "logfire",
+            tracing::Level::TRACE,
+            None,
+            None,
+            None,
+            tracing::field::FieldSet::new(
+                &["logfire.level_num"],
+                tracing::callsite::Identifier(&LOGFIRE_BRIDGE_CALLSITE),
+            ),
+            tracing::metadata::Kind::SPAN,
+        );
 
-    // Deliberately match on all cases here so that if the enum changes in the future,
-    // we can update this code to match the possible decisions.
-    let span_is_sampled = match &sampling_result.decision {
-        SamplingDecision::Drop | SamplingDecision::RecordOnly => false,
-        SamplingDecision::RecordAndSample => true,
-    };
+        let fields = LOGFIRE_BRIDGE_METADATA.fields();
+        let level_field = fields
+            .field("logfire.level_num")
+            .expect("declared in LOGFIRE_BRIDGE_FIELDS");
 
-    if !span_is_sampled {
-        return;
+        let level_num: i64 = tracing_level_to_severity(*attrs.metadata().level()) as i64;
+
+        let values = [(&level_field, Some(&level_num as &dyn tracing::field::Value))];
+        let value_set = fields.value_set(&values);
+        self.otel_layer
+            .on_record(id, &tracing::span::Record::new(&value_set), ctx);
     }
-
-    let mut pending_span_builder = otel_data.builder.clone();
-
-    // Pending span is sent as a child of the actual span with kind pending_span.
-    // - The parent id is the actual span we want.
-    // - The pending_parent_id is the parent of the pending span.
-
-    let span_id = otel_data.builder.span_id.expect("otel SDK sets span ID");
-    pending_span_builder.span_id = Some(span_id);
-
-    let attributes = pending_span_builder
-        .attributes
-        .get_or_insert_with(Default::default);
-
-    // update type of the pending span export
-    if let Some(attr) = attributes
-        .iter_mut()
-        .find(|kv| kv.key.as_str() == "logfire.span_type")
-    {
-        attr.value = "pending_span".into();
-    } else {
-        attributes.push(opentelemetry::KeyValue::new(
-            "logfire.span_type",
-            "pending_span",
-        ));
-    }
-
-    // record the real parent ID
-    let parent_span = otel_data.parent_cx.span();
-    let parent_span_context = parent_span.span_context();
-
-    if parent_span_context.is_valid() {
-        attributes.push(opentelemetry::KeyValue::new(
-            "logfire.pending_parent_id",
-            parent_span_context.span_id().to_string(),
-        ));
-    }
-
-    pending_span_builder.span_id = Some(tracer.inner.new_span_id());
-
-    let start_time = pending_span_builder
-        .start_time
-        .expect("otel SDK sets start time");
-
-    // emit pending span
-    let mut pending_span = pending_span_builder.start_with_context(&tracer.inner, &context);
-    pending_span.end_with_timestamp(start_time);
 }
 
 pub(crate) fn tracing_level_to_severity(level: tracing::Level) -> Severity {
@@ -512,7 +441,8 @@ mod tests {
     use tracing::{Level, level_filters::LevelFilter};
 
     use crate::{
-        config::{AdvancedOptions, ConsoleOptions, Target},
+        config::{AdvancedOptions, ConsoleOptions, SharedIdGenerator, Target},
+        internal::pending_span_processor::PendingSpanProcessor,
         set_local_logfire,
         test_utils::{
             DeterministicExporter, DeterministicIdGenerator, make_deterministic_logs,
@@ -528,21 +458,27 @@ mod tests {
         let exporter = InMemorySpanExporterBuilder::new().build();
         let log_exporter = InMemoryLogExporter::default();
 
-        let logfire =
-            crate::configure()
-                .local()
-                .send_to_logfire(false)
-                .with_additional_span_processor(SimpleSpanProcessor::new(
-                    DeterministicExporter::new(exporter.clone(), TEST_FILE, TEST_LINE),
-                ))
-                .with_default_level_filter(LevelFilter::TRACE)
-                .with_advanced_options(
-                    AdvancedOptions::default()
-                        .with_id_generator(DeterministicIdGenerator::new())
-                        .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
-                )
-                .finish()
-                .unwrap();
+        let id_generator = SharedIdGenerator::new(Arc::new(DeterministicIdGenerator::new()));
+
+        let logfire = crate::configure()
+            .local()
+            .send_to_logfire(false)
+            .with_additional_span_processor(PendingSpanProcessor::new(
+                SimpleSpanProcessor::new(DeterministicExporter::new(
+                    exporter.clone(),
+                    TEST_FILE,
+                    TEST_LINE,
+                )),
+                id_generator.clone(),
+            ))
+            .with_default_level_filter(LevelFilter::TRACE)
+            .with_advanced_options(
+                AdvancedOptions::default()
+                    .with_id_generator(id_generator)
+                    .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
+            )
+            .finish()
+            .unwrap();
 
         let guard = set_local_logfire(logfire);
 
@@ -576,6 +512,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f0,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "root span",
                 start_time: SystemTime {
@@ -589,7 +526,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -599,7 +536,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -609,10 +546,10 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.lineno",
+                            "code.line.number",
                         ),
                         value: I64(
-                            27,
+                            33,
                         ),
                     },
                     KeyValue {
@@ -682,6 +619,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f2,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "hello world span",
                 start_time: SystemTime {
@@ -695,7 +633,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -705,7 +643,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -715,10 +653,10 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.lineno",
+                            "code.line.number",
                         ),
                         value: I64(
-                            28,
+                            34,
                         ),
                     },
                     KeyValue {
@@ -798,6 +736,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f0,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "hello world span",
                 start_time: SystemTime {
@@ -811,7 +750,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -821,7 +760,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -831,10 +770,10 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.lineno",
+                            "code.line.number",
                         ),
                         value: I64(
-                            28,
+                            34,
                         ),
                     },
                     KeyValue {
@@ -861,16 +800,6 @@ mod tests {
                         ),
                         value: I64(
                             9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "span",
-                            ),
                         ),
                     },
                     KeyValue {
@@ -920,6 +849,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f4,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "debug span",
                 start_time: SystemTime {
@@ -933,7 +863,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -943,7 +873,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -953,10 +883,10 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.lineno",
+                            "code.line.number",
                         ),
                         value: I64(
-                            29,
+                            35,
                         ),
                     },
                     KeyValue {
@@ -1036,6 +966,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f0,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "debug span",
                 start_time: SystemTime {
@@ -1049,7 +980,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -1059,7 +990,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -1069,10 +1000,10 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.lineno",
+                            "code.line.number",
                         ),
                         value: I64(
-                            29,
+                            35,
                         ),
                     },
                     KeyValue {
@@ -1099,16 +1030,6 @@ mod tests {
                         ),
                         value: I64(
                             5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "span",
-                            ),
                         ),
                     },
                     KeyValue {
@@ -1158,6 +1079,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f6,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "debug span with explicit parent",
                 start_time: SystemTime {
@@ -1171,7 +1093,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -1181,7 +1103,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -1191,10 +1113,10 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.lineno",
+                            "code.line.number",
                         ),
                         value: I64(
-                            30,
+                            36,
                         ),
                     },
                     KeyValue {
@@ -1274,6 +1196,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 00000000000000f0,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "debug span with explicit parent",
                 start_time: SystemTime {
@@ -1287,7 +1210,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -1297,7 +1220,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -1307,10 +1230,10 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.lineno",
+                            "code.line.number",
                         ),
                         value: I64(
-                            30,
+                            36,
                         ),
                     },
                     KeyValue {
@@ -1337,16 +1260,6 @@ mod tests {
                         ),
                         value: I64(
                             5,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "span",
-                            ),
                         ),
                     },
                     KeyValue {
@@ -1396,6 +1309,7 @@ mod tests {
                     ),
                 },
                 parent_span_id: 0000000000000000,
+                parent_span_is_remote: false,
                 span_kind: Internal,
                 name: "root span",
                 start_time: SystemTime {
@@ -1409,7 +1323,7 @@ mod tests {
                 attributes: [
                     KeyValue {
                         key: Static(
-                            "code.filepath",
+                            "code.file.path",
                         ),
                         value: String(
                             Static(
@@ -1419,7 +1333,7 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.namespace",
+                            "code.module.name",
                         ),
                         value: String(
                             Static(
@@ -1429,10 +1343,10 @@ mod tests {
                     },
                     KeyValue {
                         key: Static(
-                            "code.lineno",
+                            "code.line.number",
                         ),
                         value: I64(
-                            27,
+                            33,
                         ),
                     },
                     KeyValue {
@@ -1459,16 +1373,6 @@ mod tests {
                         ),
                         value: I64(
                             9,
-                        ),
-                    },
-                    KeyValue {
-                        key: Static(
-                            "logfire.span_type",
-                        ),
-                        value: String(
-                            Static(
-                                "span",
-                            ),
                         ),
                     },
                     KeyValue {
@@ -1557,7 +1461,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Static(
@@ -1569,17 +1473,17 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
-                                        24,
+                                        30,
                                     ),
                                 ),
                             ),
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Static(
@@ -1690,7 +1594,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Static(
@@ -1702,17 +1606,17 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
-                                        25,
+                                        31,
                                     ),
                                 ),
                             ),
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Static(
@@ -1833,7 +1737,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Static(
@@ -1845,17 +1749,17 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
-                                        32,
+                                        38,
                                     ),
                                 ),
                             ),
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Static(
@@ -1966,7 +1870,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Static(
@@ -1978,17 +1882,17 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
-                                        33,
+                                        39,
                                     ),
                                 ),
                             ),
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Static(
@@ -2371,7 +2275,7 @@ mod tests {
                         scope: InstrumentationScope {
                             name: "tracing/tracing-opentelemetry",
                             version: Some(
-                                "0.31.0",
+                                "0.32.1",
                             ),
                             schema_url: None,
                             attributes: [],
@@ -2447,7 +2351,7 @@ mod tests {
                         scope: InstrumentationScope {
                             name: "tracing/tracing-opentelemetry",
                             version: Some(
-                                "0.31.0",
+                                "0.32.1",
                             ),
                             schema_url: None,
                             attributes: [],

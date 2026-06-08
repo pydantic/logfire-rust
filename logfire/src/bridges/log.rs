@@ -1,7 +1,7 @@
 use std::{borrow::Cow, sync::OnceLock};
 
 use log::{LevelFilter, Metadata, Record};
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+use opentelemetry::Context;
 
 use crate::internal::logfire_tracer::LogfireTracer;
 
@@ -29,7 +29,7 @@ impl log::Log for LogfireLogger {
         if self.enabled(record.metadata()) {
             self.tracer.export_log(
                 record.args().as_str(),
-                &tracing::Span::current().context(),
+                &Context::current(),
                 record.args().to_string(),
                 level_to_severity(record.level()),
                 "{}",
@@ -165,7 +165,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Owned(
@@ -177,7 +177,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         25,
@@ -187,7 +187,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Owned(
@@ -298,7 +298,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Owned(
@@ -310,7 +310,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         26,
@@ -320,7 +320,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Owned(
@@ -431,7 +431,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Owned(
@@ -443,7 +443,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         29,
@@ -453,7 +453,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Owned(
@@ -564,7 +564,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Owned(
@@ -576,7 +576,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         30,
@@ -586,7 +586,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Owned(
@@ -697,7 +697,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Owned(
@@ -709,7 +709,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         31,
@@ -719,7 +719,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Owned(
@@ -830,7 +830,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Owned(
@@ -842,7 +842,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         32,
@@ -852,7 +852,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Owned(
@@ -963,7 +963,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.filepath",
+                                        "code.file.path",
                                     ),
                                     String(
                                         Owned(
@@ -975,7 +975,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.lineno",
+                                        "code.line.number",
                                     ),
                                     Int(
                                         33,
@@ -985,7 +985,7 @@ mod tests {
                             Some(
                                 (
                                     Static(
-                                        "code.namespace",
+                                        "code.module.name",
                                     ),
                                     String(
                                         Owned(
@@ -1094,7 +1094,7 @@ mod tests {
         let output = std::str::from_utf8(&output).unwrap();
         let output = remap_timestamps_in_console_output(output);
 
-        assert_snapshot!(output, @r"
+        assert_snapshot!(output, @"
         1970-01-01T00:00:00.000000Z  INFO logfire::bridges::log::tests root event
         1970-01-01T00:00:00.000001Z  INFO logfire::bridges::log::tests root event with target
         1970-01-01T00:00:00.000002Z  INFO logfire::bridges::log::tests root span

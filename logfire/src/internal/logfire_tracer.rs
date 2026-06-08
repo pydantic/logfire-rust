@@ -139,15 +139,15 @@ impl LogfireTracer {
         }
 
         if let Some(file) = file {
-            log_record.add_attribute("code.filepath", file);
+            log_record.add_attribute("code.file.path", file);
         }
 
         if let Some(line) = line {
-            log_record.add_attribute("code.lineno", i64::from(line));
+            log_record.add_attribute("code.line.number", i64::from(line));
         }
 
         if let Some(module_path) = module_path {
-            log_record.add_attribute("code.namespace", module_path);
+            log_record.add_attribute("code.module.name", module_path);
         }
 
         if !null_args.is_empty() {
