@@ -63,7 +63,26 @@ fn try_get_resource_attrs(config: LogfireConfigBuilder, env: &[(&str, &str)]) ->
 
 #[test]
 fn test_no_service_resource_attributes() {
-    let attrs = try_get_resource_attrs(configure(), &[]);
+    let mut attrs = try_get_resource_attrs(configure(), &[]);
+
+    // service.name has the excutable name suffixed, which includes the metadata hash
+    // in tests, so we need to trim that off
+    let service_name_attr = attrs
+        .iter_mut()
+        .find(|kv| kv.key.as_str() == "service.name")
+        .expect("service.name attribute should be present");
+
+    let service_name = service_name_attr.value.as_str();
+    let hash = service_name
+        .strip_prefix("unknown_service:test_resource_attributes-")
+        .expect("service.name should have the expected form");
+
+    assert!(
+        hash.chars().all(|c| c.is_ascii_hexdigit()),
+        "hash should be hex"
+    );
+
+    service_name_attr.value = "unknown_service:test_resource_attributes".into();
 
     assert_debug_snapshot!(attrs, @r#"
     [
@@ -72,8 +91,8 @@ fn test_no_service_resource_attributes() {
                 "service.name",
             ),
             value: String(
-                Owned(
-                    "unknown_service:test_resource_attributes-26b89978a36c9402",
+                Static(
+                    "unknown_service:test_resource_attributes",
                 ),
             ),
         },

@@ -527,7 +527,7 @@ async fn test_http_json_export() {
                                             AnyValue {
                                                 value: Some(
                                                     IntValue(
-                                                        358,
+                                                        372,
                                                     ),
                                                 ),
                                             },
