@@ -218,7 +218,7 @@ async fn test_grpc_protobuf_export() {
                                         AnyValue {
                                             value: Some(
                                                 StringValue(
-                                                    "unknown_service:test_grpc_sink-83b2ba6c74f419b2",
+                                                    "unknown_service:<process name>",
                                                 ),
                                             ),
                                         },
@@ -257,7 +257,7 @@ async fn test_grpc_protobuf_export() {
                                         AnyValue {
                                             value: Some(
                                                 StringValue(
-                                                    "0.32.1",
+                                                    "0.0.0",
                                                 ),
                                             ),
                                         },
@@ -489,7 +489,7 @@ async fn test_grpc_protobuf_export() {
                                         AnyValue {
                                             value: Some(
                                                 StringValue(
-                                                    "unknown_service:test_grpc_sink-83b2ba6c74f419b2",
+                                                    "unknown_service:<process name>",
                                                 ),
                                             ),
                                         },
@@ -528,7 +528,7 @@ async fn test_grpc_protobuf_export() {
                                         AnyValue {
                                             value: Some(
                                                 StringValue(
-                                                    "0.32.1",
+                                                    "0.0.0",
                                                 ),
                                             ),
                                         },

@@ -207,19 +207,91 @@ pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
     })
 }
 
+/// Abstraction over opentelemetry KeyValue and opentelemetry_proto's KeyValue to enable
+/// making deterministic resource attributes for both types.
+trait CommonKeyValue {
+    fn key_str(&self) -> Cow<'_, str>;
+    fn value_str(&self) -> Cow<'_, str>;
+    fn set_value(&mut self, value: impl Into<Cow<'static, str>>);
+}
+
+impl CommonKeyValue for KeyValue {
+    fn key_str(&self) -> Cow<'_, str> {
+        self.key.as_str().into()
+    }
+
+    fn value_str(&self) -> Cow<'_, str> {
+        self.value.as_str().into()
+    }
+
+    fn set_value(&mut self, value: impl Into<Cow<'static, str>>) {
+        self.value = value.into().into();
+    }
+}
+
+impl CommonKeyValue for opentelemetry_proto::tonic::common::v1::KeyValue {
+    fn key_str(&self) -> Cow<'_, str> {
+        self.key.as_str().into()
+    }
+
+    fn value_str(&self) -> Cow<'_, str> {
+        match &self.value {
+            Some(v) => match &v.value {
+                Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => {
+                    s.as_str().into()
+                }
+                _ => "<non-string value>".into(),
+            },
+            None => "<no value>".into(),
+        }
+    }
+
+    fn set_value(&mut self, value: impl Into<Cow<'static, str>>) {
+        self.value = Some(opentelemetry_proto::tonic::common::v1::AnyValue {
+            value: Some(
+                opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(
+                    value.into().into_owned(),
+                ),
+            ),
+        });
+    }
+}
+
+fn make_deterministic_resource_attrs<KV: CommonKeyValue>(attrs: &mut Vec<KV>) {
+    attrs.sort_by_key(|kv| kv.key_str().into_owned());
+    for attr in attrs.iter_mut() {
+        // don't care about opentelemetry sdk version for tests
+        if attr.key_str() == "telemetry.sdk.version" {
+            attr.set_value("0.0.0");
+        }
+    }
+
+    // service.name has the excutable name suffixed, which includes the metadata hash
+    // in tests, so we need to trim that off
+    //
+    // see https://opentelemetry.io/docs/specs/semconv/registry/attributes/service/#service-name
+    if let Some(service_name_attr) = attrs.iter_mut().find(|kv| kv.key_str() == "service.name") {
+        let service_name = service_name_attr.value_str();
+        if service_name.starts_with("unknown_service:") {
+            let current_exe = std::env::current_exe().unwrap();
+            let process_name = current_exe.file_name().unwrap();
+            assert_eq!(
+                service_name,
+                format!("unknown_service:{}", process_name.display())
+            );
+
+            service_name_attr.set_value("unknown_service:<process name>");
+        }
+    }
+}
+
 /// `Resource` contains a hashmap, so deterministic tests need to convert to an ordered container.
 pub fn make_deterministic_resource(resource: &Resource) -> Vec<KeyValue> {
     let mut attrs: Vec<_> = resource
         .iter()
         .map(|(k, v)| KeyValue::new(k.clone(), v.clone()))
         .collect();
-    attrs.sort_by_key(|kv| kv.key.clone());
-    for attr in &mut attrs {
-        // don't care about opentelemetry sdk version for tests
-        if attr.key.as_str() == "telemetry.sdk.version" {
-            attr.value = "0.0.0".into();
-        }
-    }
+    make_deterministic_resource_attrs(&mut attrs);
     attrs
 }
 
@@ -443,8 +515,7 @@ pub fn make_trace_request_deterministic(req: &mut ExportTraceServiceRequest) {
 
     for resource_span in &mut req.resource_spans {
         if let Some(resource) = &mut resource_span.resource {
-            // Sort attributes by key
-            resource.attributes.sort_by_key(|attr| attr.key.clone());
+            make_deterministic_resource_attrs(&mut resource.attributes);
         }
 
         for scope_span in &mut resource_span.scope_spans {
@@ -491,7 +562,7 @@ pub fn make_log_request_deterministic(req: &mut ExportLogsServiceRequest) {
 
     for resource_log in &mut req.resource_logs {
         if let Some(resource) = &mut resource_log.resource {
-            resource.attributes.sort_by_key(|attr| attr.key.clone());
+            make_deterministic_resource_attrs(&mut resource.attributes);
         }
 
         for scope_log in &mut resource_log.scope_logs {

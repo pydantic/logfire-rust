@@ -78,7 +78,7 @@ async fn test_http_protobuf_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "unknown_service:test_http_sink-8eb737d0cda2024f",
+                                                "unknown_service:<process name>",
                                             ),
                                         ),
                                     },
@@ -117,7 +117,7 @@ async fn test_http_protobuf_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "0.32.1",
+                                                "0.0.0",
                                             ),
                                         ),
                                     },
@@ -396,7 +396,7 @@ async fn test_http_json_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "unknown_service:test_http_sink-8eb737d0cda2024f",
+                                                "unknown_service:<process name>",
                                             ),
                                         ),
                                     },
@@ -435,7 +435,7 @@ async fn test_http_json_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "0.32.1",
+                                                "0.0.0",
                                             ),
                                         ),
                                     },
