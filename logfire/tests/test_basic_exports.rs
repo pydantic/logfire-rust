@@ -73,9 +73,10 @@ fn test_basic_span() {
     }))
     .unwrap_err();
 
+    let spans = exporter.get_finished_spans().unwrap();
+    let logs = log_exporter.get_emitted_logs().unwrap();
     guard.shutdown().unwrap();
 
-    let spans = exporter.get_finished_spans().unwrap();
     assert_debug_snapshot!(spans, @r#"
     [
         SpanData {
@@ -633,7 +634,6 @@ fn test_basic_span() {
     ]
     "#);
 
-    let logs = log_exporter.get_emitted_logs().unwrap();
     let logs = make_deterministic_logs(logs, TEST_FILE, TEST_LINE);
     assert_debug_snapshot!(logs, @r#"
     [

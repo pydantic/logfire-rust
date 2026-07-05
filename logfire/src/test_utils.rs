@@ -130,6 +130,18 @@ impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
         }
         self.exporter.export(batch)
     }
+
+    fn shutdown(&self) -> OTelSdkResult {
+        self.exporter.shutdown()
+    }
+
+    fn shutdown_with_timeout(&self, timeout: time::Duration) -> OTelSdkResult {
+        self.exporter.shutdown_with_timeout(timeout)
+    }
+
+    fn force_flush(&self) -> OTelSdkResult {
+        self.exporter.force_flush()
+    }
 }
 
 impl<Inner> DeterministicExporter<Inner> {

@@ -78,11 +78,12 @@ async fn test_http_protobuf_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "unknown_service",
+                                                "unknown_service:test_http_sink-8eb737d0cda2024f",
                                             ),
                                         ),
                                     },
                                 ),
+                                key_strindex: 0,
                             },
                             KeyValue {
                                 key: "telemetry.sdk.language",
@@ -95,6 +96,7 @@ async fn test_http_protobuf_export() {
                                         ),
                                     },
                                 ),
+                                key_strindex: 0,
                             },
                             KeyValue {
                                 key: "telemetry.sdk.name",
@@ -107,6 +109,7 @@ async fn test_http_protobuf_export() {
                                         ),
                                     },
                                 ),
+                                key_strindex: 0,
                             },
                             KeyValue {
                                 key: "telemetry.sdk.version",
@@ -114,11 +117,12 @@ async fn test_http_protobuf_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "0.31.0",
+                                                "0.32.1",
                                             ),
                                         ),
                                     },
                                 ),
+                                key_strindex: 0,
                             },
                         ],
                         dropped_attributes_count: 0,
@@ -184,6 +188,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "code.file.path",
@@ -196,6 +201,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "code.line.number",
@@ -208,6 +214,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "code.module.name",
@@ -220,6 +227,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "idle_ns",
@@ -232,6 +240,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "logfire.json_schema",
@@ -244,6 +253,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "logfire.level_num",
@@ -256,6 +266,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "logfire.msg",
@@ -268,6 +279,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "thread.id",
@@ -280,6 +292,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "thread.name",
@@ -292,6 +305,7 @@ async fn test_http_protobuf_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                 ],
                                 dropped_attributes_count: 0,
@@ -382,11 +396,12 @@ async fn test_http_json_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "unknown_service",
+                                                "unknown_service:test_http_sink-8eb737d0cda2024f",
                                             ),
                                         ),
                                     },
                                 ),
+                                key_strindex: 0,
                             },
                             KeyValue {
                                 key: "telemetry.sdk.language",
@@ -399,6 +414,7 @@ async fn test_http_json_export() {
                                         ),
                                     },
                                 ),
+                                key_strindex: 0,
                             },
                             KeyValue {
                                 key: "telemetry.sdk.name",
@@ -411,6 +427,7 @@ async fn test_http_json_export() {
                                         ),
                                     },
                                 ),
+                                key_strindex: 0,
                             },
                             KeyValue {
                                 key: "telemetry.sdk.version",
@@ -418,11 +435,12 @@ async fn test_http_json_export() {
                                     AnyValue {
                                         value: Some(
                                             StringValue(
-                                                "0.31.0",
+                                                "0.32.1",
                                             ),
                                         ),
                                     },
                                 ),
+                                key_strindex: 0,
                             },
                         ],
                         dropped_attributes_count: 0,
@@ -488,6 +506,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "code.file.path",
@@ -500,6 +519,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "code.line.number",
@@ -512,6 +532,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "code.module.name",
@@ -524,6 +545,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "idle_ns",
@@ -536,6 +558,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "logfire.json_schema",
@@ -548,6 +571,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "logfire.level_num",
@@ -560,6 +584,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "logfire.msg",
@@ -572,6 +597,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "thread.id",
@@ -584,6 +610,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: "thread.name",
@@ -596,6 +623,7 @@ async fn test_http_json_export() {
                                                 ),
                                             },
                                         ),
+                                        key_strindex: 0,
                                     },
                                 ],
                                 dropped_attributes_count: 0,

@@ -495,8 +495,11 @@ mod tests {
             tracing::info!(name: "hello world log with value", field_value = 1);
         }
 
-        guard.shutdown().unwrap();
         let spans = exporter.get_finished_spans().unwrap();
+        let logs = log_exporter.get_emitted_logs().unwrap();
+
+        guard.shutdown().unwrap();
+
         assert_debug_snapshot!(spans, @r#"
         [
             SpanData {
@@ -1412,7 +1415,6 @@ mod tests {
         ]
         "#);
 
-        let logs = log_exporter.get_emitted_logs().unwrap();
         let logs = make_deterministic_logs(logs, TEST_FILE, TEST_LINE);
         assert_debug_snapshot!(logs, @r#"
         [
@@ -2275,7 +2277,7 @@ mod tests {
                         scope: InstrumentationScope {
                             name: "tracing/tracing-opentelemetry",
                             version: Some(
-                                "0.32.1",
+                                "0.33.0",
                             ),
                             schema_url: None,
                             attributes: [],
@@ -2351,7 +2353,7 @@ mod tests {
                         scope: InstrumentationScope {
                             name: "tracing/tracing-opentelemetry",
                             version: Some(
-                                "0.32.1",
+                                "0.33.0",
                             ),
                             schema_url: None,
                             attributes: [],

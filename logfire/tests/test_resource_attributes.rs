@@ -45,9 +45,8 @@ fn try_get_resource_attrs(config: LogfireConfigBuilder, env: &[(&str, &str)]) ->
 
     logfire::info!("test span");
 
-    guard.shutdown().expect("shutdown should succeed");
-
     let mut logs = exporter.get_emitted_logs().unwrap();
+    guard.shutdown().expect("shutdown should succeed");
 
     assert_eq!(logs.len(), 1);
     let log = logs.pop().unwrap();
@@ -67,49 +66,49 @@ fn test_no_service_resource_attributes() {
     let attrs = try_get_resource_attrs(configure(), &[]);
 
     assert_debug_snapshot!(attrs, @r#"
-        [
-            KeyValue {
-                key: Static(
-                    "service.name",
+    [
+        KeyValue {
+            key: Static(
+                "service.name",
+            ),
+            value: String(
+                Owned(
+                    "unknown_service:test_resource_attributes-26b89978a36c9402",
                 ),
-                value: String(
-                    Static(
-                        "unknown_service",
-                    ),
+            ),
+        },
+        KeyValue {
+            key: Static(
+                "telemetry.sdk.language",
+            ),
+            value: String(
+                Static(
+                    "rust",
                 ),
-            },
-            KeyValue {
-                key: Static(
-                    "telemetry.sdk.language",
+            ),
+        },
+        KeyValue {
+            key: Static(
+                "telemetry.sdk.name",
+            ),
+            value: String(
+                Static(
+                    "opentelemetry",
                 ),
-                value: String(
-                    Static(
-                        "rust",
-                    ),
+            ),
+        },
+        KeyValue {
+            key: Static(
+                "telemetry.sdk.version",
+            ),
+            value: String(
+                Static(
+                    "0.0.0",
                 ),
-            },
-            KeyValue {
-                key: Static(
-                    "telemetry.sdk.name",
-                ),
-                value: String(
-                    Static(
-                        "opentelemetry",
-                    ),
-                ),
-            },
-            KeyValue {
-                key: Static(
-                    "telemetry.sdk.version",
-                ),
-                value: String(
-                    Static(
-                        "0.0.0",
-                    ),
-                ),
-            },
-        ]
-        "#);
+            ),
+        },
+    ]
+    "#);
 }
 
 #[test]

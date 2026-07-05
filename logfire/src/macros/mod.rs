@@ -533,9 +533,8 @@ mod tests {
         crate::info!("optional integer: {value:?}", value = Some(12));
         crate::info!("optional float: {value:?}", value = Some(5.6));
 
-        guard.shutdown().unwrap();
-
         let logs = log_exporter.get_emitted_logs().unwrap();
+        guard.shutdown().unwrap();
 
         let messages_and_value = logs
             .iter()

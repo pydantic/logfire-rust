@@ -57,11 +57,11 @@ impl<Inner: SpanExporter> SpanExporter for RemovePendingSpansExporter<Inner> {
         self.0.export(spans).await
     }
 
-    fn shutdown(&mut self) -> OTelSdkResult {
+    fn shutdown(&self) -> OTelSdkResult {
         self.0.shutdown()
     }
 
-    fn force_flush(&mut self) -> OTelSdkResult {
+    fn force_flush(&self) -> OTelSdkResult {
         self.0.force_flush()
     }
 
@@ -123,8 +123,9 @@ mod tests {
             let _debug = crate::span!(level: Level::DEBUG, "debug span").entered();
         }
 
-        guard.shutdown().unwrap();
+        guard.force_flush().unwrap();
         let mut spans = exporter.get_finished_spans().unwrap();
+        guard.shutdown().unwrap();
 
         spans.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         let spans = spans
