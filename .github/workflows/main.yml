@@ -85,7 +85,7 @@ jobs:
     # rust doctests (not included in cargo llvm-cov, see https://github.com/taiki-e/cargo-llvm-cov/issues/2)
     - run: cargo test --workspace --doc
 
-    - uses: codecov/codecov-action@v3
+    - uses: codecov/codecov-action@v7
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: codecov.json
