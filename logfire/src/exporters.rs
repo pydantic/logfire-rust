@@ -200,7 +200,6 @@ pub fn metric_exporter(
         // suppress unused var warnings
         let _ = endpoint;
         let _ = headers;
-        let _ = source;
         let _ = protocol;
         Ok(UnreachableExporter)
     }
@@ -280,7 +279,6 @@ pub fn log_exporter(
         // suppress unused var warnings
         let _ = endpoint;
         let _ = headers;
-        let _ = source;
         let _ = protocol;
         Ok(UnreachableExporter)
     }
