@@ -656,6 +656,11 @@ impl LocalLogfireGuard {
         &self.logfire.meter_provider
     }
 
+    /// Convenience function to force flush the current data captured by Logfire.
+    pub fn force_flush(&self) -> Result<(), opentelemetry_sdk::error::OTelSdkError> {
+        self.logfire.force_flush()
+    }
+
     /// Convenience function to release this guard and shutdown Logfire.
     pub fn shutdown(self) -> Result<(), ShutdownError> {
         let logfire = self.logfire.clone();

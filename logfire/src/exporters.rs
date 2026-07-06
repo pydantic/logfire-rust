@@ -52,7 +52,7 @@ pub fn span_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl SpanExporter + use<>, ConfigureError> {
-    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")?;
+    let protocol = protocol_from_env("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")?;
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
     // OTEL_EXPORTER_OTLP_PROTOCOL or OTEL_EXPORTER_OTLP_TRACES_PROTOCOL is set and let the SDK
@@ -60,46 +60,44 @@ pub fn span_exporter(
     //
     // But at the moment otel-rust ignores these env vars; see
     // https://github.com/open-telemetry/opentelemetry-rust/issues/1983
-    let span_exporter =
-        match protocol {
-            Protocol::Grpc => {
-                feature_required!("export-grpc", source, {
-                    use opentelemetry_otlp::WithTonicConfig;
-                    opentelemetry_otlp::SpanExporter::builder()
-                        .with_tonic()
-                        .with_channel(
-                            tonic::transport::Channel::builder(endpoint.try_into().map_err(
-                                |e: http::uri::InvalidUri| ConfigureError::Other(e.into()),
-                            )?)
-                            .connect_lazy(),
-                        )
-                        .with_metadata(build_metadata_from_headers(headers.as_ref())?)
-                        .build()?
-                })
-            }
-            Protocol::HttpBinary => {
-                feature_required!("export-http-protobuf", source, {
-                    use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                    opentelemetry_otlp::SpanExporter::builder()
-                        .with_http()
-                        .with_protocol(Protocol::HttpBinary)
-                        .with_headers(headers.unwrap_or_default())
-                        .with_endpoint(format!("{endpoint}/v1/traces"))
-                        .build()?
-                })
-            }
-            Protocol::HttpJson => {
-                feature_required!("export-http-json", source, {
-                    use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                    opentelemetry_otlp::SpanExporter::builder()
-                        .with_http()
-                        .with_protocol(Protocol::HttpJson)
-                        .with_headers(headers.unwrap_or_default())
-                        .with_endpoint(format!("{endpoint}/v1/traces"))
-                        .build()?
-                })
-            }
-        };
+    let span_exporter = match protocol {
+        #[cfg(feature = "export-grpc")]
+        Protocol::Grpc => {
+            use opentelemetry_otlp::WithTonicConfig;
+            opentelemetry_otlp::SpanExporter::builder()
+                .with_tonic()
+                .with_channel(
+                    tonic::transport::Channel::builder(
+                        endpoint
+                            .try_into()
+                            .map_err(|e: http::uri::InvalidUri| ConfigureError::Other(e.into()))?,
+                    )
+                    .connect_lazy(),
+                )
+                .with_metadata(build_metadata_from_headers(headers.as_ref())?)
+                .build()?
+        }
+        #[cfg(feature = "export-http-protobuf")]
+        Protocol::HttpBinary => {
+            use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+            opentelemetry_otlp::SpanExporter::builder()
+                .with_http()
+                .with_protocol(Protocol::HttpBinary)
+                .with_headers(headers.unwrap_or_default())
+                .with_endpoint(format!("{endpoint}/v1/traces"))
+                .build()?
+        }
+        #[cfg(feature = "export-http-json")]
+        Protocol::HttpJson => {
+            use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+            opentelemetry_otlp::SpanExporter::builder()
+                .with_http()
+                .with_protocol(Protocol::HttpJson)
+                .with_headers(headers.unwrap_or_default())
+                .with_endpoint(format!("{endpoint}/v1/traces"))
+                .build()?
+        }
+    };
 
     #[cfg(not(any(
         feature = "export-grpc",
@@ -142,7 +140,7 @@ pub fn metric_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl PushMetricExporter + use<>, ConfigureError> {
-    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")?;
+    let protocol = protocol_from_env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")?;
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
     // OTEL_EXPORTER_OTLP_PROTOCOL or OTEL_EXPORTER_OTLP_METRICS_PROTOCOL is set and let the SDK
@@ -151,47 +149,44 @@ pub fn metric_exporter(
     // But at the moment otel-rust ignores these env vars; see
     // https://github.com/open-telemetry/opentelemetry-rust/issues/1983
     match protocol {
+        #[cfg(feature = "export-grpc")]
         Protocol::Grpc => {
-            feature_required!("export-grpc", source, {
-                use opentelemetry_otlp::WithTonicConfig;
-                Ok(opentelemetry_otlp::MetricExporter::builder()
-                    .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
-                    .with_tonic()
-                    .with_channel(
-                        tonic::transport::Channel::builder(
-                            endpoint.try_into().map_err(|e: http::uri::InvalidUri| {
-                                ConfigureError::Other(e.into())
-                            })?,
-                        )
-                        .connect_lazy(),
+            use opentelemetry_otlp::WithTonicConfig;
+            Ok(opentelemetry_otlp::MetricExporter::builder()
+                .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
+                .with_tonic()
+                .with_channel(
+                    tonic::transport::Channel::builder(
+                        endpoint
+                            .try_into()
+                            .map_err(|e: http::uri::InvalidUri| ConfigureError::Other(e.into()))?,
                     )
-                    .with_metadata(build_metadata_from_headers(headers.as_ref())?)
-                    .build()?)
-            })
+                    .connect_lazy(),
+                )
+                .with_metadata(build_metadata_from_headers(headers.as_ref())?)
+                .build()?)
         }
+        #[cfg(feature = "export-http-protobuf")]
         Protocol::HttpBinary => {
-            feature_required!("export-http-protobuf", source, {
-                use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                Ok(opentelemetry_otlp::MetricExporter::builder()
-                    .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
-                    .with_http()
-                    .with_protocol(Protocol::HttpBinary)
-                    .with_headers(headers.unwrap_or_default())
-                    .with_endpoint(format!("{endpoint}/v1/metrics"))
-                    .build()?)
-            })
+            use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+            Ok(opentelemetry_otlp::MetricExporter::builder()
+                .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
+                .with_http()
+                .with_protocol(Protocol::HttpBinary)
+                .with_headers(headers.unwrap_or_default())
+                .with_endpoint(format!("{endpoint}/v1/metrics"))
+                .build()?)
         }
+        #[cfg(feature = "export-http-json")]
         Protocol::HttpJson => {
-            feature_required!("export-http-json", source, {
-                use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                Ok(opentelemetry_otlp::MetricExporter::builder()
-                    .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
-                    .with_http()
-                    .with_protocol(Protocol::HttpJson)
-                    .with_headers(headers.unwrap_or_default())
-                    .with_endpoint(format!("{endpoint}/v1/metrics"))
-                    .build()?)
-            })
+            use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+            Ok(opentelemetry_otlp::MetricExporter::builder()
+                .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
+                .with_http()
+                .with_protocol(Protocol::HttpJson)
+                .with_headers(headers.unwrap_or_default())
+                .with_endpoint(format!("{endpoint}/v1/metrics"))
+                .build()?)
         }
     }
 
@@ -205,7 +200,6 @@ pub fn metric_exporter(
         // suppress unused var warnings
         let _ = endpoint;
         let _ = headers;
-        let _ = source;
         let _ = protocol;
         Ok(UnreachableExporter)
     }
@@ -228,7 +222,7 @@ pub fn log_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl LogExporter + use<>, ConfigureError> {
-    let (source, protocol) = protocol_from_env("OTEL_EXPORTER_OTLP_LOGS_PROTOCOL")?;
+    let protocol = protocol_from_env("OTEL_EXPORTER_OTLP_LOGS_PROTOCOL")?;
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
     // OTEL_EXPORTER_OTLP_PROTOCOL or OTEL_EXPORTER_OTLP_LOGS_PROTOCOL is set and let the SDK
@@ -237,44 +231,41 @@ pub fn log_exporter(
     // But at the moment otel-rust ignores these env vars; see
     // https://github.com/open-telemetry/opentelemetry-rust/issues/1983
     match protocol {
+        #[cfg(feature = "export-grpc")]
         Protocol::Grpc => {
-            feature_required!("export-grpc", source, {
-                use opentelemetry_otlp::WithTonicConfig;
-                Ok(opentelemetry_otlp::LogExporter::builder()
-                    .with_tonic()
-                    .with_channel(
-                        tonic::transport::Channel::builder(
-                            endpoint.try_into().map_err(|e: http::uri::InvalidUri| {
-                                ConfigureError::Other(e.into())
-                            })?,
-                        )
-                        .connect_lazy(),
+            use opentelemetry_otlp::WithTonicConfig;
+            Ok(opentelemetry_otlp::LogExporter::builder()
+                .with_tonic()
+                .with_channel(
+                    tonic::transport::Channel::builder(
+                        endpoint
+                            .try_into()
+                            .map_err(|e: http::uri::InvalidUri| ConfigureError::Other(e.into()))?,
                     )
-                    .with_metadata(build_metadata_from_headers(headers.as_ref())?)
-                    .build()?)
-            })
+                    .connect_lazy(),
+                )
+                .with_metadata(build_metadata_from_headers(headers.as_ref())?)
+                .build()?)
         }
+        #[cfg(feature = "export-http-protobuf")]
         Protocol::HttpBinary => {
-            feature_required!("export-http-protobuf", source, {
-                use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                Ok(opentelemetry_otlp::LogExporter::builder()
-                    .with_http()
-                    .with_protocol(Protocol::HttpBinary)
-                    .with_headers(headers.unwrap_or_default())
-                    .with_endpoint(format!("{endpoint}/v1/logs"))
-                    .build()?)
-            })
+            use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+            Ok(opentelemetry_otlp::LogExporter::builder()
+                .with_http()
+                .with_protocol(Protocol::HttpBinary)
+                .with_headers(headers.unwrap_or_default())
+                .with_endpoint(format!("{endpoint}/v1/logs"))
+                .build()?)
         }
+        #[cfg(feature = "export-http-json")]
         Protocol::HttpJson => {
-            feature_required!("export-http-json", source, {
-                use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
-                Ok(opentelemetry_otlp::LogExporter::builder()
-                    .with_http()
-                    .with_protocol(Protocol::HttpJson)
-                    .with_headers(headers.unwrap_or_default())
-                    .with_endpoint(format!("{endpoint}/v1/logs"))
-                    .build()?)
-            })
+            use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+            Ok(opentelemetry_otlp::LogExporter::builder()
+                .with_http()
+                .with_protocol(Protocol::HttpJson)
+                .with_headers(headers.unwrap_or_default())
+                .with_endpoint(format!("{endpoint}/v1/logs"))
+                .build()?)
         }
     }
 
@@ -288,7 +279,6 @@ pub fn log_exporter(
         // suppress unused var warnings
         let _ = endpoint;
         let _ = headers;
-        let _ = source;
         let _ = protocol;
         Ok(UnreachableExporter)
     }
@@ -313,30 +303,17 @@ fn build_metadata_from_headers(
 }
 
 // current default logfire protocol is to export over HTTP in binary format
-const DEFAULT_LOGFIRE_PROTOCOL: Protocol = Protocol::HttpBinary;
+const DEFAULT_LOGFIRE_PROTOCOL: &str = OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF;
 
 // standard OTLP protocol values in configuration
 const OTEL_EXPORTER_OTLP_PROTOCOL_GRPC: &str = "grpc";
 const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF: &str = "http/protobuf";
 const OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_JSON: &str = "http/json";
 
-/// Temporary workaround for lack of <https://github.com/open-telemetry/opentelemetry-rust/pull/2758>
-fn protocol_from_str(value: &str) -> Result<Protocol, ConfigureError> {
-    match value {
-        OTEL_EXPORTER_OTLP_PROTOCOL_GRPC => Ok(Protocol::Grpc),
-        OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF => Ok(Protocol::HttpBinary),
-        OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_JSON => Ok(Protocol::HttpJson),
-        _ => Err(ConfigureError::Other(
-            format!("unsupported protocol: {value}").into(),
-        )),
-    }
-}
-
-/// Get a protocol from the environment (or default value), returning a string describing the source
-/// plus the parsed protocol.
-fn protocol_from_env(data_env_var: &str) -> Result<(String, Protocol), ConfigureError> {
+/// Get a protocol from the environment (or default value).
+fn protocol_from_env(data_env_var: &str) -> Result<Protocol, ConfigureError> {
     // try both data-specific env var and general protocol
-    [data_env_var, "OTEL_EXPORTER_OTLP_PROTOCOL"]
+    let (source, value) = [data_env_var, "OTEL_EXPORTER_OTLP_PROTOCOL"]
         .into_iter()
         .find_map(|var_name| match get_optional_env(var_name, None) {
             Ok(Some(value)) => Some(Ok((var_name, value))),
@@ -344,15 +321,28 @@ fn protocol_from_env(data_env_var: &str) -> Result<(String, Protocol), Configure
             Err(e) => Some(Err(e)),
         })
         .transpose()?
-        .map_or_else(
-            || {
-                Ok((
-                    "the default logfire export protocol".to_string(),
-                    DEFAULT_LOGFIRE_PROTOCOL,
-                ))
-            },
-            |(var_name, value)| Ok((format!("`{var_name}={value}`"), protocol_from_str(&value)?)),
-        )
+        .map_or(
+            (
+                "the default logfire export protocol".to_string(),
+                DEFAULT_LOGFIRE_PROTOCOL.to_string(),
+            ),
+            |(var_name, value)| (format!("`{var_name}={value}`"), value),
+        );
+
+    match value.as_str() {
+        OTEL_EXPORTER_OTLP_PROTOCOL_GRPC => {
+            feature_required!("export-grpc", source, Ok(Protocol::Grpc))
+        }
+        OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF => {
+            feature_required!("export-http-protobuf", source, Ok(Protocol::HttpBinary))
+        }
+        OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_JSON => {
+            feature_required!("export-http-json", source, Ok(Protocol::HttpJson))
+        }
+        _ => Err(ConfigureError::Other(
+            format!("unsupported protocol: {value}").into(),
+        )),
+    }
 }
 
 /// Internal type used when no export features are available to allow for type inference

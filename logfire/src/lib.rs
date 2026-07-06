@@ -121,10 +121,6 @@ pub enum ConfigureError {
     #[error("Error configuring the global logger: {0}")]
     Logging(#[from] log::SetLoggerError),
 
-    /// Error configuring the OpenTelemetry tracer.
-    #[error("Error configuring the OpenTelemetry tracer: {0}")]
-    Trace(#[from] opentelemetry_sdk::trace::TraceError),
-
     /// OpenTelemetry exporter failed to build
     #[error("Error building the OpenTelemetry exporter: {0}")]
     ExporterBuildError(#[from] opentelemetry_otlp::ExporterBuildError),

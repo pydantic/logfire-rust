@@ -447,7 +447,6 @@ impl<'a> LogfireMetrics<'a> {
 macro_rules! logfire_metrics_method {
     ($method:ident -> $return_ty:ty) => {
         #[doc = concat!("See [`", stringify!($method), "`][crate::", stringify!($method), "].")]
-        #[must_use]
         pub fn $method(&self, name: impl Into<Cow<'static, str>>) -> $return_ty {
             self.meter.$method(name)
         }

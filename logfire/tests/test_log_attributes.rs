@@ -36,8 +36,8 @@ fn test_log_macro_attributes() {
         d.e = 3
     );
 
-    guard.shutdown().unwrap();
     let logs = log_exporter.get_emitted_logs().unwrap();
+    guard.shutdown().unwrap();
 
     // String attribute
     let log = find_log(&logs, "string_attr_log");
@@ -119,9 +119,8 @@ fn test_log_macro_shorthand_ident() {
         multi.d_e
     );
 
-    guard.shutdown().unwrap();
-
     let logs = log_exporter.get_emitted_logs().unwrap();
+    guard.shutdown().unwrap();
 
     // Dotted key attribute
     let log = find_log(&logs, "dotted_attr_log");
