@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'logfire-v*'
-      - 'logfire-core-v*'
-      - 'logfire-client-v*'
   pull_request: {}
+  release:
+    types: [published]
 
 env:
   # avoid attempting to send logs to logfire from tests
@@ -102,41 +100,23 @@ jobs:
         with:
           jobs: ${{ toJSON(needs) }}
 
-  release-logfire-core:
+  # Publishing a GitHub Release (tag v{version}) runs this once tests/lint pass
+  # on the tag. The `release` environment pauses the job for reviewer approval;
+  # the crates.io token is minted per-run via OIDC trusted publishing.
+  release:
     needs: [check]
-    if: "success() && startsWith(github.ref, 'refs/tags/logfire-core-v')"
+    if: "success() && github.event_name == 'release'"
     runs-on: ubuntu-latest
     environment: release
+    permissions:
+      id-token: write
+      contents: read
     steps:
     - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@stable
     - uses: Swatinem/rust-cache@v2
-    - run: cargo publish -p logfire-core
+    - uses: rust-lang/crates-io-auth-action@v1
+      id: auth
+    - run: ./release.sh
       env:
-        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-  release-logfire:
-    needs: [check]
-    if: "success() && startsWith(github.ref, 'refs/tags/logfire-v')"
-    runs-on: ubuntu-latest
-    environment: release
-    steps:
-    - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@stable
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo publish -p logfire
-      env:
-        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-  release-logfire-client:
-    needs: [check]
-    if: "success() && startsWith(github.ref, 'refs/tags/logfire-client-v')"
-    runs-on: ubuntu-latest
-    environment: release
-    steps:
-    - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@stable
-    - uses: Swatinem/rust-cache@v2
-    - run: cargo publish -p logfire-client
-      env:
-        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
