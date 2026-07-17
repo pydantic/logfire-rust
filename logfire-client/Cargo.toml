@@ -1,6 +1,6 @@
 [package]
 name = "logfire-client"
-version = "0.1.0"
+version = "0.11.0"
 description = "Logfire client SDK, query your Pydantic Logfire logs and metrics using SQL!"
 edition.workspace = true
 license.workspace = true

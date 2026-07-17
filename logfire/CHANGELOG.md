@@ -1,3 +1,8 @@
+## [v0.11.0] (2026-07-17)
+
+* bump opentelemetry to 0.32 by @davidhewitt in [#137](https://github.com/pydantic/logfire-rust/pull/137)
+* update `reqwest` dependency in `logfire-client` to 0.13 by @davidhewitt in [#136](https://github.com/pydantic/logfire-rust/pull/136)
+
 ## [v0.10.0] (2026-06-08)
 
 * Add `LOGFIRE_BASE_URL` env var support and refactor `LOGFIRE_TOKEN` by @adriangb in [#119](https://github.com/pydantic/logfire-rust/pull/119)
