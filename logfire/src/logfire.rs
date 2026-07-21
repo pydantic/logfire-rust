@@ -48,6 +48,7 @@ use crate::{
         exporters::console::{ConsoleWriter, create_console_processors},
         log_processor_shutdown_hack::LogProcessorShutdownHack,
         logfire_tracer::{GLOBAL_TRACER, LOCAL_TRACER, LogfireTracer},
+        metric_reader_runtime_hack::MetricReaderRuntimeHack,
         pending_span_processor::PendingSpanProcessor,
     },
     metrics,
@@ -726,7 +727,7 @@ fn spawn_runtime_and_exporters(
         tokio::sync::oneshot::Sender<()>,
         BatchSpanProcessor<runtime::Tokio>,
         LogProcessorShutdownHack<BatchLogProcessor<runtime::Tokio>>,
-        Option<PeriodicReader<impl PushMetricExporter + use<>>>,
+        Option<MetricReaderRuntimeHack<PeriodicReader<impl PushMetricExporter + use<>>>>,
     ),
     ConfigureError,
 > {
@@ -798,13 +799,18 @@ fn spawn_runtime_and_exporters(
             );
 
             let metrics_processor = if enable_metrics {
-                Some(
+                // NB the `PeriodicReader` spawns its worker task lazily when it is
+                // registered with a pipeline (in `SdkMeterProvider::builder().build()`),
+                // *not* here; `MetricReaderRuntimeHack` ensures that the worker is
+                // nevertheless spawned on this background runtime.
+                Some(MetricReaderRuntimeHack::new(
                     PeriodicReader::builder(
                         crate::exporters::metric_exporter(logfire_base_url, http_headers)?,
                         runtime::Tokio,
                     )
                     .build(),
-                )
+                    handle.clone(),
+                ))
             } else {
                 None
             };
