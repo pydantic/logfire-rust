@@ -856,5 +856,26 @@ async fn test_grpc_protobuf_export() {
     "#);
 }
 
+/// The metrics exporter is built by a separate code path to traces and logs, check that it can
+/// be built for gRPC (the user agent is asserted on the wire for traces above).
+#[tokio::test]
+async fn test_grpc_metric_exporter_builds() {
+    let env_guard = ENV_MUTEX.lock().unwrap();
+    // SAFETY: Holding mutex to prevent other threads interacting with env
+    unsafe {
+        std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
+    }
+
+    let exporter = logfire::exporters::metric_exporter("http://localhost:4317", None);
+
+    // SAFETY: As above
+    unsafe {
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+    }
+    drop(env_guard);
+
+    assert!(exporter.is_ok(), "failed to build gRPC metric exporter");
+}
+
 /// Mutex to avoid concurrent mutation of env vars.
 static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
