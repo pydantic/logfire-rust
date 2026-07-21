@@ -61,6 +61,10 @@ async fn test_http_protobuf_export() {
 
     assert_eq!(request.method.as_str(), "POST");
     assert_eq!(request.url.path(), "/v1/traces");
+    assert_eq!(
+        request.headers.get("user-agent").expect("no user-agent"),
+        &format!("logfire-rust/{}", env!("CARGO_PKG_VERSION"))
+    );
     let mut body = ExportTraceServiceRequest::decode(request.body.as_slice())
         .expect("failed to decode trace request");
     make_trace_request_deterministic(&mut body);
@@ -378,6 +382,10 @@ async fn test_http_json_export() {
 
     assert_eq!(request.method.as_str(), "POST");
     assert_eq!(request.url.path(), "/v1/traces");
+    assert_eq!(
+        request.headers.get("user-agent").expect("no user-agent"),
+        &format!("logfire-rust/{}", env!("CARGO_PKG_VERSION"))
+    );
     let mut body: ExportTraceServiceRequest =
         serde_json::from_slice(&request.body).expect("failed to decode trace request");
 
@@ -527,7 +535,7 @@ async fn test_http_json_export() {
                                             AnyValue {
                                                 value: Some(
                                                     IntValue(
-                                                        372,
+                                                        376,
                                                     ),
                                                 ),
                                             },
