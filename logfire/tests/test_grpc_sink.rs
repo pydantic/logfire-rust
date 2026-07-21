@@ -28,11 +28,18 @@ mod test_utils;
 #[derive(Clone)]
 struct MockTraceService {
     captured: Arc<Mutex<Vec<ExportTraceServiceRequest>>>,
+    captured_user_agents: Arc<Mutex<Vec<String>>>,
 }
 
 impl MockTraceService {
-    fn new(captured: Arc<Mutex<Vec<ExportTraceServiceRequest>>>) -> Self {
-        Self { captured }
+    fn new(
+        captured: Arc<Mutex<Vec<ExportTraceServiceRequest>>>,
+        captured_user_agents: Arc<Mutex<Vec<String>>>,
+    ) -> Self {
+        Self {
+            captured,
+            captured_user_agents,
+        }
     }
 }
 
@@ -54,6 +61,18 @@ impl TraceService for MockTraceService {
         &self,
         request: Request<ExportTraceServiceRequest>,
     ) -> Result<Response<ExportTraceServiceResponse>, Status> {
+        // Capture the user agent for testing
+        {
+            let user_agent = request
+                .metadata()
+                .get("user-agent")
+                .expect("no user-agent sent")
+                .to_str()
+                .expect("user-agent is not valid ASCII")
+                .to_owned();
+            self.captured_user_agents.lock().unwrap().push(user_agent);
+        }
+
         let trace_request = request.into_inner();
 
         // Capture the request for testing
@@ -94,6 +113,7 @@ async fn start_mock_grpc_server() -> (
     String,
     Arc<Mutex<Vec<ExportTraceServiceRequest>>>,
     Arc<Mutex<Vec<ExportLogsServiceRequest>>>,
+    Arc<Mutex<Vec<String>>>,
 ) {
     let (ready_tx, ready_rx) = oneshot::channel();
 
@@ -118,7 +138,11 @@ async fn start_mock_grpc_server() -> (
             let captured_logs = Arc::new(Mutex::new(Vec::new()));
             let captured_logs_clone = captured_logs.clone();
 
-            let trace_service = MockTraceService::new(captured_traces_clone);
+            let captured_user_agents = Arc::new(Mutex::new(Vec::new()));
+            let captured_user_agents_clone = captured_user_agents.clone();
+
+            let trace_service =
+                MockTraceService::new(captured_traces_clone, captured_user_agents_clone);
             let logs_service = MockLogsService::new(captured_logs_clone);
 
             tokio::spawn(async move {
@@ -139,7 +163,13 @@ async fn start_mock_grpc_server() -> (
             tonic::client::Grpc::new(channel).ready().await.unwrap();
 
             ready_tx
-                .send((shutdown_tx, addr_str, captured_traces, captured_logs))
+                .send((
+                    shutdown_tx,
+                    addr_str,
+                    captured_traces,
+                    captured_logs,
+                    captured_user_agents,
+                ))
                 .unwrap();
 
             tokio::select! {
@@ -158,7 +188,8 @@ async fn start_mock_grpc_server() -> (
 async fn test_grpc_protobuf_export() {
     use logfire::config::AdvancedOptions;
 
-    let (shutdown_tx, server_addr, captured_traces, captured_logs) = start_mock_grpc_server().await;
+    let (shutdown_tx, server_addr, captured_traces, captured_logs, captured_user_agents) =
+        start_mock_grpc_server().await;
 
     let env_guard = ENV_MUTEX.lock().unwrap();
     // SAFETY: Holding mutex to prevent other threads interacting with env
@@ -196,6 +227,16 @@ async fn test_grpc_protobuf_export() {
         .unwrap();
 
     shutdown_tx.send(()).unwrap();
+
+    // tonic appends its own `tonic/<version>` to the user agent we set
+    let user_agents = std::mem::take(&mut *captured_user_agents.lock().unwrap());
+    assert!(!user_agents.is_empty());
+    for user_agent in user_agents {
+        assert!(
+            user_agent.starts_with(&format!("logfire-rust/{} ", env!("CARGO_PKG_VERSION"))),
+            "unexpected user agent: {user_agent}"
+        );
+    }
 
     let mut trace_requests = std::mem::take(&mut *captured_traces.lock().unwrap());
     let mut log_requests = std::mem::take(&mut *captured_logs.lock().unwrap());
@@ -349,7 +390,7 @@ async fn test_grpc_protobuf_export() {
                                                 AnyValue {
                                                     value: Some(
                                                         IntValue(
-                                                            189,
+                                                            220,
                                                         ),
                                                     ),
                                                 },
@@ -585,7 +626,7 @@ async fn test_grpc_protobuf_export() {
                                                 AnyValue {
                                                     value: Some(
                                                         IntValue(
-                                                            188,
+                                                            219,
                                                         ),
                                                     ),
                                                 },
@@ -711,7 +752,7 @@ async fn test_grpc_protobuf_export() {
                                                 AnyValue {
                                                     value: Some(
                                                         IntValue(
-                                                            190,
+                                                            221,
                                                         ),
                                                     ),
                                                 },
@@ -813,6 +854,27 @@ async fn test_grpc_protobuf_export() {
         },
     ]
     "#);
+}
+
+/// The metrics exporter is built by a separate code path to traces and logs, check that it can
+/// be built for gRPC (the user agent is asserted on the wire for traces above).
+#[tokio::test]
+async fn test_grpc_metric_exporter_builds() {
+    let env_guard = ENV_MUTEX.lock().unwrap();
+    // SAFETY: Holding mutex to prevent other threads interacting with env
+    unsafe {
+        std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
+    }
+
+    let exporter = logfire::exporters::metric_exporter("http://localhost:4317", None);
+
+    // SAFETY: As above
+    unsafe {
+        std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+    }
+    drop(env_guard);
+
+    assert!(exporter.is_ok(), "failed to build gRPC metric exporter");
 }
 
 /// Mutex to avoid concurrent mutation of env vars.

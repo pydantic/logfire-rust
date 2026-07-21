@@ -16,6 +16,40 @@ use opentelemetry_sdk::{
 
 use crate::{ConfigureError, internal::env::get_optional_env};
 
+/// The `User-Agent` sent with OTLP exports, e.g. `logfire-rust/0.11.0`.
+///
+/// This identifies the Logfire SDK as the sender of the telemetry (as opposed to the resource
+/// attributes, which identify what generated it). The OTLP exporter specification permits
+/// exporters to add their own details to the `User-Agent` header, see
+/// <https://opentelemetry.io/docs/specs/otel/protocol/exporter/#user-agent>.
+#[cfg(any(
+    feature = "export-grpc",
+    feature = "export-http-protobuf",
+    feature = "export-http-json"
+))]
+const USER_AGENT: &str = concat!("logfire-rust/", env!("CARGO_PKG_VERSION"));
+
+/// Add the Logfire [`USER_AGENT`] to the headers, unless the caller set their own `User-Agent`.
+///
+/// Note that this replaces the `User-Agent` set by `opentelemetry-otlp` for HTTP exports (there is
+/// no way to read it back to append to it); for gRPC exports `tonic` will append its own
+/// `tonic/<version>` to this value.
+#[cfg(any(
+    feature = "export-grpc",
+    feature = "export-http-protobuf",
+    feature = "export-http-json"
+))]
+fn headers_with_user_agent(headers: Option<HashMap<String, String>>) -> HashMap<String, String> {
+    let mut headers = headers.unwrap_or_default();
+    if !headers
+        .keys()
+        .any(|name| name.eq_ignore_ascii_case("user-agent"))
+    {
+        headers.insert("User-Agent".to_string(), USER_AGENT.to_string());
+    }
+    headers
+}
+
 macro_rules! feature_required {
     ($feature_name:literal, $functionality:expr, $if_enabled:expr) => {{
         #[cfg(feature = $feature_name)]
@@ -74,7 +108,7 @@ pub fn span_exporter(
                     )
                     .connect_lazy(),
                 )
-                .with_metadata(build_metadata_from_headers(headers.as_ref())?)
+                .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?
         }
         #[cfg(feature = "export-http-protobuf")]
@@ -83,7 +117,7 @@ pub fn span_exporter(
             opentelemetry_otlp::SpanExporter::builder()
                 .with_http()
                 .with_protocol(Protocol::HttpBinary)
-                .with_headers(headers.unwrap_or_default())
+                .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/traces"))
                 .build()?
         }
@@ -93,7 +127,7 @@ pub fn span_exporter(
             opentelemetry_otlp::SpanExporter::builder()
                 .with_http()
                 .with_protocol(Protocol::HttpJson)
-                .with_headers(headers.unwrap_or_default())
+                .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/traces"))
                 .build()?
         }
@@ -163,7 +197,7 @@ pub fn metric_exporter(
                     )
                     .connect_lazy(),
                 )
-                .with_metadata(build_metadata_from_headers(headers.as_ref())?)
+                .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?)
         }
         #[cfg(feature = "export-http-protobuf")]
@@ -173,7 +207,7 @@ pub fn metric_exporter(
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                 .with_http()
                 .with_protocol(Protocol::HttpBinary)
-                .with_headers(headers.unwrap_or_default())
+                .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/metrics"))
                 .build()?)
         }
@@ -184,7 +218,7 @@ pub fn metric_exporter(
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                 .with_http()
                 .with_protocol(Protocol::HttpJson)
-                .with_headers(headers.unwrap_or_default())
+                .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/metrics"))
                 .build()?)
         }
@@ -244,7 +278,7 @@ pub fn log_exporter(
                     )
                     .connect_lazy(),
                 )
-                .with_metadata(build_metadata_from_headers(headers.as_ref())?)
+                .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?)
         }
         #[cfg(feature = "export-http-protobuf")]
@@ -253,7 +287,7 @@ pub fn log_exporter(
             Ok(opentelemetry_otlp::LogExporter::builder()
                 .with_http()
                 .with_protocol(Protocol::HttpBinary)
-                .with_headers(headers.unwrap_or_default())
+                .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/logs"))
                 .build()?)
         }
@@ -263,7 +297,7 @@ pub fn log_exporter(
             Ok(opentelemetry_otlp::LogExporter::builder()
                 .with_http()
                 .with_protocol(Protocol::HttpJson)
-                .with_headers(headers.unwrap_or_default())
+                .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/logs"))
                 .build()?)
         }
@@ -286,20 +320,59 @@ pub fn log_exporter(
 
 #[cfg(feature = "export-grpc")]
 fn build_metadata_from_headers(
-    headers: Option<&HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
 ) -> Result<tonic::metadata::MetadataMap, ConfigureError> {
-    let Some(headers) = headers else {
-        return Ok(tonic::metadata::MetadataMap::new());
-    };
-
     let mut header_map = http::HeaderMap::new();
-    for (key, value) in headers {
+    for (key, value) in headers_with_user_agent(headers) {
         header_map.insert(
             http::HeaderName::try_from(key).map_err(|e| ConfigureError::Other(e.into()))?,
             http::HeaderValue::try_from(value).map_err(|e| ConfigureError::Other(e.into()))?,
         );
     }
     Ok(tonic::metadata::MetadataMap::from_headers(header_map))
+}
+
+#[cfg(test)]
+#[cfg(any(
+    feature = "export-grpc",
+    feature = "export-http-protobuf",
+    feature = "export-http-json"
+))]
+mod tests {
+    use super::{USER_AGENT, headers_with_user_agent};
+    use std::collections::HashMap;
+
+    #[test]
+    fn user_agent_is_added_to_headers() {
+        assert_eq!(
+            headers_with_user_agent(None),
+            HashMap::from([("User-Agent".to_string(), USER_AGENT.to_string())])
+        );
+
+        let headers = headers_with_user_agent(Some(HashMap::from([(
+            "Authorization".to_string(),
+            "Bearer token".to_string(),
+        )])));
+        assert_eq!(
+            headers,
+            HashMap::from([
+                ("Authorization".to_string(), "Bearer token".to_string()),
+                ("User-Agent".to_string(), USER_AGENT.to_string())
+            ])
+        );
+    }
+
+    #[test]
+    fn user_agent_set_by_caller_is_preserved() {
+        let headers = headers_with_user_agent(Some(HashMap::from([(
+            "user-agent".to_string(),
+            "my-app/1.2.3".to_string(),
+        )])));
+        assert_eq!(
+            headers,
+            HashMap::from([("user-agent".to_string(), "my-app/1.2.3".to_string())])
+        );
+    }
 }
 
 // current default logfire protocol is to export over HTTP in binary format
