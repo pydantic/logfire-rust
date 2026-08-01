@@ -69,7 +69,7 @@ tokio = { version = "1.44.1", features = [
     "macros",
     "rt-multi-thread",
 ] }
-ulid = "1.2.0"
+ulid = "3.0.0"
 wiremock = "0.6.4"
 tonic-build = "0.14"
 tonic = { version = "0.14", features = ["transport"] }
@@ -85,7 +85,7 @@ axum = { version = "0.8", features = ["macros"] }
 axum-tracing-opentelemetry = { version = "0.38", features = [
     "tracing_level_info",
 ] }
-axum-otel-metrics = "0.13.0"
+axum-otel-metrics = "0.14.1"
 actix-web = "4.0"
 opentelemetry-instrumentation-actix-web = { version = "0.24", features = [
     "metrics",
