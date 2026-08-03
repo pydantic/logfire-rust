@@ -523,7 +523,7 @@ mod tests {
         let a = metrics.f64_exponential_histogram("f64_exp", 10).build();
         let b = metrics.u64_exponential_histogram("u64_exp", 20).build();
 
-        let scales = &logfire.tracer.exponential_histograms;
+        let scales = &logfire.0.tracer.exponential_histograms;
         {
             let histograms = scales.read().unwrap();
             assert!(histograms.contains_key("f64_exp"));

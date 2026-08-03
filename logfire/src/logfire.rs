@@ -58,8 +58,18 @@ use crate::{
 /// integrations.
 ///
 /// This instance is created by calling [`logfire::configure()`][crate::configure].
+///
+/// Cloning is cheap — one refcount bump — so a `Logfire` can be passed around
+/// freely; every clone shares the same configuration.
 #[derive(Clone)]
-pub struct Logfire {
+pub struct Logfire(pub(crate) Arc<LogfireInner>);
+
+/// The configuration a [`Logfire`] and all of its clones share.
+///
+/// Behind an `Arc` rather than inline because it is ~2 KiB and its
+/// [`EnvFilter`] deep-clones its directives, while [`set_local_logfire`] takes
+/// a `Logfire` by value — a clone per recording call on a local-mode logfire.
+pub(crate) struct LogfireInner {
     pub(crate) tracer_provider: SdkTracerProvider,
     pub(crate) tracer: LogfireTracer,
     pub(crate) env_filter: EnvFilter,
@@ -107,7 +117,7 @@ impl Logfire {
     /// logfire.
     #[must_use]
     pub fn metrics(&self) -> crate::metrics::LogfireMetrics<'_> {
-        self.tracer.metrics()
+        self.0.tracer.metrics()
     }
 
     /// Forcibly flush the current data captured by Logfire.
@@ -120,9 +130,9 @@ impl Logfire {
     ///
     /// This will error if the underlying OpenTelemetry SDK fails to flush data.
     pub fn force_flush(&self) -> Result<(), opentelemetry_sdk::error::OTelSdkError> {
-        self.tracer_provider.force_flush()?;
-        self.meter_provider.force_flush()?;
-        self.logger_provider.force_flush()?;
+        self.0.tracer_provider.force_flush()?;
+        self.0.meter_provider.force_flush()?;
+        self.0.logger_provider.force_flush()?;
         Ok(())
     }
 
@@ -138,12 +148,12 @@ impl Logfire {
         // shutdown produces some logs, we don't care about these
         let _guard = Context::enter_telemetry_suppressed_scope();
 
-        self.tracer_provider.shutdown()?;
-        self.meter_provider.shutdown()?;
-        self.logger_provider.shutdown()?;
+        self.0.tracer_provider.shutdown()?;
+        self.0.meter_provider.shutdown()?;
+        self.0.logger_provider.shutdown()?;
 
         // Send shutdown signal to the background runtime thread
-        if let Ok(mut sender_guard) = self.shutdown_sender.lock()
+        if let Ok(mut sender_guard) = self.0.shutdown_sender.lock()
             && let Some(sender) = sender_guard.take()
         {
             let _ = sender.send(());
@@ -184,9 +194,9 @@ impl Logfire {
         S: Subscriber + for<'span> LookupSpan<'span>,
     {
         LogfireTracingLayer::new(
-            self.tracer.clone(),
-            self.enable_tracing_metrics,
-            self.env_filter.clone(),
+            self.0.tracer.clone(),
+            self.0.enable_tracing_metrics,
+            self.0.env_filter.clone(),
         )
     }
 
@@ -237,7 +247,7 @@ impl Logfire {
             opentelemetry::global::set_meter_provider(meter_provider.clone());
         }
 
-        Ok(Logfire {
+        Ok(Logfire(Arc::new(LogfireInner {
             tracer_provider,
             tracer,
             env_filter,
@@ -246,7 +256,7 @@ impl Logfire {
             logger_provider,
             enable_tracing_metrics,
             shutdown_sender,
-        })
+        })))
     }
 
     /// Load token from credentials file if available.
@@ -653,7 +663,7 @@ impl LocalLogfireGuard {
     /// Get the current meter provider
     #[must_use]
     pub fn meter_provider(&self) -> &SdkMeterProvider {
-        &self.logfire.meter_provider
+        &self.logfire.0.meter_provider
     }
 
     /// Convenience function to force flush the current data captured by Logfire.
@@ -682,10 +692,10 @@ impl Drop for LocalLogfireGuard {
 #[doc(hidden)] // used in tests
 #[must_use]
 pub fn set_local_logfire(logfire: Logfire) -> LocalLogfireGuard {
-    let prior =
-        LOCAL_TRACER.with_borrow_mut(|local_logfire| local_logfire.replace(logfire.tracer.clone()));
+    let prior = LOCAL_TRACER
+        .with_borrow_mut(|local_logfire| local_logfire.replace(logfire.0.tracer.clone()));
 
-    let tracing_guard = tracing::subscriber::set_default(logfire.subscriber.clone());
+    let tracing_guard = tracing::subscriber::set_default(logfire.0.subscriber.clone());
 
     LocalLogfireGuard {
         prior,
