@@ -93,7 +93,7 @@ mod tests {
             .unwrap();
 
         let lf_logger = LogfireLogger {
-            tracer: logfire.tracer.clone(),
+            tracer: logfire.0.tracer.clone(),
         };
 
         log::set_max_level(log::LevelFilter::Trace);
@@ -1071,7 +1071,7 @@ mod tests {
             .unwrap();
 
         let lf_logger = LogfireLogger {
-            tracer: logfire.tracer.clone(),
+            tracer: logfire.0.tracer.clone(),
         };
 
         log::set_max_level(log::LevelFilter::Trace);
