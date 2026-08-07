@@ -16,7 +16,7 @@ use opentelemetry_sdk::{
 
 use crate::{ConfigureError, internal::env::get_optional_env};
 
-/// The `User-Agent` sent with OTLP exports, e.g. `logfire-rust/0.11.0`.
+/// The `User-Agent` sent with OTLP exports, e.g. `logfire-rust/0.12.0`.
 ///
 /// This identifies the Logfire SDK as the sender of the telemetry (as opposed to the resource
 /// attributes, which identify what generated it). The OTLP exporter specification permits
