@@ -1,3 +1,9 @@
+## [v0.12.0] (2026-08-07)
+
+* ci: publish releases from GitHub Releases via crates.io trusted publishing by @adriangb in [#139](https://github.com/pydantic/logfire-rust/pull/139)
+* Send a `logfire-rust/<version>` user agent when exporting via OTLP by @adriangb in [#140](https://github.com/pydantic/logfire-rust/pull/140)
+* Make `Logfire` cheap to clone by @samuelcolvin in [#146](https://github.com/pydantic/logfire-rust/pull/146)
+
 ## [v0.11.0] (2026-07-17)
 
 * bump opentelemetry to 0.32 by @davidhewitt in [#137](https://github.com/pydantic/logfire-rust/pull/137)
