@@ -80,6 +80,18 @@ pub(crate) struct LogfireInner {
     pub(crate) shutdown_sender: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
 }
 
+impl std::fmt::Debug for Logfire {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Logfire")
+            .field("env_filter", &format_args!("{}", self.0.env_filter))
+            .field("enable_tracing_metrics", &self.0.enable_tracing_metrics)
+            .field("tracer_provider", &self.0.tracer_provider)
+            .field("meter_provider", &self.0.meter_provider)
+            .field("logger_provider", &self.0.logger_provider)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Logfire {
     /// Create a shutdown guard that will automatically shutdown Logfire when dropped.
     ///
@@ -937,6 +949,29 @@ mod tests {
                 (expected, result) => panic!("expected {expected:?}, got {result:?}"),
             }
         }
+    }
+
+    #[test]
+    fn test_debug_impl() {
+        let logfire = configure()
+            .local()
+            .send_to_logfire(false)
+            .finish()
+            .expect("failed to configure logfire");
+
+        let debug = format!("{logfire:?}");
+        assert!(debug.starts_with("Logfire {"), "{debug}");
+        for field in [
+            "env_filter",
+            "enable_tracing_metrics",
+            "tracer_provider",
+            "meter_provider",
+            "logger_provider",
+        ] {
+            assert!(debug.contains(field), "{field} missing from: {debug}");
+        }
+
+        logfire.shutdown().expect("shutdown should succeed");
     }
 
     #[derive(Debug)]
