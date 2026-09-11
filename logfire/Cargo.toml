@@ -100,7 +100,7 @@ default = ["data-dir", "export-http-protobuf"]
 data-dir = ["dep:serde", "dep:serde_json"]
 export-grpc = [
     "opentelemetry-otlp/grpc-tonic",
-    "opentelemetry-otlp/tls",
+    "opentelemetry-otlp/tls-aws-lc",
     "dep:http",
     "dep:tonic",
 ]
