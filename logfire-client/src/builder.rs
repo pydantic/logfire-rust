@@ -13,6 +13,7 @@ const LOGFIRE_BASE_URL_ENV: &str = "LOGFIRE_BASE_URL";
 
 /// Errors that can occur when building a Logfire client.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum BuilderError {
     /// Failed to construct the HTTP client.
     #[error("failed to build client")]

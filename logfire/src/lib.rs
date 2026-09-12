@@ -77,21 +77,25 @@
 //!
 //! If the application installs a process-wide provider before configuring Logfire, that provider
 //! is used instead, which is how to export using `ring`, a FIPS build of `aws-lc-rs`, or any other
-//! provider:
+//! provider.
+//!
+//! To avoid compiling `aws-lc-rs` at all, disable this crate's default features and depend on
+//! `rustls` directly to choose the provider. Note that `rustls`'s own default features include
+//! `aws-lc-rs`, so they have to be disabled too:
+//!
+//! ```toml
+//! [dependencies]
+#![doc = concat!("logfire = { version = \"", env!("CARGO_PKG_VERSION"), "\", default-features = false, features = [\"data-dir\", \"export-http-protobuf\"] }\n")]
+//! rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+//! ```
+//!
+//! Install the provider before configuring Logfire. Building an exporter fails with
+//! [`ConfigureError::CryptoProviderRequired`] if no provider has been installed:
 //!
 //! ```rust,ignore
 //! rustls::crypto::ring::default_provider()
 //!     .install_default()
 //!     .expect("failed to install rustls crypto provider");
-//! ```
-//!
-//! To avoid compiling `aws-lc-rs` at all, disable default features and install a provider
-//! yourself. Building an exporter then fails with
-//! [`ConfigureError::CryptoProviderRequired`] if no provider has been installed:
-//!
-//! ```toml
-//! [dependencies]
-#![doc = concat!("logfire = { version = \"", env!("CARGO_PKG_VERSION"), "\", default-features = false, features = [\"data-dir\", \"export-http-protobuf\"] }\n")]
 //! ```
 //!
 //! For FIPS, enable the `fips` feature of `rustls` and install
