@@ -1,3 +1,9 @@
+## [v0.13.0] (2026-09-13)
+
+* add `Debug` implementation to `Logfire` by @samuelcolvin in [#148](https://github.com/pydantic/logfire-rust/pull/148)
+* Replace deprecated OTLP TLS feature alias by @bruno-espino in [#150](https://github.com/pydantic/logfire-rust/pull/150)
+* Separate TLS transport features from the crypto provider choice by @adriangb in [#151](https://github.com/pydantic/logfire-rust/pull/151)
+
 ## [v0.12.0] (2026-08-07)
 
 * ci: publish releases from GitHub Releases via crates.io trusted publishing by @adriangb in [#139](https://github.com/pydantic/logfire-rust/pull/139)
@@ -130,4 +136,7 @@ Initial release.
 [v0.8.1]: https://github.com/pydantic/logfire-rust/compare/v0.8.0..v0.8.1
 [v0.8.2]: https://github.com/pydantic/logfire-rust/compare/v0.8.1..v0.8.2
 [v0.9.0]: https://github.com/pydantic/logfire-rust/compare/v0.8.2..v0.9.0
-[v0.10.0]: https://github.com/pydantic/logfire-rust/compare/logfire-v0.9.0..logfire-v0.10.0
+[v0.10.0]: https://github.com/pydantic/logfire-rust/compare/v0.9.0..v0.10.0
+[v0.11.0]: https://github.com/pydantic/logfire-rust/compare/v0.10.0..v0.11.0
+[v0.12.0]: https://github.com/pydantic/logfire-rust/compare/v0.11.0..v0.12.0
+[v0.13.0]: https://github.com/pydantic/logfire-rust/compare/v0.12.0..v0.13.0
