@@ -19,7 +19,12 @@ use opentelemetry_sdk::{
 };
 use tracing::{Level, level_filters::LevelFilter};
 
-use crate::{ConfigureError, internal::env::get_optional_env, logfire::Logfire};
+use crate::{
+    ConfigureError,
+    internal::env::get_optional_env,
+    logfire::Logfire,
+    server_response::{ServerResponse, ServerResponseHook},
+};
 
 /// Builder for logfire configuration, returned from [`logfire::configure()`][crate::configure].
 #[must_use = "call `.finish()` to complete logfire configuration."]
@@ -393,6 +398,7 @@ pub struct AdvancedOptions {
     pub(crate) resources: Vec<opentelemetry_sdk::Resource>,
     pub(crate) log_record_processors: Vec<BoxedLogProcessor>,
     pub(crate) enable_tracing_metrics: bool,
+    pub(crate) server_response_hook: Option<ServerResponseHook>,
     //
     //
     // TODO: arguments below supported by Python
@@ -442,6 +448,38 @@ impl AdvancedOptions {
     #[must_use]
     pub fn with_tracing_metrics(mut self, enable: bool) -> Self {
         self.enable_tracing_metrics = enable;
+        self
+    }
+
+    /// Set a hook which is called for every response received from the Logfire API.
+    ///
+    /// This is experimental and may change in a future release.
+    ///
+    /// The hook replaces the default behaviour, which prints any warning sent by the Logfire
+    /// backend (the `x-logfire-warning` response header) to stderr. Call
+    /// [`ServerResponse::default_hook`] from the hook to keep that behaviour, or set a hook which
+    /// does nothing to opt out of it entirely.
+    ///
+    /// The hook is called on the SDK's export thread, so it should not block.
+    ///
+    /// Responses are only inspected for exports over HTTP (the default protocol); the
+    /// `export-grpc` feature has no equivalent support.
+    ///
+    /// ```rust
+    /// use logfire::config::AdvancedOptions;
+    ///
+    /// let advanced = AdvancedOptions::default().with_server_response_hook(|response| {
+    ///     if let Some(warning) = response.warning() {
+    ///         tracing::warn!("logfire: {warning}");
+    ///     }
+    /// });
+    /// ```
+    #[must_use]
+    pub fn with_server_response_hook<F>(mut self, hook: F) -> Self
+    where
+        F: Fn(&ServerResponse<'_>) + Send + Sync + 'static,
+    {
+        self.server_response_hook = Some(Arc::new(hook));
         self
     }
 }

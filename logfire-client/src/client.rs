@@ -3,6 +3,8 @@
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
+use logfire_core::server_response::{WARNING_HEADER_NAME, emit_warning};
+
 use crate::types::{ReadTokenInfo, RowQueryResults, SchemasResponse};
 
 /// Errors that can occur when executing queries.
@@ -28,6 +30,13 @@ pub enum ClientError {
     /// Failed to convert row data to target type.
     #[error("failed to deserialize row")]
     RowDeserialize(#[source] serde_json::Error),
+}
+
+/// The warning which the Logfire backend sent with a response, if any.
+fn warning_header(headers: &reqwest::header::HeaderMap) -> Option<&str> {
+    headers
+        .get(WARNING_HEADER_NAME)
+        .and_then(|value| value.to_str().ok())
 }
 
 /// HTTP client for querying Logfire.
@@ -57,6 +66,10 @@ impl LogfireClient {
         }
 
         let response = request.send().await.map_err(ClientError::Request)?;
+
+        if let Some(warning) = warning_header(response.headers()) {
+            emit_warning(warning);
+        }
 
         let status = response.status();
         if !status.is_success() {
@@ -102,8 +115,20 @@ impl LogfireClient {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClientError, LogfireClient, StatusCode};
+    use super::{ClientError, LogfireClient, StatusCode, warning_header};
     use crate::builder::LogfireClientBuilder;
+
+    #[test]
+    fn warning_header_is_read() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        assert_eq!(warning_header(&headers), None);
+
+        headers.insert(
+            "X-Logfire-Warning",
+            reqwest::header::HeaderValue::from_static("endpoint is deprecated"),
+        );
+        assert_eq!(warning_header(&headers), Some("endpoint is deprecated"));
+    }
 
     #[test]
     fn query_failed_error_format() {

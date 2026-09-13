@@ -15,9 +15,14 @@ logfire-core.workspace = true
 log = "0.4"
 env_filter = "2"
 
+http = "1.2"
+
 # deps for grpc export
-http = { version = "1.2", optional = true }
 tonic = { version = "0.14", optional = true }
+
+# deps for http export
+async-trait = { version = "0.1", optional = true }
+opentelemetry-http = { version = "0.32", optional = true, default-features = false }
 
 # TLS for OTLP exports. `reqwest` must stay on the same major version as `opentelemetry-http`'s,
 # so that the TLS features enabled here apply to the client it builds.
@@ -108,7 +113,6 @@ data-dir = ["dep:serde", "dep:serde_json"]
 export-grpc = [
     "opentelemetry-otlp/grpc-tonic",
     "tonic/tls-native-roots",
-    "dep:http",
     "dep:rustls",
     "dep:tonic",
 ]
@@ -116,12 +120,16 @@ export-http-protobuf = [
     "opentelemetry-otlp/http-proto",
     "opentelemetry-otlp/reqwest-client",
     "reqwest/rustls-no-provider",
+    "dep:async-trait",
+    "dep:opentelemetry-http",
     "dep:rustls",
 ]
 export-http-json = [
     "opentelemetry-otlp/http-json",
     "opentelemetry-otlp/reqwest-client",
     "reqwest/rustls-no-provider",
+    "dep:async-trait",
+    "dep:opentelemetry-http",
     "dep:rustls",
 ]
 # Use aws-lc-rs for TLS when the application has not installed a rustls `CryptoProvider`.

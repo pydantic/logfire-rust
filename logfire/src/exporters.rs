@@ -4,7 +4,15 @@
         feature = "export-http-protobuf",
         feature = "export-http-json"
     )),
-    expect(unreachable_code, unused_variables)
+    expect(unreachable_code)
+)]
+#![cfg_attr(
+    not(any(feature = "export-http-protobuf", feature = "export-http-json")),
+    allow(
+        unused_variables,
+        clippy::needless_pass_by_value,
+        reason = "the endpoint configuration and server response hook are only used for exports over HTTP"
+    )
 )]
 //! Helper functions to configure exporters via OTLP.
 use std::collections::HashMap;
@@ -14,7 +22,7 @@ use opentelemetry_sdk::{
     logs::LogExporter, metrics::exporter::PushMetricExporter, trace::SpanExporter,
 };
 
-use crate::{ConfigureError, internal::env::get_optional_env};
+use crate::{ConfigureError, internal::env::get_optional_env, server_response::ServerResponseHook};
 
 /// The `User-Agent` sent with OTLP exports, e.g. `logfire-rust/0.13.0`.
 ///
@@ -86,6 +94,15 @@ pub fn span_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl SpanExporter + use<>, ConfigureError> {
+    span_exporter_with_hook(endpoint, headers, None)
+}
+
+/// As [`span_exporter`], with a hook called for each response received from the Logfire API.
+pub(crate) fn span_exporter_with_hook(
+    endpoint: &str,
+    headers: Option<HashMap<String, String>>,
+    server_response_hook: Option<ServerResponseHook>,
+) -> Result<impl SpanExporter + use<>, ConfigureError> {
     let protocol = protocol_from_env("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")?;
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
@@ -113,6 +130,10 @@ pub fn span_exporter(
                 .with_http()
                 .with_protocol(Protocol::HttpBinary)
                 .with_headers(headers_with_user_agent(headers))
+                .with_http_client(http_client(
+                    "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT",
+                    server_response_hook,
+                )?)
                 .with_endpoint(format!("{endpoint}/v1/traces"))
                 .build()?
         }
@@ -125,6 +146,10 @@ pub fn span_exporter(
                 .with_http()
                 .with_protocol(Protocol::HttpJson)
                 .with_headers(headers_with_user_agent(headers))
+                .with_http_client(http_client(
+                    "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT",
+                    server_response_hook,
+                )?)
                 .with_endpoint(format!("{endpoint}/v1/traces"))
                 .build()?
         }
@@ -171,6 +196,15 @@ pub fn metric_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl PushMetricExporter + use<>, ConfigureError> {
+    metric_exporter_with_hook(endpoint, headers, None)
+}
+
+/// As [`metric_exporter`], with a hook called for each response received from the Logfire API.
+pub(crate) fn metric_exporter_with_hook(
+    endpoint: &str,
+    headers: Option<HashMap<String, String>>,
+    server_response_hook: Option<ServerResponseHook>,
+) -> Result<impl PushMetricExporter + use<>, ConfigureError> {
     let protocol = protocol_from_env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")?;
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
@@ -200,6 +234,10 @@ pub fn metric_exporter(
                 .with_http()
                 .with_protocol(Protocol::HttpBinary)
                 .with_headers(headers_with_user_agent(headers))
+                .with_http_client(http_client(
+                    "OTEL_EXPORTER_OTLP_METRICS_TIMEOUT",
+                    server_response_hook,
+                )?)
                 .with_endpoint(format!("{endpoint}/v1/metrics"))
                 .build()?)
         }
@@ -213,6 +251,10 @@ pub fn metric_exporter(
                 .with_http()
                 .with_protocol(Protocol::HttpJson)
                 .with_headers(headers_with_user_agent(headers))
+                .with_http_client(http_client(
+                    "OTEL_EXPORTER_OTLP_METRICS_TIMEOUT",
+                    server_response_hook,
+                )?)
                 .with_endpoint(format!("{endpoint}/v1/metrics"))
                 .build()?)
         }
@@ -250,6 +292,15 @@ pub fn log_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl LogExporter + use<>, ConfigureError> {
+    log_exporter_with_hook(endpoint, headers, None)
+}
+
+/// As [`log_exporter`], with a hook called for each response received from the Logfire API.
+pub(crate) fn log_exporter_with_hook(
+    endpoint: &str,
+    headers: Option<HashMap<String, String>>,
+    server_response_hook: Option<ServerResponseHook>,
+) -> Result<impl LogExporter + use<>, ConfigureError> {
     let protocol = protocol_from_env("OTEL_EXPORTER_OTLP_LOGS_PROTOCOL")?;
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
@@ -277,6 +328,10 @@ pub fn log_exporter(
                 .with_http()
                 .with_protocol(Protocol::HttpBinary)
                 .with_headers(headers_with_user_agent(headers))
+                .with_http_client(http_client(
+                    "OTEL_EXPORTER_OTLP_LOGS_TIMEOUT",
+                    server_response_hook,
+                )?)
                 .with_endpoint(format!("{endpoint}/v1/logs"))
                 .build()?)
         }
@@ -289,6 +344,10 @@ pub fn log_exporter(
                 .with_http()
                 .with_protocol(Protocol::HttpJson)
                 .with_headers(headers_with_user_agent(headers))
+                .with_http_client(http_client(
+                    "OTEL_EXPORTER_OTLP_LOGS_TIMEOUT",
+                    server_response_hook,
+                )?)
                 .with_endpoint(format!("{endpoint}/v1/logs"))
                 .build()?)
         }
@@ -307,6 +366,41 @@ pub fn log_exporter(
         let _ = protocol;
         Ok(UnreachableExporter)
     }
+}
+
+/// The default OTLP export timeout, matching the default used by `opentelemetry-otlp`.
+#[cfg(any(feature = "export-http-protobuf", feature = "export-http-json"))]
+const DEFAULT_EXPORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Build the `reqwest` client used for HTTP exports.
+///
+/// `opentelemetry-otlp` would build one itself, but logfire needs its own so that responses can
+/// be passed to the [server response hook][crate::config::AdvancedOptions::with_server_response_hook].
+/// That means resolving the export timeout here too, the same way `opentelemetry-otlp` does.
+#[cfg(any(feature = "export-http-protobuf", feature = "export-http-json"))]
+fn http_client(
+    signal_timeout_var: &str,
+    server_response_hook: Option<ServerResponseHook>,
+) -> Result<crate::server_response::LogfireHttpClient, ConfigureError> {
+    let mut timeout = DEFAULT_EXPORT_TIMEOUT;
+    for var_name in [signal_timeout_var, "OTEL_EXPORTER_OTLP_TIMEOUT"] {
+        if let Some(value) = get_optional_env(var_name, None)?
+            && let Ok(millis) = value.parse()
+        {
+            timeout = std::time::Duration::from_millis(millis);
+            break;
+        }
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|e| ConfigureError::Other(e.into()))?;
+
+    Ok(crate::server_response::LogfireHttpClient::new(
+        client,
+        server_response_hook,
+    ))
 }
 
 /// Build the `tonic` endpoint used for gRPC exports.

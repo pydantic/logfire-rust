@@ -125,6 +125,7 @@ pub mod config;
 pub mod exporters;
 mod logfire;
 mod metrics;
+pub mod server_response;
 mod ulid_id_generator;
 
 pub use macros::*;

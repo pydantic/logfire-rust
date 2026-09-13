@@ -51,6 +51,7 @@ use crate::{
         pending_span_processor::PendingSpanProcessor,
     },
     metrics,
+    server_response::ServerResponseHook,
     ulid_id_generator::UlidIdGenerator,
 };
 
@@ -416,6 +417,7 @@ impl Logfire {
                     logfire_base_url,
                     http_headers,
                     config.metrics.is_some(),
+                    advanced_options.server_response_hook,
                 )?;
 
             tracer_provider_builder = tracer_provider_builder.with_span_processor(
@@ -743,6 +745,7 @@ fn spawn_runtime_and_exporters(
     logfire_base_url: &str,
     http_headers: Option<HashMap<String, String>>,
     enable_metrics: bool,
+    server_response_hook: Option<ServerResponseHook>,
 ) -> Result<
     (
         tokio::sync::oneshot::Sender<()>,
@@ -801,7 +804,11 @@ fn spawn_runtime_and_exporters(
             let _rt_guard = handle.enter();
 
             let span_processor = BatchSpanProcessor::builder(
-                crate::exporters::span_exporter(logfire_base_url, http_headers.clone())?,
+                crate::exporters::span_exporter_with_hook(
+                    logfire_base_url,
+                    http_headers.clone(),
+                    server_response_hook.clone(),
+                )?,
                 runtime::Tokio,
             )
             .with_batch_config(
@@ -813,7 +820,11 @@ fn spawn_runtime_and_exporters(
 
             let log_processor = LogProcessorShutdownHack::new(
                 BatchLogProcessor::builder(
-                    crate::exporters::log_exporter(logfire_base_url, http_headers.clone())?,
+                    crate::exporters::log_exporter_with_hook(
+                        logfire_base_url,
+                        http_headers.clone(),
+                        server_response_hook.clone(),
+                    )?,
                     runtime::Tokio,
                 )
                 .build(),
@@ -822,7 +833,11 @@ fn spawn_runtime_and_exporters(
             let metrics_processor = if enable_metrics {
                 Some(
                     PeriodicReader::builder(
-                        crate::exporters::metric_exporter(logfire_base_url, http_headers)?,
+                        crate::exporters::metric_exporter_with_hook(
+                            logfire_base_url,
+                            http_headers,
+                            server_response_hook,
+                        )?,
                         runtime::Tokio,
                     )
                     .build(),

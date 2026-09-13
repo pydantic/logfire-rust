@@ -717,6 +717,72 @@ async fn test_http_metrics_export() {
     }
 }
 
+/// The server response hook is called with the warning sent by the Logfire backend, including
+/// when it accompanies an error response.
+///
+/// Runs for both HTTP protocols, as they are configured by separate code paths.
+#[tokio::test]
+async fn test_server_response_hook() {
+    for (protocol, status) in [("http/protobuf", 200), ("http/json", 500)] {
+        let mock_server = MockServer::start().await;
+        mock_server
+            .register(
+                Mock::given(method("POST")).respond_with(
+                    ResponseTemplate::new(status)
+                        .insert_header("x-logfire-warning", "endpoint is deprecated"),
+                ),
+            )
+            .await;
+
+        let responses = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+
+        let env_guard = ENV_MUTEX.lock().unwrap();
+        // SAFETY: Holding mutex to prevent other thread interacting with env
+        unsafe {
+            std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", protocol);
+        }
+
+        let logfire = configure()
+            .local()
+            .send_to_logfire(true)
+            .with_token("test-token")
+            .with_advanced_options(
+                AdvancedOptions::default()
+                    .with_base_url(mock_server.uri())
+                    .with_server_response_hook({
+                        let responses = responses.clone();
+                        move |response| {
+                            responses.lock().unwrap().push((
+                                response.status().as_u16(),
+                                response.warning().map(ToOwned::to_owned),
+                            ));
+                        }
+                    }),
+            )
+            .finish()
+            .unwrap();
+
+        // SAFETY: As above
+        unsafe {
+            std::env::remove_var("OTEL_EXPORTER_OTLP_PROTOCOL");
+        }
+        drop(env_guard);
+
+        let guard = set_local_logfire(logfire);
+        span!("test_span").in_scope(|| {});
+        let shutdown = guard.shutdown();
+        if status == 200 {
+            shutdown.expect("shutdown failed");
+        }
+
+        assert_eq!(
+            *responses.lock().unwrap(),
+            vec![(status, Some("endpoint is deprecated".to_string()))],
+            "unexpected responses for {protocol}"
+        );
+    }
+}
+
 /// An unsupported protocol in the environment is an error.
 #[test]
 fn test_unsupported_protocol() {
