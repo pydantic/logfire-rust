@@ -69,6 +69,38 @@
 //! All environment variables supported by the Rust Opentelemetry SDK are also supported by the
 //! Logfire SDK.
 //!
+//! ## TLS
+//!
+//! Exports to Logfire are sent over TLS, using [`rustls`](https://docs.rs/rustls). By default the
+//! `tls-aws-lc` feature is enabled, which supplies `aws-lc-rs` as the cryptography provider. This
+//! matches the default provider of both `rustls` and `reqwest`.
+//!
+//! If the application installs a process-wide provider before configuring Logfire, that provider
+//! is used instead, which is how to export using `ring`, a FIPS build of `aws-lc-rs`, or any other
+//! provider.
+//!
+//! To avoid compiling `aws-lc-rs` at all, disable this crate's default features and depend on
+//! `rustls` directly to choose the provider. Note that `rustls`'s own default features include
+//! `aws-lc-rs`, so they have to be disabled too:
+//!
+//! ```toml
+//! [dependencies]
+#![doc = concat!("logfire = { version = \"", env!("CARGO_PKG_VERSION"), "\", default-features = false, features = [\"data-dir\", \"export-http-protobuf\"] }\n")]
+//! rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+//! ```
+//!
+//! Install the provider before configuring Logfire. Building an exporter fails with
+//! [`ConfigureError::CryptoProviderRequired`] if no provider has been installed:
+//!
+//! ```rust,ignore
+//! rustls::crypto::ring::default_provider()
+//!     .install_default()
+//!     .expect("failed to install rustls crypto provider");
+//! ```
+//!
+//! For FIPS, enable the `fips` feature of `rustls` and install
+//! `rustls::crypto::default_fips_provider()` in the same way.
+//!
 //! ## Usage Guide
 //!
 //! See the [usage guide][usage] for more detailed information about how to use this SDK to its full potential.
@@ -159,6 +191,12 @@ pub enum ConfigureError {
         /// The underlying error.
         error: String,
     },
+
+    /// No rustls `CryptoProvider` is installed to use for TLS.
+    #[error(
+        "no rustls `CryptoProvider` is installed: either call `CryptoProvider::install_default()` before configuring logfire, or enable the `tls-aws-lc` feature to use aws-lc-rs"
+    )]
+    CryptoProviderRequired,
 
     /// Any other error.
     #[error(transparent)]

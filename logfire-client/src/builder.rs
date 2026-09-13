@@ -13,6 +13,7 @@ const LOGFIRE_BASE_URL_ENV: &str = "LOGFIRE_BASE_URL";
 
 /// Errors that can occur when building a Logfire client.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum BuilderError {
     /// Failed to construct the HTTP client.
     #[error("failed to build client")]
@@ -23,6 +24,11 @@ pub enum BuilderError {
     /// No token was configured on the builder.
     #[error("no token configured; call token() or use from_env()")]
     MissingToken,
+    /// No rustls `CryptoProvider` is installed to use for TLS.
+    #[error(
+        "no rustls `CryptoProvider` is installed: either call `CryptoProvider::install_default()` before building a client, or enable the `tls-aws-lc` feature to use aws-lc-rs"
+    )]
+    CryptoProviderRequired,
 }
 
 /// Default request timeout (30 seconds).
@@ -100,6 +106,13 @@ impl LogfireClientBuilder {
             )),
         );
 
+        // `reqwest` builds its TLS configuration when the client is built, and without the
+        // `tls-aws-lc` feature it has no provider to fall back on, so it would panic here.
+        #[cfg(not(feature = "tls-aws-lc"))]
+        if rustls::crypto::CryptoProvider::get_default().is_none() {
+            return Err(BuilderError::CryptoProviderRequired);
+        }
+
         let client = reqwest::Client::builder()
             .timeout(self.timeout)
             .default_headers(headers)
@@ -164,8 +177,16 @@ mod tests {
         ));
     }
 
+    /// Install a provider, for test configurations which have no built-in one.
+    fn install_crypto_provider() {
+        #[cfg(not(feature = "tls-aws-lc"))]
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    }
+
     #[test]
     fn build_client_with_token() {
+        install_crypto_provider();
+
         let mut builder = LogfireClientBuilder::new();
         builder.token("pylf_v1_us_abc123");
         assert!(builder.build_client().is_ok());

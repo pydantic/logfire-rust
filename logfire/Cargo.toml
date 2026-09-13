@@ -19,6 +19,11 @@ env_filter = "2"
 http = { version = "1.2", optional = true }
 tonic = { version = "0.14", optional = true }
 
+# TLS for OTLP exports. `reqwest` must stay on the same major version as `opentelemetry-http`'s,
+# so that the TLS features enabled here apply to the client it builds.
+reqwest = { version = "0.13", optional = true, default-features = false }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["std"] }
+
 rand = "0.10"
 
 opentelemetry = { version = "0.32", default-features = false, features = [
@@ -64,6 +69,8 @@ opentelemetry_sdk = { version = "0.32", default-features = false, features = [
     "testing",
 ] }
 regex = "1.11.1"
+# a provider to install in tests which run without the `tls-aws-lc` feature
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
 tokio = { version = "1.44.1", features = [
     "test-util",
     "macros",
@@ -96,24 +103,29 @@ futures-util = "0.3"
 tempfile = "3.20.0"
 
 [features]
-default = ["data-dir", "export-http-protobuf"]
+default = ["data-dir", "export-http-protobuf", "tls-aws-lc"]
 data-dir = ["dep:serde", "dep:serde_json"]
 export-grpc = [
     "opentelemetry-otlp/grpc-tonic",
-    "opentelemetry-otlp/tls-aws-lc",
+    "tonic/tls-native-roots",
     "dep:http",
+    "dep:rustls",
     "dep:tonic",
 ]
 export-http-protobuf = [
     "opentelemetry-otlp/http-proto",
     "opentelemetry-otlp/reqwest-client",
-    "opentelemetry-otlp/reqwest-rustls",
+    "reqwest/rustls-no-provider",
+    "dep:rustls",
 ]
 export-http-json = [
     "opentelemetry-otlp/http-json",
     "opentelemetry-otlp/reqwest-client",
-    "opentelemetry-otlp/reqwest-rustls",
+    "reqwest/rustls-no-provider",
+    "dep:rustls",
 ]
+# Use aws-lc-rs for TLS when the application has not installed a rustls `CryptoProvider`.
+tls-aws-lc = ["tonic?/tls-aws-lc", "reqwest?/rustls"]
 
 [lints.rust]
 missing_docs = "warn"

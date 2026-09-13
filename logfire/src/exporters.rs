@@ -100,20 +100,15 @@ pub fn span_exporter(
             use opentelemetry_otlp::WithTonicConfig;
             opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
-                .with_channel(
-                    tonic::transport::Channel::builder(
-                        endpoint
-                            .try_into()
-                            .map_err(|e: http::uri::InvalidUri| ConfigureError::Other(e.into()))?,
-                    )
-                    .connect_lazy(),
-                )
+                .with_channel(grpc_channel(endpoint)?)
                 .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?
         }
         #[cfg(feature = "export-http-protobuf")]
         Protocol::HttpBinary => {
             use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+
+            require_crypto_provider()?;
             opentelemetry_otlp::SpanExporter::builder()
                 .with_http()
                 .with_protocol(Protocol::HttpBinary)
@@ -124,6 +119,8 @@ pub fn span_exporter(
         #[cfg(feature = "export-http-json")]
         Protocol::HttpJson => {
             use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+
+            require_crypto_provider()?;
             opentelemetry_otlp::SpanExporter::builder()
                 .with_http()
                 .with_protocol(Protocol::HttpJson)
@@ -189,20 +186,15 @@ pub fn metric_exporter(
             Ok(opentelemetry_otlp::MetricExporter::builder()
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                 .with_tonic()
-                .with_channel(
-                    tonic::transport::Channel::builder(
-                        endpoint
-                            .try_into()
-                            .map_err(|e: http::uri::InvalidUri| ConfigureError::Other(e.into()))?,
-                    )
-                    .connect_lazy(),
-                )
+                .with_channel(grpc_channel(endpoint)?)
                 .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?)
         }
         #[cfg(feature = "export-http-protobuf")]
         Protocol::HttpBinary => {
             use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+
+            require_crypto_provider()?;
             Ok(opentelemetry_otlp::MetricExporter::builder()
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                 .with_http()
@@ -214,6 +206,8 @@ pub fn metric_exporter(
         #[cfg(feature = "export-http-json")]
         Protocol::HttpJson => {
             use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+
+            require_crypto_provider()?;
             Ok(opentelemetry_otlp::MetricExporter::builder()
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                 .with_http()
@@ -270,20 +264,15 @@ pub fn log_exporter(
             use opentelemetry_otlp::WithTonicConfig;
             Ok(opentelemetry_otlp::LogExporter::builder()
                 .with_tonic()
-                .with_channel(
-                    tonic::transport::Channel::builder(
-                        endpoint
-                            .try_into()
-                            .map_err(|e: http::uri::InvalidUri| ConfigureError::Other(e.into()))?,
-                    )
-                    .connect_lazy(),
-                )
+                .with_channel(grpc_channel(endpoint)?)
                 .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?)
         }
         #[cfg(feature = "export-http-protobuf")]
         Protocol::HttpBinary => {
             use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+
+            require_crypto_provider()?;
             Ok(opentelemetry_otlp::LogExporter::builder()
                 .with_http()
                 .with_protocol(Protocol::HttpBinary)
@@ -294,6 +283,8 @@ pub fn log_exporter(
         #[cfg(feature = "export-http-json")]
         Protocol::HttpJson => {
             use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
+
+            require_crypto_provider()?;
             Ok(opentelemetry_otlp::LogExporter::builder()
                 .with_http()
                 .with_protocol(Protocol::HttpJson)
@@ -316,6 +307,107 @@ pub fn log_exporter(
         let _ = protocol;
         Ok(UnreachableExporter)
     }
+}
+
+/// Build the `tonic` endpoint used for gRPC exports.
+///
+/// TLS is configured here because `tonic` only configures it itself in `Endpoint::new`, which
+/// none of its public constructors go through. Without this, an https endpoint fails to connect
+/// with "Connecting to HTTPS without TLS enabled".
+#[cfg(feature = "export-grpc")]
+fn grpc_endpoint(endpoint: &str) -> Result<tonic::transport::Endpoint, ConfigureError> {
+    let uri: http::Uri = endpoint
+        .try_into()
+        .map_err(|e: http::uri::InvalidUri| ConfigureError::Other(e.into()))?;
+
+    let mut builder = tonic::transport::Channel::builder(uri.clone());
+
+    if uri.scheme() == Some(&http::uri::Scheme::HTTPS) {
+        require_crypto_provider()?;
+        builder = builder
+            .tls_config(tonic::transport::ClientTlsConfig::new().with_enabled_roots())
+            .map_err(|e| ConfigureError::Other(e.into()))?;
+    }
+
+    Ok(builder)
+}
+
+/// Build the `tonic` channel used for gRPC exports.
+#[cfg(feature = "export-grpc")]
+fn grpc_channel(endpoint: &str) -> Result<tonic::transport::Channel, ConfigureError> {
+    Ok(grpc_endpoint(endpoint)?.connect_lazy())
+}
+
+#[cfg(all(test, feature = "export-grpc"))]
+mod grpc_tls_tests {
+    use super::grpc_endpoint;
+
+    /// Connect to a listener which accepts connections but never replies. With TLS configured,
+    /// the client sends a handshake and waits, so the connection attempt times out. Without it,
+    /// `tonic` fails immediately with "Connecting to HTTPS without TLS enabled".
+    #[tokio::test]
+    async fn https_endpoints_have_tls_configured() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("failed to bind listener");
+        let addr = listener.local_addr().expect("failed to read listener addr");
+
+        tokio::spawn(async move {
+            // hold the connections open, so that the client waits for a handshake it never gets
+            let mut accepted = Vec::new();
+            loop {
+                match listener.accept().await {
+                    Ok((stream, _)) => accepted.push(stream),
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let endpoint = grpc_endpoint(&format!("https://{addr}")).expect("failed to build endpoint");
+
+        let result =
+            tokio::time::timeout(std::time::Duration::from_secs(2), endpoint.connect()).await;
+
+        match result {
+            // the handshake is still in flight, so TLS was configured
+            Err(_elapsed) => {}
+            Ok(Ok(_)) => panic!("unexpectedly connected to a listener which never replies"),
+            Ok(Err(error)) => {
+                let mut message = error.to_string();
+                let mut source = std::error::Error::source(&error);
+                while let Some(inner) = source {
+                    message.push_str(&format!(": {inner}"));
+                    source = inner.source();
+                }
+
+                assert!(
+                    !message.contains("without TLS enabled"),
+                    "TLS was not configured for an https endpoint: {message}"
+                );
+            }
+        }
+    }
+}
+
+/// Check that a rustls `CryptoProvider` will be available for TLS.
+///
+/// With the `tls-aws-lc` feature, `tonic` and `reqwest` fall back to aws-lc-rs when the
+/// application has not installed a provider, so there is nothing to check. Without it they have
+/// no fallback to use, and `reqwest` panics rather than returning an error, so the installed
+/// provider is required up front.
+#[cfg(any(
+    feature = "export-grpc",
+    feature = "export-http-protobuf",
+    feature = "export-http-json"
+))]
+#[cfg_attr(feature = "tls-aws-lc", allow(clippy::unnecessary_wraps))]
+fn require_crypto_provider() -> Result<(), ConfigureError> {
+    #[cfg(not(feature = "tls-aws-lc"))]
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        return Err(ConfigureError::CryptoProviderRequired);
+    }
+
+    Ok(())
 }
 
 #[cfg(feature = "export-grpc")]
