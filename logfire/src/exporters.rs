@@ -223,9 +223,12 @@ pub fn metric_exporter(
                 .build()?)
         }
         #[allow(unreachable_patterns)]
-        _ => Err(ConfigureError::Other(
-            format!("unsupported protocol: {protocol:?}").into(),
-        )),
+        #[allow(clippy::needless_return)]
+        _ => {
+            return Err(ConfigureError::Other(
+                format!("unsupported protocol: {protocol:?}").into(),
+            ));
+        }
     }
 
     #[cfg(not(any(
@@ -303,9 +306,12 @@ pub fn log_exporter(
                 .build()?)
         }
         #[allow(unreachable_patterns)]
-        _ => Err(ConfigureError::Other(
-            format!("unsupported protocol: {protocol:?}").into(),
-        )),
+        #[allow(clippy::needless_return)]
+        _ => {
+            return Err(ConfigureError::Other(
+                format!("unsupported protocol: {protocol:?}").into(),
+            ));
+        }
     }
 
     #[cfg(not(any(
