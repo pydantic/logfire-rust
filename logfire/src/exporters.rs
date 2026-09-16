@@ -128,6 +128,12 @@ pub fn span_exporter(
                 .with_endpoint(format!("{endpoint}/v1/traces"))
                 .build()?
         }
+        #[allow(unreachable_patterns)]
+        _ => {
+            return Err(ConfigureError::Other(
+                format!("unsupported protocol: {protocol:?}").into(),
+            ));
+        }
     };
 
     #[cfg(not(any(
@@ -216,6 +222,10 @@ pub fn metric_exporter(
                 .with_endpoint(format!("{endpoint}/v1/metrics"))
                 .build()?)
         }
+        #[allow(unreachable_patterns)]
+        _ => Err(ConfigureError::Other(
+            format!("unsupported protocol: {protocol:?}").into(),
+        )),
     }
 
     #[cfg(not(any(
@@ -292,6 +302,10 @@ pub fn log_exporter(
                 .with_endpoint(format!("{endpoint}/v1/logs"))
                 .build()?)
         }
+        #[allow(unreachable_patterns)]
+        _ => Err(ConfigureError::Other(
+            format!("unsupported protocol: {protocol:?}").into(),
+        )),
     }
 
     #[cfg(not(any(
