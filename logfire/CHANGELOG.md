@@ -1,3 +1,7 @@
+## [v0.13.1] (2026-09-17)
+
+* Handle non-exhaustive OTLP protocol variants by @bruno-espino in [#154](https://github.com/pydantic/logfire-rust/pull/154)
+
 ## [v0.13.0] (2026-09-13)
 
 * add `Debug` implementation to `Logfire` by @samuelcolvin in [#148](https://github.com/pydantic/logfire-rust/pull/148)
