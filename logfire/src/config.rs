@@ -393,6 +393,7 @@ pub struct AdvancedOptions {
     pub(crate) resources: Vec<opentelemetry_sdk::Resource>,
     pub(crate) log_record_processors: Vec<BoxedLogProcessor>,
     pub(crate) enable_tracing_metrics: bool,
+    pub(crate) export: crate::exporters::ExportOptions,
     //
     //
     // TODO: arguments below supported by Python
@@ -442,6 +443,27 @@ impl AdvancedOptions {
     #[must_use]
     pub fn with_tracing_metrics(mut self, enable: bool) -> Self {
         self.enable_tracing_metrics = enable;
+        self
+    }
+
+    /// Build the channel for gRPC exports from `build`, instead of with
+    /// [`connect_lazy`](tonic::transport::Endpoint::connect_lazy).
+    ///
+    /// The [`Endpoint`](tonic::transport::Endpoint) passed to `build` has the export URL and, for
+    /// `https`, TLS configured. Use this to set transport options, for example
+    /// [`connect_timeout`](tonic::transport::Endpoint::connect_timeout), or to connect with a
+    /// custom connector through
+    /// [`connect_with_connector_lazy`](tonic::transport::Endpoint::connect_with_connector_lazy).
+    ///
+    /// `build` is called once for each of the span, log and metric exporters, inside the export
+    /// runtime. It applies only when the export protocol is gRPC.
+    #[cfg(feature = "export-grpc")]
+    #[must_use]
+    pub fn with_grpc_channel(
+        mut self,
+        build: impl Fn(tonic::transport::Endpoint) -> tonic::transport::Channel + Send + Sync + 'static,
+    ) -> Self {
+        self.export.grpc_channel = Some(Arc::new(build));
         self
     }
 }

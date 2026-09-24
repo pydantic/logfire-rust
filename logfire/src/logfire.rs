@@ -415,6 +415,7 @@ impl Logfire {
                 spawn_runtime_and_exporters(
                     logfire_base_url,
                     http_headers,
+                    &advanced_options.export,
                     config.metrics.is_some(),
                 )?;
 
@@ -742,6 +743,7 @@ struct LogfireCredentials {
 fn spawn_runtime_and_exporters(
     logfire_base_url: &str,
     http_headers: Option<HashMap<String, String>>,
+    export_options: &crate::exporters::ExportOptions,
     enable_metrics: bool,
 ) -> Result<
     (
@@ -801,7 +803,11 @@ fn spawn_runtime_and_exporters(
             let _rt_guard = handle.enter();
 
             let span_processor = BatchSpanProcessor::builder(
-                crate::exporters::span_exporter(logfire_base_url, http_headers.clone())?,
+                crate::exporters::span_exporter_with_options(
+                    logfire_base_url,
+                    http_headers.clone(),
+                    export_options,
+                )?,
                 runtime::Tokio,
             )
             .with_batch_config(
@@ -813,7 +819,11 @@ fn spawn_runtime_and_exporters(
 
             let log_processor = LogProcessorShutdownHack::new(
                 BatchLogProcessor::builder(
-                    crate::exporters::log_exporter(logfire_base_url, http_headers.clone())?,
+                    crate::exporters::log_exporter_with_options(
+                        logfire_base_url,
+                        http_headers.clone(),
+                        export_options,
+                    )?,
                     runtime::Tokio,
                 )
                 .build(),
@@ -822,7 +832,11 @@ fn spawn_runtime_and_exporters(
             let metrics_processor = if enable_metrics {
                 Some(
                     PeriodicReader::builder(
-                        crate::exporters::metric_exporter(logfire_base_url, http_headers)?,
+                        crate::exporters::metric_exporter_with_options(
+                            logfire_base_url,
+                            http_headers,
+                            export_options,
+                        )?,
                         runtime::Tokio,
                     )
                     .build(),
