@@ -16,6 +16,17 @@ use opentelemetry_sdk::{
 
 use crate::{ConfigureError, internal::env::get_optional_env};
 
+/// Export transport options, set through [`AdvancedOptions`](crate::config::AdvancedOptions).
+#[derive(Default)]
+pub(crate) struct ExportOptions {
+    #[cfg(feature = "export-grpc")]
+    pub(crate) grpc_channel: Option<
+        std::sync::Arc<
+            dyn Fn(tonic::transport::Endpoint) -> tonic::transport::Channel + Send + Sync,
+        >,
+    >,
+}
+
 /// The `User-Agent` sent with OTLP exports, e.g. `logfire-rust/0.13.0`.
 ///
 /// This identifies the Logfire SDK as the sender of the telemetry (as opposed to the resource
@@ -86,6 +97,16 @@ pub fn span_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl SpanExporter + use<>, ConfigureError> {
+    span_exporter_with_options(endpoint, headers, &ExportOptions::default())
+}
+
+pub(crate) fn span_exporter_with_options(
+    endpoint: &str,
+    headers: Option<HashMap<String, String>>,
+    options: &ExportOptions,
+) -> Result<impl SpanExporter + use<>, ConfigureError> {
+    #[cfg(not(feature = "export-grpc"))]
+    let _ = options;
     let protocol = protocol_from_env("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")?;
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
@@ -100,7 +121,7 @@ pub fn span_exporter(
             use opentelemetry_otlp::WithTonicConfig;
             opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
-                .with_channel(grpc_channel(endpoint)?)
+                .with_channel(grpc_channel(endpoint, options)?)
                 .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?
         }
@@ -177,6 +198,16 @@ pub fn metric_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl PushMetricExporter + use<>, ConfigureError> {
+    metric_exporter_with_options(endpoint, headers, &ExportOptions::default())
+}
+
+pub(crate) fn metric_exporter_with_options(
+    endpoint: &str,
+    headers: Option<HashMap<String, String>>,
+    options: &ExportOptions,
+) -> Result<impl PushMetricExporter + use<>, ConfigureError> {
+    #[cfg(not(feature = "export-grpc"))]
+    let _ = options;
     let protocol = protocol_from_env("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")?;
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
@@ -192,7 +223,7 @@ pub fn metric_exporter(
             Ok(opentelemetry_otlp::MetricExporter::builder()
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                 .with_tonic()
-                .with_channel(grpc_channel(endpoint)?)
+                .with_channel(grpc_channel(endpoint, options)?)
                 .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?)
         }
@@ -263,6 +294,16 @@ pub fn log_exporter(
     endpoint: &str,
     headers: Option<HashMap<String, String>>,
 ) -> Result<impl LogExporter + use<>, ConfigureError> {
+    log_exporter_with_options(endpoint, headers, &ExportOptions::default())
+}
+
+pub(crate) fn log_exporter_with_options(
+    endpoint: &str,
+    headers: Option<HashMap<String, String>>,
+    options: &ExportOptions,
+) -> Result<impl LogExporter + use<>, ConfigureError> {
+    #[cfg(not(feature = "export-grpc"))]
+    let _ = options;
     let protocol = protocol_from_env("OTEL_EXPORTER_OTLP_LOGS_PROTOCOL")?;
 
     // FIXME: it would be nice to let `opentelemetry-rust` handle this; ideally we could detect if
@@ -277,7 +318,7 @@ pub fn log_exporter(
             use opentelemetry_otlp::WithTonicConfig;
             Ok(opentelemetry_otlp::LogExporter::builder()
                 .with_tonic()
-                .with_channel(grpc_channel(endpoint)?)
+                .with_channel(grpc_channel(endpoint, options)?)
                 .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?)
         }
@@ -354,8 +395,15 @@ fn grpc_endpoint(endpoint: &str) -> Result<tonic::transport::Endpoint, Configure
 
 /// Build the `tonic` channel used for gRPC exports.
 #[cfg(feature = "export-grpc")]
-fn grpc_channel(endpoint: &str) -> Result<tonic::transport::Channel, ConfigureError> {
-    Ok(grpc_endpoint(endpoint)?.connect_lazy())
+fn grpc_channel(
+    endpoint: &str,
+    options: &ExportOptions,
+) -> Result<tonic::transport::Channel, ConfigureError> {
+    let endpoint = grpc_endpoint(endpoint)?;
+    Ok(match &options.grpc_channel {
+        Some(build) => build(endpoint),
+        None => endpoint.connect_lazy(),
+    })
 }
 
 #[cfg(all(test, feature = "export-grpc"))]
