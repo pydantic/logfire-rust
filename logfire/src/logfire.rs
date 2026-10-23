@@ -160,15 +160,20 @@ impl Logfire {
         // shutdown produces some logs, we don't care about these
         let _guard = Context::enter_telemetry_suppressed_scope();
 
-        self.0.tracer_provider.shutdown()?;
-        self.0.meter_provider.shutdown()?;
-        self.0.logger_provider.shutdown()?;
+        let results = [
+            self.0.tracer_provider.shutdown(),
+            self.0.meter_provider.shutdown(),
+            self.0.logger_provider.shutdown(),
+        ];
 
         // Send shutdown signal to the background runtime thread
         if let Ok(mut sender_guard) = self.0.shutdown_sender.lock()
             && let Some(sender) = sender_guard.take()
         {
             let _ = sender.send(());
+        }
+        for result in results {
+            result?;
         }
 
         Ok(())
