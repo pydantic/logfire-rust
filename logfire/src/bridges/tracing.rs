@@ -2277,7 +2277,7 @@ mod tests {
                         scope: InstrumentationScope {
                             name: "tracing/tracing-opentelemetry",
                             version: Some(
-                                "0.33.0",
+                                "0.34.0",
                             ),
                             schema_url: None,
                             attributes: [],
@@ -2353,7 +2353,7 @@ mod tests {
                         scope: InstrumentationScope {
                             name: "tracing/tracing-opentelemetry",
                             version: Some(
-                                "0.33.0",
+                                "0.34.0",
                             ),
                             schema_url: None,
                             attributes: [],
