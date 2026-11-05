@@ -24,12 +24,6 @@ use axum::{
 //
 // We recommend enabling the `tracing_level_info` feature to be able to see the request spans.
 use axum_tracing_opentelemetry::middleware::{OtelAxumLayer, OtelInResponseLayer};
-// `axum-otel-metrics` provides a metrics layer for axum which directly sends metrics
-// to the opentelemetry SDK (which logfire configures for you)
-//
-// This sets up standard metrics such as `http.request.duration`; these can be seen at
-// https://github.com/open-telemetry/semantic-conventions/blob/main/docs/http/http-metrics.md
-use axum_otel_metrics::HttpMetricsLayerBuilder;
 use opentelemetry::{KeyValue, metrics::Counter};
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
@@ -87,7 +81,6 @@ fn create_app() -> Router {
         // Add tracing middleware for automatic request tracing
         .layer(OtelAxumLayer::default().filter(|path| !path.starts_with("/health")))
         .layer(OtelInResponseLayer::default())
-        .layer(HttpMetricsLayerBuilder::new().build())
         .layer(middleware::from_fn(metrics_middleware))
 }
 

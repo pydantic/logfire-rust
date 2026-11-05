@@ -7,6 +7,8 @@
     expect(unreachable_code, unused_variables)
 )]
 //! Helper functions to configure exporters via OTLP.
+//!
+//! Exports make one attempt because a retry after a lost acknowledgement can duplicate telemetry.
 use std::collections::HashMap;
 
 use opentelemetry_otlp::Protocol;
@@ -121,6 +123,7 @@ pub(crate) fn span_exporter_with_options(
             use opentelemetry_otlp::WithTonicConfig;
             opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
+                .with_retry_policy(opentelemetry_otlp::RetryPolicy::disabled())
                 .with_channel(grpc_channel(endpoint, options)?)
                 .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?
@@ -132,6 +135,7 @@ pub(crate) fn span_exporter_with_options(
             require_crypto_provider()?;
             opentelemetry_otlp::SpanExporter::builder()
                 .with_http()
+                .with_retry_policy(opentelemetry_otlp::RetryPolicy::disabled())
                 .with_protocol(Protocol::HttpBinary)
                 .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/traces"))
@@ -144,6 +148,7 @@ pub(crate) fn span_exporter_with_options(
             require_crypto_provider()?;
             opentelemetry_otlp::SpanExporter::builder()
                 .with_http()
+                .with_retry_policy(opentelemetry_otlp::RetryPolicy::disabled())
                 .with_protocol(Protocol::HttpJson)
                 .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/traces"))
@@ -223,6 +228,7 @@ pub(crate) fn metric_exporter_with_options(
             Ok(opentelemetry_otlp::MetricExporter::builder()
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                 .with_tonic()
+                .with_retry_policy(opentelemetry_otlp::RetryPolicy::disabled())
                 .with_channel(grpc_channel(endpoint, options)?)
                 .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?)
@@ -235,6 +241,7 @@ pub(crate) fn metric_exporter_with_options(
             Ok(opentelemetry_otlp::MetricExporter::builder()
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                 .with_http()
+                .with_retry_policy(opentelemetry_otlp::RetryPolicy::disabled())
                 .with_protocol(Protocol::HttpBinary)
                 .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/metrics"))
@@ -248,6 +255,7 @@ pub(crate) fn metric_exporter_with_options(
             Ok(opentelemetry_otlp::MetricExporter::builder()
                 .with_temporality(opentelemetry_sdk::metrics::Temporality::Delta)
                 .with_http()
+                .with_retry_policy(opentelemetry_otlp::RetryPolicy::disabled())
                 .with_protocol(Protocol::HttpJson)
                 .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/metrics"))
@@ -318,6 +326,7 @@ pub(crate) fn log_exporter_with_options(
             use opentelemetry_otlp::WithTonicConfig;
             Ok(opentelemetry_otlp::LogExporter::builder()
                 .with_tonic()
+                .with_retry_policy(opentelemetry_otlp::RetryPolicy::disabled())
                 .with_channel(grpc_channel(endpoint, options)?)
                 .with_metadata(build_metadata_from_headers(headers)?)
                 .build()?)
@@ -329,6 +338,7 @@ pub(crate) fn log_exporter_with_options(
             require_crypto_provider()?;
             Ok(opentelemetry_otlp::LogExporter::builder()
                 .with_http()
+                .with_retry_policy(opentelemetry_otlp::RetryPolicy::disabled())
                 .with_protocol(Protocol::HttpBinary)
                 .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/logs"))
@@ -341,6 +351,7 @@ pub(crate) fn log_exporter_with_options(
             require_crypto_provider()?;
             Ok(opentelemetry_otlp::LogExporter::builder()
                 .with_http()
+                .with_retry_policy(opentelemetry_otlp::RetryPolicy::disabled())
                 .with_protocol(Protocol::HttpJson)
                 .with_headers(headers_with_user_agent(headers))
                 .with_endpoint(format!("{endpoint}/v1/logs"))

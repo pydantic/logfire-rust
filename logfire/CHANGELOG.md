@@ -1,3 +1,12 @@
+## [v0.14.0] (2026-11-05)
+
+* Upgrade OpenTelemetry to 0.33 and tracing-opentelemetry to 0.34. Public OpenTelemetry types require compatible dependencies in downstream applications.
+* Preserve HTTP status codes in returned export errors.
+* OpenTelemetry 0.33 enables export retries by default. Logfire explicitly disables them, including for applications that previously enabled upstream experimental retries.
+* OTLP/HTTP exporters now reject request bodies larger than 64 MiB. Logfire does not expose an override.
+* Update the Axum and Actix integrations. The Axum example retains its custom request counter and removes the incompatible automatic metrics layer.
+* Allow configuring gRPC export channels with [#156](https://github.com/pydantic/logfire-rust/pull/156).
+
 ## [v0.13.1] (2026-09-17)
 
 * Handle non-exhaustive OTLP protocol variants by @bruno-espino in [#154](https://github.com/pydantic/logfire-rust/pull/154)
@@ -144,3 +153,5 @@ Initial release.
 [v0.11.0]: https://github.com/pydantic/logfire-rust/compare/v0.10.0..v0.11.0
 [v0.12.0]: https://github.com/pydantic/logfire-rust/compare/v0.11.0..v0.12.0
 [v0.13.0]: https://github.com/pydantic/logfire-rust/compare/v0.12.0..v0.13.0
+[v0.13.1]: https://github.com/pydantic/logfire-rust/compare/v0.13.0..v0.13.1
+[v0.14.0]: https://github.com/pydantic/logfire-rust/compare/v0.13.1..v0.14.0
