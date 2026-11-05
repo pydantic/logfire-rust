@@ -79,7 +79,7 @@ jobs:
     # the export features must build, and be usable, without a built-in crypto provider
     - run: cargo check --workspace --no-default-features --features logfire/export-grpc,logfire/export-http-protobuf,logfire/export-http-json
 
-    - run: cargo test -p logfire --no-default-features --features export-http-protobuf --test test_crypto_provider
+    - run: cargo test -p logfire --no-default-features --features export-http-protobuf --test test_crypto_provider --test test_export_errors
 
     - run: cargo test -p logfire-client --no-default-features --test test_crypto_provider
 
