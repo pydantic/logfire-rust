@@ -7,6 +7,9 @@
     expect(unreachable_code, unused_variables)
 )]
 //! Helper functions to configure exporters via OTLP.
+//!
+//! Exports use OpenTelemetry's bounded retries for transient failures. Retrying after a lost
+//! acknowledgement can duplicate telemetry, including delta metric values.
 use std::collections::HashMap;
 
 use opentelemetry_otlp::Protocol;

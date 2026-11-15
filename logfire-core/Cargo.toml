@@ -1,6 +1,6 @@
 [package]
 name = "logfire-core"
-version = "0.13.1"
+version = "0.14.0"
 description = "Shared types for Pydantic Logfire SDKs"
 edition.workspace = true
 license.workspace = true
