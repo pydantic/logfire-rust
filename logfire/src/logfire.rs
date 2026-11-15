@@ -928,6 +928,30 @@ mod tests {
                 Some(SendToLogfire::IfTokenPresent),
                 Ok(false),
             ),
+            // empty environment variables are treated as unset
+            (
+                vec![("LOGFIRE_TOKEN", "")],
+                None,
+                Err(ConfigureError::TokenRequired),
+            ),
+            (
+                vec![
+                    ("LOGFIRE_SEND_TO_LOGFIRE", "if-token-present"),
+                    ("LOGFIRE_TOKEN", ""),
+                ],
+                None,
+                Ok(false),
+            ),
+            (
+                vec![("LOGFIRE_SEND_TO_LOGFIRE", ""), ("LOGFIRE_TOKEN", "a")],
+                None,
+                Ok(true),
+            ),
+            (
+                vec![("LOGFIRE_TOKEN", "a"), ("LOGFIRE_BASE_URL", "")],
+                None,
+                Ok(true),
+            ),
         ] {
             if cfg!(not(feature = "export-http-protobuf")) && matches!(expected, Ok(true)) {
                 // if the expected result is to send to logfire, we will attempt to configure the

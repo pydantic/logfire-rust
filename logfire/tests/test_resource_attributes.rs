@@ -314,6 +314,9 @@ fn test_service_resource_attributes_from_otel_env() {
     let attrs = try_get_resource_attrs(
         configure(),
         &[
+            // empty values are treated as unset, so the OTEL_* fallbacks apply
+            ("LOGFIRE_SERVICE_NAME", ""),
+            ("LOGFIRE_SERVICE_VERSION", ""),
             ("OTEL_SERVICE_NAME", "otel-service"),
             ("OTEL_SERVICE_VERSION", "7.8.9"),
             ("OTEL_RESOURCE_ATTRIBUTES", "key1=val1,key2=val2"),
