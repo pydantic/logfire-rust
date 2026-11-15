@@ -1,9 +1,9 @@
-## Unreleased
+## [v0.14.0] (2026-11-15)
 
-* Upgrade OpenTelemetry to 0.33 and tracing-opentelemetry to 0.34. Public OpenTelemetry types require compatible dependencies in downstream applications.
-* Preserve HTTP status codes in returned export errors.
-* OTLP/HTTP exporters now reject request bodies larger than 64 MiB. Logfire does not expose an override.
-* Allow configuring gRPC export channels with [#156](https://github.com/pydantic/logfire-rust/pull/156).
+* Allow configuring the gRPC export channel by @cetra3 in https://github.com/pydantic/logfire-rust/pull/156
+* Treat empty environment variables as unset by @RaphaelFakhri in https://github.com/pydantic/logfire-rust/pull/160
+* fix: finish shutdown after a provider error by @bruno-espino in https://github.com/pydantic/logfire-rust/pull/158
+* fix(otel): upgrade OpenTelemetry and review retry defaults by @bruno-espino in https://github.com/pydantic/logfire-rust/pull/162
 
 ## [v0.13.1] (2026-09-17)
 
