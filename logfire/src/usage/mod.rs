@@ -103,6 +103,23 @@
 //! # }
 //! ```
 //!
+//! # Crate features
+//!
+//! The following Cargo features control optional functionality and dependencies:
+//!
+//! | Feature | Enabled by default | Description |
+//! | --- | --- | --- |
+//! | `console-timestamps` | Yes | Format UTC timestamps in console output using Jiff. |
+//! | `data-dir` | Yes | Load credentials from the Logfire data directory (by default, `.logfire`). |
+//! | `export-http-protobuf` | Yes | Export telemetry using OTLP over HTTP with Protobuf encoding. |
+//! | `tls-aws-lc` | Yes | Supply `aws-lc-rs` as the default TLS cryptography provider. See [TLS configuration][crate#tls]. |
+//! | `export-http-json` | No | Export telemetry using OTLP over HTTP with JSON encoding. |
+//! | `export-grpc` | No | Export telemetry using OTLP over gRPC. |
+//!
+//! Enabling an export feature makes that protocol available; it does not select it.
+//! The default export protocol is `http/protobuf`. Set `OTEL_EXPORTER_OTLP_PROTOCOL`
+//! to `http/json` or `grpc` to select another enabled protocol.
+//!
 //! # Examples
 //!
 //! See [examples] subchapter of this documentation.

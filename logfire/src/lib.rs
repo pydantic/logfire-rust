@@ -69,16 +69,6 @@
 //! All environment variables supported by the Rust Opentelemetry SDK are also supported by the
 //! Logfire SDK.
 //!
-//! ## Console timestamps
-//!
-//! The default-enabled `console-timestamps` feature uses Jiff to format UTC timestamps
-//! in console output. Disable default features and omit `console-timestamps` to remove
-//! this dependency. Console logging still works, with timestamps disabled by default.
-//! Explicitly requesting timestamps with
-//! [`ConsoleOptions::with_include_timestamps(true)`][config::ConsoleOptions::with_include_timestamps]
-//! without the feature causes [`LogfireConfigBuilder::finish`][config::LogfireConfigBuilder::finish]
-//! to return [`ConfigureError::LogfireFeatureRequired`].
-//!
 //! ## TLS
 //!
 //! Exports to Logfire are sent over TLS, using [`rustls`](https://docs.rs/rustls). By default the
