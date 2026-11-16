@@ -294,7 +294,7 @@ mod tests {
             .with_console(Some(console_options))
             .with_default_level_filter(tracing::level_filters::LevelFilter::TRACE)
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = crate::set_local_logfire(logfire);
 
@@ -308,10 +308,10 @@ mod tests {
         crate::error!("Test error message");
         crate::error!("Test error with value", field = 42i64);
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
 
         assert!(output.contains("Test error message"));
         assert!(output.contains("Test error with value"));
@@ -325,10 +325,10 @@ mod tests {
         crate::warn!("Test warn message");
         crate::warn!("Test warn with value", field = "test");
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
 
         assert!(output.contains("Test warn message"));
         assert!(output.contains("Test warn with value"));
@@ -342,10 +342,10 @@ mod tests {
         crate::info!("Test info message");
         crate::info!("Test info with value", field = true);
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
 
         assert!(output.contains("Test info message"));
         assert!(output.contains("Test info with value"));
@@ -357,16 +357,16 @@ mod tests {
         let (output, guard) = get_output_guard(Level::DEBUG);
 
         crate::debug!("Test debug message");
-        crate::debug!("Test debug with value", field = 3.14);
+        crate::debug!("Test debug with value", field = 1.25);
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
 
         assert!(output.contains("Test debug message"));
         assert!(output.contains("Test debug with value"));
-        assert!(output.contains("field") && output.contains("3.14"));
+        assert!(output.contains("field") && output.contains("1.25"));
     }
 
     #[test]
@@ -376,10 +376,10 @@ mod tests {
         crate::trace!("Test trace message");
         crate::trace!("Test trace with value", field = "debug_info");
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
 
         assert!(output.contains("Test trace message"));
         assert!(output.contains("Test trace with value"));
@@ -393,10 +393,10 @@ mod tests {
         crate::log!(Level::INFO, "Test log message");
         crate::log!(Level::INFO, "Test log with value", field = "explicit");
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
 
         assert!(output.contains("Test log message"));
         assert!(output.contains("Test log with value"));
@@ -417,7 +417,7 @@ mod tests {
             .with_console(Some(console_options))
             .with_default_level_filter(tracing::level_filters::LevelFilter::TRACE)
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = crate::set_local_logfire(logfire.clone());
 
@@ -425,10 +425,10 @@ mod tests {
         crate::info!(parent: &parent_span, "Test info with parent");
         crate::error!(parent: &parent_span, "Test error with parent", field = "parent_test");
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
 
         assert!(output.contains("Test info with parent"));
         assert!(output.contains("Test error with parent"));
@@ -436,6 +436,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "inline snapshot of all primitive types"
+    )]
     fn test_rust_primitive_types_conversion_in_log() {
         let log_exporter = InMemoryLogExporter::default();
 
@@ -447,7 +451,7 @@ mod tests {
                     .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
             )
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = crate::set_local_logfire(logfire);
 
@@ -533,13 +537,13 @@ mod tests {
         crate::info!("optional integer: {value:?}", value = Some(12));
         crate::info!("optional float: {value:?}", value = Some(5.6));
 
-        let logs = log_exporter.get_emitted_logs().unwrap();
-        guard.shutdown().unwrap();
+        let logs = log_exporter.get_emitted_logs().expect("logs available");
+        guard.shutdown().expect("shutdown succeeds");
 
         let messages_and_value = logs
             .iter()
             .map(|log| {
-                let AnyValue::String(message) = log.record.body().unwrap() else {
+                let AnyValue::String(message) = log.record.body().expect("log body present") else {
                     panic!("Expected String body");
                 };
                 let value = log
@@ -547,7 +551,7 @@ mod tests {
                     .attributes_iter()
                     .find(|(k, _)| k.as_str() == "value")
                     .map(|(_, v)| v.clone())
-                    .unwrap();
+                    .expect("value attribute present");
                 (message.as_str(), format!("{value:?}"))
             })
             .collect::<Vec<_>>();

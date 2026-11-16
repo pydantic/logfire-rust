@@ -37,7 +37,8 @@ async fn metric_export_preserves_http_status() {
             .mount(&collector)
             .await;
 
-        let exporter = logfire::exporters::metric_exporter(&collector.uri(), None).unwrap();
+        let exporter = logfire::exporters::metric_exporter(&collector.uri(), None)
+            .expect("metric exporter configured");
         let reader = PeriodicReader::builder(exporter, runtime::Tokio).build();
         let provider = SdkMeterProvider::builder().with_reader(reader).build();
         provider
@@ -47,21 +48,25 @@ async fn metric_export_preserves_http_status() {
             .add(7, &[]);
 
         let result = provider.force_flush().map_err(|error| error.to_string());
-        provider.shutdown().unwrap();
-        let error = result.unwrap_err();
+        provider.shutdown().expect("shutdown succeeds");
+        let error = result.expect_err("collector rejects metric export");
         assert!(
             error.contains(&format!("status code: {status}")),
             "HTTP {status}: {error}"
         );
 
-        let requests = collector.received_requests().await.unwrap();
+        let requests = collector
+            .received_requests()
+            .await
+            .expect("request recording enabled");
         assert_eq!(requests.len() as u64, attempts);
         assert!(
             requests
                 .iter()
                 .all(|request| request.body == requests[0].body)
         );
-        let request = ExportMetricsServiceRequest::decode(requests[0].body.as_slice()).unwrap();
+        let request = ExportMetricsServiceRequest::decode(requests[0].body.as_slice())
+            .expect("valid metrics protobuf");
         let Some(Data::Sum(sum)) = &request.resource_metrics[0].scope_metrics[0].metrics[0].data
         else {
             panic!("expected the exported counter");
@@ -90,19 +95,19 @@ impl Signal {
         match self {
             Self::Traces => {
                 logfire::exporters::span_exporter(endpoint, None)
-                    .unwrap()
+                    .expect("span exporter configured")
                     .export(Vec::new())
                     .await
             }
             Self::Logs => {
                 logfire::exporters::log_exporter(endpoint, None)
-                    .unwrap()
+                    .expect("log exporter configured")
                     .export(LogBatch::new(&[]))
                     .await
             }
             Self::Metrics => {
                 logfire::exporters::metric_exporter(endpoint, None)
-                    .unwrap()
+                    .expect("metric exporter configured")
                     .export(&ResourceMetrics::default())
                     .await
             }
@@ -134,8 +139,14 @@ async fn transient_http_failures_are_retried() {
                 .mount(&collector)
                 .await;
 
-            signal.export(&collector.uri()).await.unwrap();
-            let requests = collector.received_requests().await.unwrap();
+            signal
+                .export(&collector.uri())
+                .await
+                .expect("export succeeds after retries");
+            let requests = collector
+                .received_requests()
+                .await
+                .expect("request recording enabled");
             assert_eq!(requests.len(), 3);
             assert!(
                 requests
@@ -166,9 +177,16 @@ async fn retry_after_beyond_export_timeout_is_not_retried() {
         )
         .await
         .expect("Retry-After exceeds the default export timeout")
-        .unwrap_err();
+        .expect_err("collector rejects export");
         assert!(error.to_string().contains("status code: 429"));
-        assert_eq!(collector.received_requests().await.unwrap().len(), 1);
+        assert_eq!(
+            collector
+                .received_requests()
+                .await
+                .expect("request recording enabled")
+                .len(),
+            1
+        );
     }
 }
 
@@ -187,7 +205,10 @@ async fn http_retries_are_bounded() {
                 .mount(&collector)
                 .await;
 
-            let error = signal.export(&collector.uri()).await.unwrap_err();
+            let error = signal
+                .export(&collector.uri())
+                .await
+                .expect_err("collector rejects export");
             assert!(
                 error
                     .to_string()
@@ -195,7 +216,11 @@ async fn http_retries_are_bounded() {
                 "HTTP {status}: {error}"
             );
             assert_eq!(
-                collector.received_requests().await.unwrap().len() as u64,
+                collector
+                    .received_requests()
+                    .await
+                    .expect("request recording enabled")
+                    .len() as u64,
                 attempts
             );
         }

@@ -91,12 +91,6 @@ impl LogfireConfigBuilder {
         self
     }
 
-    /// Deprecated form of [`with_install_panic_handler`][Self::with_install_panic_handler].
-    #[deprecated(since = "0.8.0", note = "noop; now installed by default")]
-    pub fn install_panic_handler(self) -> Self {
-        self
-    }
-
     /// Whether to send data to the Logfire platform.
     ///
     /// Defaults to the value of `LOGFIRE_SEND_TO_LOGFIRE` if set, otherwise `Yes`.
@@ -256,17 +250,9 @@ pub struct ConsoleOptions {
     /// Where to send output
     pub(crate) target: Target,
     /// Whether to include timestamps in the console output.
-    #[deprecated(
-        since = "0.9.0",
-        note = "field access will be removed; use builder methods"
-    )]
-    pub include_timestamps: bool,
+    pub(crate) include_timestamps: bool,
     /// The minimum log level to show in the console.
-    #[deprecated(
-        since = "0.9.0",
-        note = "field access will be removed; use builder methods"
-    )]
-    pub min_log_level: Level,
+    pub(crate) min_log_level: Level,
     // TODO: support the below configuration options (inherited from Python SDK)
     // /// How spans are shown in the console.
     // span_style: SpanStyle,
@@ -287,11 +273,9 @@ impl Default for ConsoleOptions {
             // span_style: SpanStyle::default(),
             // include_tags: true,
             // verbose: false,
-            #[expect(deprecated)]
             min_log_level: Level::INFO,
             // show_project_link: true,
             target: Target::default(),
-            #[expect(deprecated)]
             include_timestamps: true,
         }
     }
@@ -316,7 +300,6 @@ impl ConsoleOptions {
 
     /// Set whether to include timestamps in the console output.
     #[must_use]
-    #[expect(deprecated, reason = "this builder method replaces field access")]
     pub fn with_include_timestamps(mut self, include: bool) -> Self {
         self.include_timestamps = include;
         self
@@ -324,7 +307,6 @@ impl ConsoleOptions {
 
     /// Set the minimum log level to show in the console.
     #[must_use]
-    #[expect(deprecated, reason = "this builder method replaces field access")]
     pub fn with_min_log_level(mut self, min_log_level: Level) -> Self {
         self.min_log_level = min_log_level;
         self
@@ -754,7 +736,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(deprecated)]
     fn test_console_options_with_timestamps() {
         let options = super::ConsoleOptions::default().with_include_timestamps(false);
         assert!(!options.include_timestamps);
@@ -763,7 +744,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(deprecated)]
     fn test_console_option_with_min_log_level() {
         let console_options = super::ConsoleOptions::default();
         assert_eq!(console_options.min_log_level, tracing::Level::INFO);

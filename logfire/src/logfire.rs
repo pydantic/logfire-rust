@@ -1141,7 +1141,7 @@ mod tests {
 
         // Write credentials file
         let credentials_path = temp_dir.path().join("logfire_credentials.json");
-        std::fs::write(&credentials_path, CREDENTIALS_JSON).unwrap();
+        std::fs::write(&credentials_path, CREDENTIALS_JSON).expect("credentials written");
 
         // Test that credentials are loaded when using with_data_dir
         let config = crate::configure()
@@ -1149,9 +1149,11 @@ mod tests {
             .send_to_logfire(SendToLogfire::IfTokenPresent)
             .with_data_dir(temp_dir.path());
 
-        let md = Logfire::build_parts(config, None).unwrap().metadata;
+        let md = Logfire::build_parts(config, None)
+            .expect("logfire configured")
+            .metadata;
 
-        assert_eq!(md.send_to_logfire, true);
+        assert!(md.send_to_logfire);
         assert_eq!(md.logfire_token.as_deref(), Some("test_token_123"));
         assert_eq!(
             md.logfire_base_url.as_deref(),
@@ -1173,7 +1175,7 @@ mod tests {
 
         // Write credentials file
         let credentials_path = temp_dir.path().join("logfire_credentials.json");
-        std::fs::write(&credentials_path, CREDENTIALS_JSON).unwrap();
+        std::fs::write(&credentials_path, CREDENTIALS_JSON).expect("credentials written");
 
         // Test that credentials are loaded when using with_data_dir
         let config = crate::configure().local();
@@ -1185,9 +1187,11 @@ mod tests {
         .into_iter()
         .collect();
 
-        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+        let md = Logfire::build_parts(config, Some(&env))
+            .expect("logfire configured")
+            .metadata;
 
-        assert_eq!(md.send_to_logfire, true);
+        assert!(md.send_to_logfire);
         assert_eq!(md.logfire_token.as_deref(), Some("test_token_123"));
         assert_eq!(
             md.logfire_base_url.as_deref(),
@@ -1203,7 +1207,7 @@ mod tests {
         let credentials_path = temp_dir.path().join("logfire_credentials.json");
 
         // Test with invalid JSON
-        std::fs::write(&credentials_path, "invalid json").unwrap();
+        std::fs::write(&credentials_path, "invalid json").expect("invalid credentials written");
 
         let result = crate::configure()
             .local()
@@ -1270,7 +1274,7 @@ mod tests {
 
         guard.shutdown().expect("shutdown should succeed");
 
-        let logs = log_exporter.get_emitted_logs().unwrap();
+        let logs = log_exporter.get_emitted_logs().expect("logs available");
         assert!(logs.is_empty());
     }
 
@@ -1357,7 +1361,9 @@ mod tests {
         .collect();
 
         let config = crate::configure().local().send_to_logfire(true);
-        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+        let md = Logfire::build_parts(config, Some(&env))
+            .expect("logfire configured")
+            .metadata;
 
         assert_eq!(
             md.logfire_base_url.as_deref(),
@@ -1384,7 +1390,9 @@ mod tests {
             .with_advanced_options(
                 AdvancedOptions::default().with_base_url("https://programmatic.example.com"),
             );
-        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+        let md = Logfire::build_parts(config, Some(&env))
+            .expect("logfire configured")
+            .metadata;
 
         assert_eq!(
             md.logfire_base_url.as_deref(),
@@ -1401,7 +1409,9 @@ mod tests {
                 .collect();
 
         let config = crate::configure().local().send_to_logfire(true);
-        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+        let md = Logfire::build_parts(config, Some(&env))
+            .expect("logfire configured")
+            .metadata;
 
         assert_eq!(md.logfire_token.as_deref(), Some("env-token"));
     }
@@ -1418,7 +1428,7 @@ mod tests {
 
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
         let credentials_path = temp_dir.path().join("logfire_credentials.json");
-        std::fs::write(&credentials_path, CREDENTIALS_JSON).unwrap();
+        std::fs::write(&credentials_path, CREDENTIALS_JSON).expect("credentials written");
 
         let env: std::collections::HashMap<String, String> = [(
             "LOGFIRE_BASE_URL".into(),
@@ -1432,7 +1442,9 @@ mod tests {
             .send_to_logfire(SendToLogfire::IfTokenPresent)
             .with_data_dir(temp_dir.path());
 
-        let md = Logfire::build_parts(config, Some(&env)).unwrap().metadata;
+        let md = Logfire::build_parts(config, Some(&env))
+            .expect("logfire configured")
+            .metadata;
 
         assert_eq!(
             md.logfire_base_url.as_deref(),

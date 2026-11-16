@@ -451,6 +451,7 @@ mod tests {
     };
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "large inline snapshots")]
     fn test_tracing_bridge() {
         const TEST_FILE: &str = file!();
         const TEST_LINE: u32 = line!();
@@ -478,7 +479,7 @@ mod tests {
                     .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
             )
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = set_local_logfire(logfire);
 
@@ -495,10 +496,10 @@ mod tests {
             tracing::info!(name: "hello world log with value", field_value = 1);
         }
 
-        let spans = exporter.get_finished_spans().unwrap();
-        let logs = log_exporter.get_emitted_logs().unwrap();
+        let spans = exporter.get_finished_spans().expect("spans available");
+        let logs = log_exporter.get_emitted_logs().expect("logs available");
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
         assert_debug_snapshot!(spans, @r#"
         [
@@ -1989,7 +1990,7 @@ mod tests {
             .with_console(Some(console_options.clone()))
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = crate::set_local_logfire(logfire);
 
@@ -2006,10 +2007,10 @@ mod tests {
             tracing::info!(name: "hello world log with value", field_value = 1);
         }
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @r"
@@ -2044,7 +2045,7 @@ mod tests {
             .with_console(Some(console_options))
             .with_default_level_filter(LevelFilter::INFO)
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let logfire_layer = logfire.tracing_layer();
         let guard = crate::set_local_logfire(logfire);
@@ -2074,10 +2075,10 @@ mod tests {
             crate::span!("This INFO span should be emitted");
         });
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
 
         assert!(
             !output.contains("This TRACE log should be filtered out"),
@@ -2102,6 +2103,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "large inline snapshot and metric reader setup"
+    )]
     async fn test_tracing_metrics_layer() {
         use crate::test_utils::make_deterministic_resource_metrics;
         use opentelemetry_sdk::metrics::{
@@ -2124,8 +2129,10 @@ mod tests {
 
             async fn export<E: PushMetricExporter>(&self, exporter: &E) {
                 let mut metrics = ResourceMetrics::default();
-                self.reader.collect(&mut metrics).unwrap();
-                exporter.export(&mut metrics).await.unwrap();
+                self.reader
+                    .collect(&mut metrics)
+                    .expect("metrics collected");
+                exporter.export(&metrics).await.expect("metrics exported");
             }
         }
 
@@ -2167,7 +2174,7 @@ mod tests {
             }
         }
 
-        let mut exporter = InMemoryMetricExporterBuilder::new().build();
+        let exporter = InMemoryMetricExporterBuilder::new().build();
 
         let reader = SharedManualReader::new(
             ManualReader::builder()
@@ -2193,7 +2200,7 @@ mod tests {
                     .with_tracing_metrics(true),
             )
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = set_local_logfire(logfire);
 
@@ -2211,7 +2218,7 @@ mod tests {
             "test monotonic counter event"
         );
 
-        reader.export(&mut exporter).await;
+        reader.export(&exporter).await;
 
         tracing::info!(counter.test_counter = 3, "test counter event");
         tracing::info!(histogram.test_histogram = 4.5, "test histogram event");
@@ -2220,11 +2227,11 @@ mod tests {
             "test monotonic counter event"
         );
 
-        reader.export(&mut exporter).await;
+        reader.export(&exporter).await;
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let metrics = exporter.get_finished_metrics().unwrap();
+        let metrics = exporter.get_finished_metrics().expect("metrics available");
         let metrics = make_deterministic_resource_metrics(metrics);
 
         assert_debug_snapshot!(metrics, @r#"
