@@ -297,7 +297,6 @@ impl ConsoleWriter {
                 }
                 "logfire.level_num" => {
                     if let Value::I64(level_num) = kv.value {
-                        #[expect(deprecated)]
                         if level_num < tracing_level_to_severity(self.options.min_log_level) as i64
                         {
                             return Ok(());
@@ -327,7 +326,6 @@ impl ConsoleWriter {
             msg = Some(span.name.clone());
         }
 
-        #[expect(deprecated)]
         if self.options.include_timestamps {
             let timestamp: DateTime<Utc> = span.start_time.into();
             write!(
@@ -405,7 +403,6 @@ impl ConsoleWriter {
             }
         }
 
-        #[expect(deprecated)]
         if self.options.include_timestamps
             && let Some(timestamp) = log_record.timestamp()
         {
