@@ -3,7 +3,6 @@ use std::{
     sync::{Arc, Mutex, mpsc},
 };
 
-use chrono::{DateTime, Utc};
 use nu_ansi_term::{Color, Style};
 use opentelemetry::{Value, logs::AnyValue};
 use opentelemetry_sdk::logs::SdkLogRecord;
@@ -327,16 +326,10 @@ impl ConsoleWriter {
             msg = Some(span.name.clone());
         }
 
+        #[cfg(feature = "console-timestamps")]
         #[expect(deprecated)]
         if self.options.include_timestamps {
-            let timestamp: DateTime<Utc> = span.start_time.into();
-            write!(
-                w,
-                "{}",
-                self.theme
-                    .dimmed
-                    .paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-            )?;
+            self.write_timestamp(span.start_time, w)?;
         }
 
         if let Some(level) = level {
@@ -363,6 +356,16 @@ impl ConsoleWriter {
         }
 
         writeln!(w)
+    }
+
+    #[cfg(feature = "console-timestamps")]
+    fn write_timestamp<W: io::Write>(
+        &self,
+        timestamp: std::time::SystemTime,
+        w: &mut W,
+    ) -> io::Result<()> {
+        let timestamp = jiff::Timestamp::try_from(timestamp).map_err(io::Error::other)?;
+        write!(w, "{}", self.theme.dimmed.paint(format!("{timestamp:.6}")))
     }
 
     fn log_to_writer<W: io::Write>(&self, log_record: &SdkLogRecord, w: &mut W) -> io::Result<()> {
@@ -405,18 +408,12 @@ impl ConsoleWriter {
             }
         }
 
+        #[cfg(feature = "console-timestamps")]
         #[expect(deprecated)]
         if self.options.include_timestamps
             && let Some(timestamp) = log_record.timestamp()
         {
-            let timestamp: DateTime<Utc> = timestamp.into();
-            write!(
-                w,
-                "{}",
-                self.theme
-                    .dimmed
-                    .paint(timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string())
-            )?;
+            self.write_timestamp(timestamp, w)?;
         }
 
         if let Some(level) = log_record.severity_number() {
@@ -503,8 +500,10 @@ fn write_any_value<W: io::Write>(w: &mut W, value: &AnyValue, theme: &Theme) -> 
 mod tests {
     use std::sync::{Arc, Mutex};
 
+    #[cfg(feature = "console-timestamps")]
+    use crate::config::ConsoleColors;
     use crate::{
-        config::{ConsoleColors, ConsoleOptions, Target},
+        config::{ConsoleOptions, Target},
         set_local_logfire,
         test_utils::remap_timestamps_in_console_output,
     };
@@ -512,6 +511,31 @@ mod tests {
     use tracing::{Level, level_filters::LevelFilter};
 
     #[test]
+    #[cfg(feature = "console-timestamps")]
+    fn test_timestamp_format() {
+        use std::time::{Duration, SystemTime};
+
+        let writer =
+            super::ConsoleWriter::new(ConsoleOptions::default().with_colors(ConsoleColors::Never));
+        for (timestamp, expected) in [
+            (SystemTime::UNIX_EPOCH, "1970-01-01T00:00:00.000000Z"),
+            (
+                SystemTime::UNIX_EPOCH + Duration::from_nanos(123_456_789),
+                "1970-01-01T00:00:00.123456Z",
+            ),
+            (
+                SystemTime::UNIX_EPOCH - Duration::from_nanos(1),
+                "1969-12-31T23:59:59.999999Z",
+            ),
+        ] {
+            let mut output = Vec::new();
+            writer.write_timestamp(timestamp, &mut output).unwrap();
+            assert_eq!(std::str::from_utf8(&output).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "console-timestamps")]
     fn test_print_to_console() {
         let output = Arc::new(Mutex::new(Vec::new()));
 
@@ -559,6 +583,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "console-timestamps")]
     fn test_print_to_console_force_colors() {
         let output = Arc::new(Mutex::new(Vec::new()));
 
@@ -607,7 +632,7 @@ mod tests {
     }
 
     #[test]
-    fn test_print_to_console_include_timestamps_false() {
+    fn test_print_to_console_without_timestamps() {
         let output = Arc::new(Mutex::new(Vec::new()));
 
         let console_options = ConsoleOptions::default()
@@ -653,6 +678,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "console-timestamps")]
     fn test_print_to_console_with_min_log_level() {
         let output = Arc::new(Mutex::new(Vec::new()));
 

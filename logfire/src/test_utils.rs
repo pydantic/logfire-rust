@@ -198,10 +198,10 @@ impl TimestampRemapper {
 
 pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
     // Replace all timestamps in output to make them deterministic
-    let mut timestamp = chrono::DateTime::UNIX_EPOCH;
+    let mut timestamp = jiff::Timestamp::UNIX_EPOCH;
     let re = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z").unwrap();
     re.replace_all(output, |_: &Captures<'_>| {
-        let replaced = timestamp.to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
+        let replaced = format!("{timestamp:.6}");
         timestamp += time::Duration::from_micros(1);
         replaced
     })

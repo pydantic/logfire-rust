@@ -256,6 +256,9 @@ pub struct ConsoleOptions {
     /// Where to send output
     pub(crate) target: Target,
     /// Whether to include timestamps in the console output.
+    ///
+    /// Defaults to whether the `console-timestamps` feature is enabled (on by default).
+    /// Enabling timestamps without that feature causes configuration to fail.
     #[deprecated(
         since = "0.9.0",
         note = "field access will be removed; use builder methods"
@@ -292,7 +295,7 @@ impl Default for ConsoleOptions {
             // show_project_link: true,
             target: Target::default(),
             #[expect(deprecated)]
-            include_timestamps: true,
+            include_timestamps: cfg!(feature = "console-timestamps"),
         }
     }
 }
@@ -315,6 +318,10 @@ impl ConsoleOptions {
     }
 
     /// Set whether to include timestamps in the console output.
+    ///
+    /// Defaults to whether the `console-timestamps` feature is enabled (on by default).
+    /// Setting this to `true` without that feature causes
+    /// [`LogfireConfigBuilder::finish`] to return [`ConfigureError::LogfireFeatureRequired`].
     #[must_use]
     #[expect(deprecated, reason = "this builder method replaces field access")]
     pub fn with_include_timestamps(mut self, include: bool) -> Self {
@@ -756,6 +763,11 @@ mod tests {
     #[test]
     #[expect(deprecated)]
     fn test_console_options_with_timestamps() {
+        let options = super::ConsoleOptions::default();
+        assert_eq!(
+            options.include_timestamps,
+            cfg!(feature = "console-timestamps")
+        );
         let options = super::ConsoleOptions::default().with_include_timestamps(false);
         assert!(!options.include_timestamps);
         let options = super::ConsoleOptions::default().with_include_timestamps(true);

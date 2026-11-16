@@ -178,7 +178,7 @@ async fn health_check(req: HttpRequest) -> HttpResponse {
 
         HttpResponse::Ok().json(serde_json::json!({
             "status": "healthy",
-            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "timestamp": jiff::Timestamp::now().to_string(),
             "version": env!("CARGO_PKG_VERSION")
         }))
     }
