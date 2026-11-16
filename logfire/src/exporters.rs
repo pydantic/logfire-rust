@@ -412,6 +412,7 @@ fn grpc_channel(
 #[cfg(all(test, feature = "export-grpc"))]
 mod grpc_tls_tests {
     use super::grpc_endpoint;
+    use std::fmt::Write as _;
 
     /// Connect to a listener which accepts connections but never replies. With TLS configured,
     /// the client sends a handshake and waits, so the connection attempt times out. Without it,
@@ -426,11 +427,8 @@ mod grpc_tls_tests {
         tokio::spawn(async move {
             // hold the connections open, so that the client waits for a handshake it never gets
             let mut accepted = Vec::new();
-            loop {
-                match listener.accept().await {
-                    Ok((stream, _)) => accepted.push(stream),
-                    Err(_) => break,
-                }
+            while let Ok((stream, _)) = listener.accept().await {
+                accepted.push(stream);
             }
         });
 
@@ -447,7 +445,7 @@ mod grpc_tls_tests {
                 let mut message = error.to_string();
                 let mut source = std::error::Error::source(&error);
                 while let Some(inner) = source {
-                    message.push_str(&format!(": {inner}"));
+                    write!(message, ": {inner}").expect("writing to a string succeeds");
                     source = inner.source();
                 }
 
@@ -495,49 +493,6 @@ fn build_metadata_from_headers(
     Ok(tonic::metadata::MetadataMap::from_headers(header_map))
 }
 
-#[cfg(test)]
-#[cfg(any(
-    feature = "export-grpc",
-    feature = "export-http-protobuf",
-    feature = "export-http-json"
-))]
-mod tests {
-    use super::{USER_AGENT, headers_with_user_agent};
-    use std::collections::HashMap;
-
-    #[test]
-    fn user_agent_is_added_to_headers() {
-        assert_eq!(
-            headers_with_user_agent(None),
-            HashMap::from([("User-Agent".to_string(), USER_AGENT.to_string())])
-        );
-
-        let headers = headers_with_user_agent(Some(HashMap::from([(
-            "Authorization".to_string(),
-            "Bearer token".to_string(),
-        )])));
-        assert_eq!(
-            headers,
-            HashMap::from([
-                ("Authorization".to_string(), "Bearer token".to_string()),
-                ("User-Agent".to_string(), USER_AGENT.to_string())
-            ])
-        );
-    }
-
-    #[test]
-    fn user_agent_set_by_caller_is_preserved() {
-        let headers = headers_with_user_agent(Some(HashMap::from([(
-            "user-agent".to_string(),
-            "my-app/1.2.3".to_string(),
-        )])));
-        assert_eq!(
-            headers,
-            HashMap::from([("user-agent".to_string(), "my-app/1.2.3".to_string())])
-        );
-    }
-}
-
 // current default logfire protocol is to export over HTTP in binary format
 const DEFAULT_LOGFIRE_PROTOCOL: &str = OTEL_EXPORTER_OTLP_PROTOCOL_HTTP_PROTOBUF;
 
@@ -578,6 +533,49 @@ fn protocol_from_env(data_env_var: &str) -> Result<Protocol, ConfigureError> {
         _ => Err(ConfigureError::Other(
             format!("unsupported protocol: {value}").into(),
         )),
+    }
+}
+
+#[cfg(test)]
+#[cfg(any(
+    feature = "export-grpc",
+    feature = "export-http-protobuf",
+    feature = "export-http-json"
+))]
+mod tests {
+    use super::{USER_AGENT, headers_with_user_agent};
+    use std::collections::HashMap;
+
+    #[test]
+    fn user_agent_is_added_to_headers() {
+        assert_eq!(
+            headers_with_user_agent(None),
+            HashMap::from([("User-Agent".to_string(), USER_AGENT.to_string())])
+        );
+
+        let headers = headers_with_user_agent(Some(HashMap::from([(
+            "Authorization".to_string(),
+            "Bearer token".to_string(),
+        )])));
+        assert_eq!(
+            headers,
+            HashMap::from([
+                ("Authorization".to_string(), "Bearer token".to_string()),
+                ("User-Agent".to_string(), USER_AGENT.to_string())
+            ])
+        );
+    }
+
+    #[test]
+    fn user_agent_set_by_caller_is_preserved() {
+        let headers = headers_with_user_agent(Some(HashMap::from([(
+            "user-agent".to_string(),
+            "my-app/1.2.3".to_string(),
+        )])));
+        assert_eq!(
+            headers,
+            HashMap::from([("user-agent".to_string(), "my-app/1.2.3".to_string())])
+        );
     }
 }
 
