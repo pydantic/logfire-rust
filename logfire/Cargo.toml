@@ -58,12 +58,13 @@ thiserror.workspace = true
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 nu-ansi-term = "0.50.1"
-chrono = "0.4.39"
+jiff = { version = "1.0", default-features = false, features = ["std"], optional = true }
 
 [dev-dependencies]
 async-trait = "0.1.88"
 futures = { version = "0.3.31", features = ["futures-executor"] }
 insta = "1.42.1"
+jiff = { version = "1.0", default-features = false, features = ["std"] }
 opentelemetry_sdk = { version = "0.33.1", default-features = false, features = [
     "testing",
 ] }
@@ -101,7 +102,8 @@ futures-util = "0.3"
 tempfile = "3.20.0"
 
 [features]
-default = ["data-dir", "export-http-protobuf", "tls-aws-lc"]
+default = ["console-timestamps", "data-dir", "export-http-protobuf", "tls-aws-lc"]
+console-timestamps = ["dep:jiff"]
 data-dir = ["dep:serde", "dep:serde_json"]
 export-grpc = [
     "opentelemetry-otlp/grpc-tonic",

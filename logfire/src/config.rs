@@ -250,6 +250,9 @@ pub struct ConsoleOptions {
     /// Where to send output
     pub(crate) target: Target,
     /// Whether to include timestamps in the console output.
+    ///
+    /// Defaults to whether the `console-timestamps` feature is enabled (on by default).
+    /// Enabling timestamps without that feature causes configuration to fail.
     pub(crate) include_timestamps: bool,
     /// The minimum log level to show in the console.
     pub(crate) min_log_level: Level,
@@ -276,7 +279,7 @@ impl Default for ConsoleOptions {
             min_log_level: Level::INFO,
             // show_project_link: true,
             target: Target::default(),
-            include_timestamps: true,
+            include_timestamps: cfg!(feature = "console-timestamps"),
         }
     }
 }
@@ -299,6 +302,10 @@ impl ConsoleOptions {
     }
 
     /// Set whether to include timestamps in the console output.
+    ///
+    /// Defaults to whether the `console-timestamps` feature is enabled (on by default).
+    /// Setting this to `true` without that feature causes
+    /// [`LogfireConfigBuilder::finish`] to return [`ConfigureError::LogfireFeatureRequired`].
     #[must_use]
     pub fn with_include_timestamps(mut self, include: bool) -> Self {
         self.include_timestamps = include;
@@ -737,6 +744,11 @@ mod tests {
 
     #[test]
     fn test_console_options_with_timestamps() {
+        let options = super::ConsoleOptions::default();
+        assert_eq!(
+            options.include_timestamps,
+            cfg!(feature = "console-timestamps")
+        );
         let options = super::ConsoleOptions::default().with_include_timestamps(false);
         assert!(!options.include_timestamps);
         let options = super::ConsoleOptions::default().with_include_timestamps(true);

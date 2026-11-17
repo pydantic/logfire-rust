@@ -321,6 +321,18 @@ impl Logfire {
         config: LogfireConfigBuilder,
         env: Option<&HashMap<String, String>>,
     ) -> Result<LogfireParts, ConfigureError> {
+        #[cfg(not(feature = "console-timestamps"))]
+        if config
+            .console_options
+            .as_ref()
+            .is_some_and(|options| options.include_timestamps)
+        {
+            return Err(ConfigureError::LogfireFeatureRequired {
+                feature_name: "console-timestamps",
+                functionality: "console timestamps".into(),
+            });
+        }
+
         #[cfg_attr(
             not(feature = "data-dir"),
             expect(unused_mut, reason = "only mutated on data-dir feature")
@@ -867,6 +879,7 @@ fn spawn_runtime_and_exporters(
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::HashMap,
         sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -885,9 +898,49 @@ mod tests {
 
     use crate::{
         ConfigureError, Logfire,
-        config::{BoxedMetricReader, MetricsOptions, SendToLogfire},
+        config::{BoxedMetricReader, ConsoleOptions, MetricsOptions, SendToLogfire},
         configure,
     };
+
+    #[test]
+    fn test_console_timestamps_configuration() {
+        for (console_options, include_timestamps) in [
+            (None, false),
+            (
+                Some(ConsoleOptions::default()),
+                cfg!(feature = "console-timestamps"),
+            ),
+            (
+                Some(ConsoleOptions::default().with_include_timestamps(false)),
+                false,
+            ),
+            (
+                Some(ConsoleOptions::default().with_include_timestamps(true)),
+                true,
+            ),
+        ] {
+            let config = configure()
+                .local()
+                .send_to_logfire(false)
+                .with_console(console_options);
+            let result = Logfire::from_config_builder_and_env(config, Some(&HashMap::default()));
+
+            if include_timestamps && !cfg!(feature = "console-timestamps") {
+                assert!(matches!(
+                    result,
+                    Err(ConfigureError::LogfireFeatureRequired {
+                        feature_name: "console-timestamps",
+                        ..
+                    })
+                ));
+            } else {
+                result
+                    .expect("console configuration succeeds")
+                    .shutdown()
+                    .expect("shutdown succeeds");
+            }
+        }
+    }
 
     #[test]
     fn test_send_to_logfire() {

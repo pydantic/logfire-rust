@@ -1095,6 +1095,18 @@ mod tests {
         let output = std::str::from_utf8(&output).expect("output is UTF-8");
         let output = remap_timestamps_in_console_output(output);
 
+        #[cfg(not(feature = "console-timestamps"))]
+        assert_snapshot!(output, @"
+         INFO logfire::bridges::log::tests root event
+         INFO logfire::bridges::log::tests root event with target
+         INFO logfire::bridges::log::tests root span
+         INFO logfire::bridges::log::tests hello world log
+         WARN logfire::bridges::log::tests warning log
+        ERROR logfire::bridges::log::tests error log
+        TRACE logfire::bridges::log::tests trace log
+        ");
+
+        #[cfg(feature = "console-timestamps")]
         assert_snapshot!(output, @"
         1970-01-01T00:00:00.000000Z  INFO logfire::bridges::log::tests root event
         1970-01-01T00:00:00.000001Z  INFO logfire::bridges::log::tests root event with target
