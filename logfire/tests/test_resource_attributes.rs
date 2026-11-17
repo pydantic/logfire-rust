@@ -20,7 +20,7 @@ mod test_utils;
 static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn try_get_resource_attrs(config: LogfireConfigBuilder, env: &[(&str, &str)]) -> Vec<KeyValue> {
-    let _lock = TEST_MUTEX.lock().unwrap();
+    let _lock = TEST_MUTEX.lock().expect("environment lock poisoned");
 
     for env in env {
         // SAFETY: running in separate test with mutex lock
@@ -45,11 +45,11 @@ fn try_get_resource_attrs(config: LogfireConfigBuilder, env: &[(&str, &str)]) ->
 
     logfire::info!("test span");
 
-    let mut logs = exporter.get_emitted_logs().unwrap();
+    let mut logs = exporter.get_emitted_logs().expect("logs available");
     guard.shutdown().expect("shutdown should succeed");
 
     assert_eq!(logs.len(), 1);
-    let log = logs.pop().unwrap();
+    let log = logs.pop().expect("log present");
 
     for env in env {
         // SAFETY: running in separate test with mutex lock

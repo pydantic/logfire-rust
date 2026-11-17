@@ -16,6 +16,7 @@ mod test_utils;
 
 /// Test HTTP protobuf export infrastructure
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "large inline snapshot")]
 async fn test_http_protobuf_export() {
     let mock_server = MockServer::start().await;
 
@@ -27,7 +28,7 @@ async fn test_http_protobuf_export() {
 
     mock_server.register(traces_mock).await;
 
-    let env_guard = ENV_MUTEX.lock().unwrap();
+    let env_guard = ENV_MUTEX.lock().expect("environment lock poisoned");
     // SAFETY: Holding mutex to prevent other thread interacting with env
     unsafe {
         std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf");
@@ -43,7 +44,7 @@ async fn test_http_protobuf_export() {
                 .with_id_generator(DeterministicIdGenerator::new()),
         )
         .finish()
-        .unwrap();
+        .expect("logfire configured");
 
     // SAFETY: As above
     unsafe {
@@ -53,9 +54,12 @@ async fn test_http_protobuf_export() {
 
     let guard = set_local_logfire(logfire);
     span!("test_span").in_scope(|| {});
-    guard.shutdown().unwrap();
+    guard.shutdown().expect("shutdown succeeds");
 
-    let requests = mock_server.received_requests().await.unwrap();
+    let requests = mock_server
+        .received_requests()
+        .await
+        .expect("request recording enabled");
     assert_eq!(requests.len(), 1);
     let request = &requests[0];
 
@@ -213,7 +217,7 @@ async fn test_http_protobuf_export() {
                                             AnyValue {
                                                 value: Some(
                                                     IntValue(
-                                                        55,
+                                                        56,
                                                     ),
                                                 ),
                                             },
@@ -337,6 +341,7 @@ async fn test_http_protobuf_export() {
 
 /// Test HTTP JSON export to mock server
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "large inline snapshot")]
 async fn test_http_json_export() {
     let mock_server = MockServer::start().await;
 
@@ -348,7 +353,7 @@ async fn test_http_json_export() {
 
     mock_server.register(traces_mock).await;
 
-    let env_guard = ENV_MUTEX.lock().unwrap();
+    let env_guard = ENV_MUTEX.lock().expect("environment lock poisoned");
     // SAFETY: Holding mutex to prevent other thread interacting with env
     unsafe {
         std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "http/json");
@@ -364,7 +369,7 @@ async fn test_http_json_export() {
                 .with_id_generator(DeterministicIdGenerator::new()),
         )
         .finish()
-        .unwrap();
+        .expect("logfire configured");
 
     // SAFETY: As above
     unsafe {
@@ -374,9 +379,12 @@ async fn test_http_json_export() {
 
     let guard = set_local_logfire(logfire);
     span!("json_test_span").in_scope(|| {});
-    guard.shutdown().unwrap();
+    guard.shutdown().expect("shutdown succeeds");
 
-    let requests = mock_server.received_requests().await.unwrap();
+    let requests = mock_server
+        .received_requests()
+        .await
+        .expect("request recording enabled");
     assert_eq!(requests.len(), 1);
     let request = &requests[0];
 
@@ -535,7 +543,7 @@ async fn test_http_json_export() {
                                             AnyValue {
                                                 value: Some(
                                                     IntValue(
-                                                        376,
+                                                        381,
                                                     ),
                                                 ),
                                             },
@@ -669,7 +677,7 @@ async fn test_http_metrics_export() {
             .register(Mock::given(method("POST")).respond_with(ResponseTemplate::new(200)))
             .await;
 
-        let env_guard = ENV_MUTEX.lock().unwrap();
+        let env_guard = ENV_MUTEX.lock().expect("environment lock poisoned");
         // SAFETY: Holding mutex to prevent other thread interacting with env
         unsafe {
             std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", protocol);
@@ -682,7 +690,7 @@ async fn test_http_metrics_export() {
             .with_metrics(Some(MetricsOptions::default()))
             .with_advanced_options(AdvancedOptions::default().with_base_url(mock_server.uri()))
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         // SAFETY: As above
         unsafe {
@@ -696,10 +704,13 @@ async fn test_http_metrics_export() {
         );
         tokio::task::spawn_blocking(move || logfire.shutdown())
             .await
-            .unwrap()
-            .unwrap();
+            .expect("shutdown task completed")
+            .expect("shutdown succeeds");
 
-        let requests = mock_server.received_requests().await.unwrap();
+        let requests = mock_server
+            .received_requests()
+            .await
+            .expect("request recording enabled");
         let metrics_requests: Vec<_> = requests
             .iter()
             .filter(|request| request.url.path() == "/v1/metrics")
@@ -720,15 +731,14 @@ async fn test_http_metrics_export() {
 /// An unsupported protocol in the environment is an error.
 #[test]
 fn test_unsupported_protocol() {
-    let env_guard = ENV_MUTEX.lock().unwrap();
+    let env_guard = ENV_MUTEX.lock().expect("environment lock poisoned");
     // SAFETY: Holding mutex to prevent other thread interacting with env
     unsafe {
         std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "carrier-pigeon");
     }
 
     let error = logfire::exporters::span_exporter("http://localhost:4318", None)
-        .err()
-        .expect("expected an error for an unsupported protocol");
+        .expect_err("expected an error for an unsupported protocol");
 
     // SAFETY: As above
     unsafe {

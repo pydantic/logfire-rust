@@ -70,14 +70,17 @@ impl TraceService for MockTraceService {
                 .to_str()
                 .expect("user-agent is not valid ASCII")
                 .to_owned();
-            self.captured_user_agents.lock().unwrap().push(user_agent);
+            self.captured_user_agents
+                .lock()
+                .expect("user-agent capture lock poisoned")
+                .push(user_agent);
         }
 
         let trace_request = request.into_inner();
 
         // Capture the request for testing
         {
-            let mut captured = self.captured.lock().unwrap();
+            let mut captured = self.captured.lock().expect("trace capture lock poisoned");
             captured.push(trace_request);
         }
 
@@ -97,7 +100,7 @@ impl LogsService for MockLogsService {
 
         // Capture the request for testing
         {
-            let mut captured = self.captured.lock().unwrap();
+            let mut captured = self.captured.lock().expect("log capture lock poisoned");
             captured.push(logs_request);
         }
 
@@ -128,9 +131,11 @@ async fn start_mock_grpc_server() -> (
             .expect("Failed to create tokio runtime");
 
         rt.block_on(async move {
-            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            let addr = listener.local_addr().unwrap();
-            let addr_str = format!("http://{}", addr);
+            let listener = TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("listener bound");
+            let addr = listener.local_addr().expect("listener address available");
+            let addr_str = format!("http://{addr}");
 
             let captured_traces = Arc::new(Mutex::new(Vec::new()));
             let captured_traces_clone = captured_traces.clone();
@@ -155,12 +160,15 @@ async fn start_mock_grpc_server() -> (
             });
 
             let channel = tonic::transport::Channel::from_shared(addr_str.clone())
-                .unwrap()
+                .expect("valid server URI")
                 .connect()
                 .await
                 .expect("Failed to connect to mock gRPC server");
 
-            tonic::client::Grpc::new(channel).ready().await.unwrap();
+            tonic::client::Grpc::new(channel)
+                .ready()
+                .await
+                .expect("gRPC client ready");
 
             ready_tx
                 .send((
@@ -170,7 +178,7 @@ async fn start_mock_grpc_server() -> (
                     captured_logs,
                     captured_user_agents,
                 ))
-                .unwrap();
+                .expect("server readiness received");
 
             tokio::select! {
                 _ = shutdown_rx => {
@@ -180,18 +188,19 @@ async fn start_mock_grpc_server() -> (
         });
     });
 
-    ready_rx.await.unwrap()
+    ready_rx.await.expect("server started")
 }
 
 /// Test gRPC protobuf export infrastructure
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "large inline snapshots")]
 async fn test_grpc_protobuf_export() {
     use logfire::config::AdvancedOptions;
 
     let (shutdown_tx, server_addr, captured_traces, captured_logs, captured_user_agents) =
         start_mock_grpc_server().await;
 
-    let env_guard = ENV_MUTEX.lock().unwrap();
+    let env_guard = ENV_MUTEX.lock().expect("environment lock poisoned");
     // SAFETY: Holding mutex to prevent other threads interacting with env
     unsafe {
         std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");
@@ -208,7 +217,7 @@ async fn test_grpc_protobuf_export() {
                 .with_id_generator(DeterministicIdGenerator::new()),
         )
         .finish()
-        .unwrap();
+        .expect("logfire configured");
 
     // SAFETY: As above
     unsafe {
@@ -223,14 +232,18 @@ async fn test_grpc_protobuf_export() {
 
     tokio::task::spawn_blocking(move || logfire.shutdown())
         .await
-        .unwrap()
-        .unwrap();
+        .expect("shutdown task completed")
+        .expect("shutdown succeeds");
 
-    shutdown_tx.send(()).unwrap();
+    shutdown_tx.send(()).expect("shutdown signal received");
 
     // tonic appends its own `tonic/<version>` to the user agent we set
-    let user_agents = std::mem::take(&mut *captured_user_agents.lock().unwrap());
-    assert!(!user_agents.is_empty());
+    let user_agents = std::mem::take(
+        &mut *captured_user_agents
+            .lock()
+            .expect("user-agent capture lock poisoned"),
+    );
+    assert!(!user_agents.is_empty(), "no user-agent sent");
     for user_agent in user_agents {
         assert!(
             user_agent.starts_with(&format!("logfire-rust/{} ", env!("CARGO_PKG_VERSION"))),
@@ -238,8 +251,10 @@ async fn test_grpc_protobuf_export() {
         );
     }
 
-    let mut trace_requests = std::mem::take(&mut *captured_traces.lock().unwrap());
-    let mut log_requests = std::mem::take(&mut *captured_logs.lock().unwrap());
+    let mut trace_requests =
+        std::mem::take(&mut *captured_traces.lock().expect("trace capture lock poisoned"));
+    let mut log_requests =
+        std::mem::take(&mut *captured_logs.lock().expect("log capture lock poisoned"));
 
     for req in &mut trace_requests {
         make_trace_request_deterministic(req);
@@ -390,7 +405,7 @@ async fn test_grpc_protobuf_export() {
                                                 AnyValue {
                                                     value: Some(
                                                         IntValue(
-                                                            220,
+                                                            229,
                                                         ),
                                                     ),
                                                 },
@@ -626,7 +641,7 @@ async fn test_grpc_protobuf_export() {
                                                 AnyValue {
                                                     value: Some(
                                                         IntValue(
-                                                            219,
+                                                            228,
                                                         ),
                                                     ),
                                                 },
@@ -752,7 +767,7 @@ async fn test_grpc_protobuf_export() {
                                                 AnyValue {
                                                     value: Some(
                                                         IntValue(
-                                                            221,
+                                                            230,
                                                         ),
                                                     ),
                                                 },
@@ -860,7 +875,7 @@ async fn test_grpc_protobuf_export() {
 /// be built for gRPC (the user agent is asserted on the wire for traces above).
 #[tokio::test]
 async fn test_grpc_metric_exporter_builds() {
-    let env_guard = ENV_MUTEX.lock().unwrap();
+    let env_guard = ENV_MUTEX.lock().expect("environment lock poisoned");
     // SAFETY: Holding mutex to prevent other threads interacting with env
     unsafe {
         std::env::set_var("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc");

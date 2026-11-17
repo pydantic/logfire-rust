@@ -20,7 +20,7 @@ repos:
     pass_filenames: false
   - id: clippy
     name: Clippy
-    entry: cargo clippy --workspace --all-features -- -D warnings
+    entry: cargo clippy --workspace --all-targets --all-features -- -D warnings
     types: [rust]
     language: system
     pass_filenames: false

@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize Logfire
     let logfire = logfire::configure()
         .finish()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        .map_err(std::io::Error::other)?;
     let _guard = logfire.shutdown_guard();
 
     logfire::info!("Starting Actix Web server with Logfire integration");
@@ -234,7 +234,7 @@ where
                 &[
                     KeyValue::new("method", method.to_string()),
                     KeyValue::new("route", path),
-                    KeyValue::new("status_code", res.status().as_u16() as i64),
+                    KeyValue::new("status_code", i64::from(res.status().as_u16())),
                 ],
             );
             Ok(res)

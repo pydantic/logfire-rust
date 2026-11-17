@@ -1,4 +1,4 @@
-//! Tests for logfire::log! macro attribute forms.
+//! Tests for `logfire::log!` macro attribute forms.
 
 use logfire::{config::AdvancedOptions, log};
 use opentelemetry_sdk::logs::{InMemoryLogExporter, SimpleLogProcessor};
@@ -20,14 +20,14 @@ fn test_log_macro_attributes() {
                 .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
         )
         .finish()
-        .unwrap();
+        .expect("logfire configured");
     let guard = logfire::set_local_logfire(logfire);
 
-    let _ = log!(Level::INFO, "string_attr_log", foo = "bar");
-    let _ = log!(Level::INFO, "int_attr_log", num = 42);
-    let _ = log!(Level::INFO, "bool_attr_log", flag = true);
-    let _ = log!(Level::INFO, "dotted_attr_log", dotted.key = "value");
-    let _ = log!(
+    log!(Level::INFO, "string_attr_log", foo = "bar");
+    log!(Level::INFO, "int_attr_log", num = 42);
+    log!(Level::INFO, "bool_attr_log", flag = true);
+    log!(Level::INFO, "dotted_attr_log", dotted.key = "value");
+    log!(
         Level::INFO,
         "multi_attr_log",
         a = 1,
@@ -36,8 +36,8 @@ fn test_log_macro_attributes() {
         d.e = 3
     );
 
-    let logs = log_exporter.get_emitted_logs().unwrap();
-    guard.shutdown().unwrap();
+    let logs = log_exporter.get_emitted_logs().expect("logs available");
+    guard.shutdown().expect("shutdown succeeds");
 
     // String attribute
     let log = find_log(&logs, "string_attr_log");
@@ -104,13 +104,13 @@ fn test_log_macro_shorthand_ident() {
                 .with_log_processor(SimpleLogProcessor::new(log_exporter.clone())),
         )
         .finish()
-        .unwrap();
+        .expect("logfire configured");
 
     let guard = logfire::set_local_logfire(logfire);
-    let _ = log!(Level::INFO, "dotted_attr_log", dotted.key);
-    let _ = log!(Level::INFO, "int_attr_log", int_val);
-    let _ = log!(Level::INFO, "bool_attr_log", bool_val);
-    let _ = log!(
+    log!(Level::INFO, "dotted_attr_log", dotted.key);
+    log!(Level::INFO, "int_attr_log", int_val);
+    log!(Level::INFO, "bool_attr_log", bool_val);
+    log!(
         Level::INFO,
         "multi_attr_log",
         multi.a,
@@ -119,8 +119,8 @@ fn test_log_macro_shorthand_ident() {
         multi.d_e
     );
 
-    let logs = log_exporter.get_emitted_logs().unwrap();
-    guard.shutdown().unwrap();
+    let logs = log_exporter.get_emitted_logs().expect("logs available");
+    guard.shutdown().expect("shutdown succeeds");
 
     // Dotted key attribute
     let log = find_log(&logs, "dotted_attr_log");

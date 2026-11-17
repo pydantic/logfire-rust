@@ -72,6 +72,7 @@ mod tests {
     };
 
     #[test]
+    #[expect(clippy::too_many_lines, reason = "large inline snapshot")]
     fn test_log_bridge() {
         const TEST_FILE: &str = file!();
         const TEST_LINE: u32 = line!();
@@ -90,7 +91,7 @@ mod tests {
                     )),
             )
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let lf_logger = LogfireLogger {
             tracer: logfire.0.tracer.clone(),
@@ -111,9 +112,9 @@ mod tests {
 
         drop(root);
 
-        let logs = log_exporter.get_emitted_logs().unwrap();
+        let logs = log_exporter.get_emitted_logs().expect("logs available");
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
         let logs = make_deterministic_logs(logs, TEST_FILE, TEST_LINE);
         assert_debug_snapshot!(logs, @r#"
@@ -1068,7 +1069,7 @@ mod tests {
             .with_console(Some(console_options.clone()))
             .with_default_level_filter(TracingLevelFilter::TRACE)
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let lf_logger = LogfireLogger {
             tracer: logfire.0.tracer.clone(),
@@ -1088,10 +1089,10 @@ mod tests {
             log::trace!(logger: lf_logger, "trace log");
         }
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
         let output = remap_timestamps_in_console_output(output);
 
         #[cfg(not(feature = "console-timestamps"))]

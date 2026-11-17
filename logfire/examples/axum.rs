@@ -80,7 +80,7 @@ fn create_app() -> Router {
         .route("/health", get(health_check))
         // Add tracing middleware for automatic request tracing
         .layer(OtelAxumLayer::default().filter(|path| !path.starts_with("/health")))
-        .layer(OtelInResponseLayer::default())
+        .layer(OtelInResponseLayer)
         .layer(middleware::from_fn(metrics_middleware))
 }
 
@@ -206,7 +206,7 @@ async fn metrics_middleware(request: axum::extract::Request, next: Next) -> Resp
         1,
         &[
             KeyValue::new("method", method.to_string()),
-            KeyValue::new("status_code", response.status().as_u16() as i64),
+            KeyValue::new("status_code", i64::from(response.status().as_u16())),
             KeyValue::new("route", uri.path().to_string()),
         ],
     );

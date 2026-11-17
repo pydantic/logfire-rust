@@ -22,7 +22,9 @@ use opentelemetry_sdk::{
     Resource,
     error::OTelSdkResult,
     logs::{SdkLoggerProvider, in_memory_exporter::LogDataWithResource},
-    metrics::data::{AggregatedMetrics, MetricData, ResourceMetrics},
+    metrics::data::{
+        AggregatedMetrics, HistogramDataPoint, MetricData, ResourceMetrics, SumDataPoint,
+    },
     trace::{IdGenerator, SpanData, SpanExporter},
 };
 use regex::{Captures, Regex};
@@ -105,20 +107,24 @@ impl<Inner: SpanExporter> SpanExporter for DeterministicExporter<Inner> {
 
             if remap_line {
                 for attr in &mut span.attributes {
-                    if attr.key.as_str() == "code.line.number" {
-                        if let Value::I64(line) = &mut attr.value {
-                            *line -= i64::from(self.line_offset);
-                        }
+                    if attr.key.as_str() == "code.line.number"
+                        && let Value::I64(line) = &mut attr.value
+                    {
+                        *line -= i64::from(self.line_offset);
                     }
 
                     // panic location
                     if attr.key.as_str() == "location" {
                         let string_value = attr.value.as_str();
                         let mut parts = string_value.splitn(3, ':');
-                        let file = parts.next().unwrap();
-                        let line = parts.next().unwrap().parse::<i64>().unwrap()
+                        let file = parts.next().expect("panic location file present");
+                        let line = parts
+                            .next()
+                            .expect("panic location line present")
+                            .parse::<i64>()
+                            .expect("panic location line is an integer")
                             - i64::from(self.line_offset);
-                        let column = parts.next().unwrap();
+                        let column = parts.next().expect("panic location column present");
                         attr.value = format!("{file}:{line}:{column}").into();
                     }
                 }
@@ -156,7 +162,10 @@ impl<Inner> DeterministicExporter<Inner> {
     }
 
     fn remap_timestamp(&self, from: SystemTime) -> SystemTime {
-        self.timestamp_remap.lock().unwrap().remap_timestamp(from)
+        self.timestamp_remap
+            .lock()
+            .expect("timestamp remapper lock poisoned")
+            .remap_timestamp(from)
     }
 }
 
@@ -189,17 +198,18 @@ impl TimestampRemapper {
     fn remap_u64_nano_timestamp(&mut self, from: u64) -> u64 {
         self.remap_timestamp(SystemTime::UNIX_EPOCH + std::time::Duration::from_nanos(from))
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
+            .expect("remapped timestamp is after the epoch")
             .as_nanos()
             .try_into()
-            .unwrap()
+            .expect("remapped nanoseconds fit in u64")
     }
 }
 
 pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
     // Replace all timestamps in output to make them deterministic
     let mut timestamp = jiff::Timestamp::UNIX_EPOCH;
-    let re = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z").unwrap();
+    let re =
+        Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z").expect("valid timestamp regex");
     re.replace_all(output, |_: &Captures<'_>| {
         let replaced = format!("{timestamp:.6}");
         timestamp += time::Duration::from_micros(1);
@@ -207,7 +217,7 @@ pub fn remap_timestamps_in_console_output(output: &str) -> Cow<'_, str> {
     })
 }
 
-/// Abstraction over opentelemetry KeyValue and opentelemetry_proto's KeyValue to enable
+/// Abstraction over opentelemetry `KeyValue` and `opentelemetry_proto`'s `KeyValue` to enable
 /// making deterministic resource attributes for both types.
 trait CommonKeyValue {
     fn key_str(&self) -> Cow<'_, str>;
@@ -221,7 +231,7 @@ impl CommonKeyValue for KeyValue {
     }
 
     fn value_str(&self) -> Cow<'_, str> {
-        self.value.as_str().into()
+        self.value.as_str()
     }
 
     fn set_value(&mut self, value: impl Into<Cow<'static, str>>) {
@@ -257,7 +267,7 @@ impl CommonKeyValue for opentelemetry_proto::tonic::common::v1::KeyValue {
     }
 }
 
-fn make_deterministic_resource_attrs<KV: CommonKeyValue>(attrs: &mut Vec<KV>) {
+fn make_deterministic_resource_attrs<KV: CommonKeyValue>(attrs: &mut [KV]) {
     attrs.sort_by_key(|kv| kv.key_str().into_owned());
     for attr in attrs.iter_mut() {
         // don't care about opentelemetry sdk version for tests
@@ -273,8 +283,8 @@ fn make_deterministic_resource_attrs<KV: CommonKeyValue>(attrs: &mut Vec<KV>) {
     if let Some(service_name_attr) = attrs.iter_mut().find(|kv| kv.key_str() == "service.name") {
         let service_name = service_name_attr.value_str();
         if service_name.starts_with("unknown_service:") {
-            let current_exe = std::env::current_exe().unwrap();
-            let process_name = current_exe.file_name().unwrap();
+            let current_exe = std::env::current_exe().expect("current executable path available");
+            let process_name = current_exe.file_name().expect("executable has a file name");
             assert_eq!(
                 service_name,
                 format!("unknown_service:{}", process_name.display())
@@ -301,7 +311,7 @@ pub fn make_deterministic_resource_metrics(
     metrics
         .into_iter()
         .map(|metric| DeterministicResourceMetrics {
-            resource: make_deterministic_resource(&metric.resource()),
+            resource: make_deterministic_resource(metric.resource()),
             scope_metrics: metric
                 .scope_metrics()
                 .map(|scope_metric| DeterministicScopeMetrics {
@@ -316,7 +326,7 @@ pub fn make_deterministic_resource_metrics(
                                         name,
                                         values: sum
                                             .data_points()
-                                            .map(|dp| dp.value() as u64)
+                                            .map(SumDataPoint::value)
                                             .collect(),
                                     })
                                 }
@@ -325,7 +335,10 @@ pub fn make_deterministic_resource_metrics(
                                         name,
                                         values: sum
                                             .data_points()
-                                            .map(|dp| dp.value() as u64)
+                                            .map(|dp| {
+                                                u64::try_from(dp.value())
+                                                    .expect("nonnegative test metric")
+                                            })
                                             .collect(),
                                     })
                                 }
@@ -334,7 +347,7 @@ pub fn make_deterministic_resource_metrics(
                                         name,
                                         values: histogram
                                             .data_points()
-                                            .map(|dp| dp.count() as u64)
+                                            .map(HistogramDataPoint::count)
                                             .collect(),
                                     })
                                 }
@@ -371,7 +384,7 @@ pub struct DeterministicResourceMetrics {
     scope_metrics: Vec<DeterministicScopeMetrics>,
 }
 
-/// Find a span by name in a slice of SpanData.
+/// Find a span by name in a slice of `SpanData`.
 #[track_caller]
 pub fn find_span<'a>(
     spans: &'a [opentelemetry_sdk::trace::SpanData],
@@ -391,7 +404,7 @@ pub fn find_attr<'a>(
         .unwrap_or_else(|| panic!("attribute '{}' not found in span '{}'", key, span.name))
 }
 
-/// Find a log by event name in a slice of LogDataWithResource.
+/// Find a log by event name in a slice of `LogDataWithResource`.
 pub fn find_log<'a>(logs: &'a [LogDataWithResource], name: &str) -> &'a LogDataWithResource {
     logs.iter()
         .find(|log| {
@@ -410,8 +423,7 @@ pub fn find_log_attr<'a>(
     log.record
         .attributes_iter()
         .find(|(k, _)| k.as_str() == key)
-        .map(|(_, v)| v)
-        .unwrap_or_else(|| panic!("attribute '{}' not found in log", key))
+        .map_or_else(|| panic!("attribute '{key}' not found in log"), |(_, v)| v)
 }
 
 /// Make log data deterministic by cleaning up non-deterministic fields
@@ -468,13 +480,12 @@ pub fn make_deterministic_logs(
             // Check if we need to remap line numbers for this file
             let mut remap_line = false;
             for (key, value) in original_record.attributes_iter() {
-                if key.as_str() == "code.file.path" {
-                    if let opentelemetry::logs::AnyValue::String(s) = value {
-                        if s.as_str() == file {
-                            remap_line = true;
-                            break;
-                        }
-                    }
+                if key.as_str() == "code.file.path"
+                    && let opentelemetry::logs::AnyValue::String(s) = value
+                    && s.as_str() == file
+                {
+                    remap_line = true;
+                    break;
                 }
             }
 

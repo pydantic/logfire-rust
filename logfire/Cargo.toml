@@ -3,7 +3,6 @@ name = "logfire"
 version = "0.14.0"
 description = "Rust SDK for Pydantic Logfire"
 documentation = "https://docs.rs/logfire"
-homepage = "https://github.com/pydantic/logfire-rust"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true

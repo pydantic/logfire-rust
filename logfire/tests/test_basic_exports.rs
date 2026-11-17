@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use insta::assert_debug_snapshot;
-use opentelemetry::KeyValue;
+use opentelemetry::{KeyValue, metrics::MeterProvider};
 use opentelemetry_sdk::{
     Resource,
     logs::{InMemoryLogExporter, SimpleLogProcessor},
@@ -57,7 +57,7 @@ fn test_basic_span() {
                 ),
         )
         .finish()
-        .unwrap();
+        .expect("logfire configured");
 
     let guard = logfire::set_local_logfire(logfire);
 
@@ -73,9 +73,9 @@ fn test_basic_span() {
     }))
     .unwrap_err();
 
-    let spans = exporter.get_finished_spans().unwrap();
-    let logs = log_exporter.get_emitted_logs().unwrap();
-    guard.shutdown().unwrap();
+    let spans = exporter.get_finished_spans().expect("spans available");
+    let logs = log_exporter.get_emitted_logs().expect("logs available");
+    guard.shutdown().expect("shutdown succeeds");
 
     assert_debug_snapshot!(spans, @r#"
     [
@@ -943,8 +943,10 @@ impl SharedManualReader {
 
     async fn export<E: PushMetricExporter>(&self, exporter: &E) {
         let mut metrics = ResourceMetrics::default();
-        self.reader.collect(&mut metrics).unwrap();
-        exporter.export(&mut metrics).await.unwrap();
+        self.reader
+            .collect(&mut metrics)
+            .expect("metrics collected");
+        exporter.export(&metrics).await.expect("metrics exported");
     }
 }
 
@@ -984,8 +986,9 @@ impl MetricReader for SharedManualReader {
 }
 
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "large inline snapshot")]
 async fn test_basic_metrics() {
-    let mut exporter = InMemoryMetricExporterBuilder::new().build();
+    let exporter = InMemoryMetricExporterBuilder::new().build();
 
     let reader = SharedManualReader::new(
         ManualReader::builder()
@@ -1002,11 +1005,9 @@ async fn test_basic_metrics() {
             MetricsOptions::default().with_additional_reader(reader.clone()),
         ))
         .finish()
-        .unwrap();
+        .expect("logfire configured");
 
     let guard = logfire::set_local_logfire(logfire.clone());
-
-    use opentelemetry::metrics::MeterProvider;
 
     let counter = guard
         .meter_provider()
@@ -1015,14 +1016,14 @@ async fn test_basic_metrics() {
         .build();
 
     counter.add(1, &[]);
-    reader.export(&mut exporter).await;
+    reader.export(&exporter).await;
 
     counter.add(2, &[]);
-    reader.export(&mut exporter).await;
+    reader.export(&exporter).await;
 
-    logfire.shutdown().unwrap();
+    logfire.shutdown().expect("shutdown succeeds");
 
-    let metrics = exporter.get_finished_metrics().unwrap();
+    let metrics = exporter.get_finished_metrics().expect("metrics available");
 
     let metrics = make_deterministic_resource_metrics(metrics);
 
@@ -1193,5 +1194,5 @@ async fn test_basic_metrics() {
             ],
         },
     ]
-    "#)
+    "#);
 }

@@ -296,7 +296,6 @@ impl ConsoleWriter {
                 }
                 "logfire.level_num" => {
                     if let Value::I64(level_num) = kv.value {
-                        #[expect(deprecated)]
                         if level_num < tracing_level_to_severity(self.options.min_log_level) as i64
                         {
                             return Ok(());
@@ -327,7 +326,6 @@ impl ConsoleWriter {
         }
 
         #[cfg(feature = "console-timestamps")]
-        #[expect(deprecated)]
         if self.options.include_timestamps {
             self.write_timestamp(span.start_time, w)?;
         }
@@ -409,7 +407,6 @@ impl ConsoleWriter {
         }
 
         #[cfg(feature = "console-timestamps")]
-        #[expect(deprecated)]
         if self.options.include_timestamps
             && let Some(timestamp) = log_record.timestamp()
         {
@@ -529,8 +526,10 @@ mod tests {
             ),
         ] {
             let mut output = Vec::new();
-            writer.write_timestamp(timestamp, &mut output).unwrap();
-            assert_eq!(std::str::from_utf8(&output).unwrap(), expected);
+            writer
+                .write_timestamp(timestamp, &mut output)
+                .expect("timestamp formatting succeeds");
+            assert_eq!(std::str::from_utf8(&output).expect("valid UTF-8"), expected);
         }
     }
 
@@ -549,7 +548,7 @@ mod tests {
             .with_console(Some(console_options))
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = set_local_logfire(logfire);
 
@@ -565,10 +564,10 @@ mod tests {
         }))
         .unwrap_err();
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @"
@@ -598,7 +597,7 @@ mod tests {
             .with_console(Some(console_options))
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = set_local_logfire(logfire);
 
@@ -614,10 +613,10 @@ mod tests {
         }))
         .unwrap_err();
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @"
@@ -646,7 +645,7 @@ mod tests {
             .with_console(Some(console_options))
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = set_local_logfire(logfire);
 
@@ -661,10 +660,10 @@ mod tests {
         }))
         .unwrap_err();
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @"
@@ -692,7 +691,7 @@ mod tests {
             .with_console(Some(console_options))
             .with_default_level_filter(LevelFilter::TRACE)
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = set_local_logfire(logfire);
 
@@ -707,10 +706,10 @@ mod tests {
         }))
         .unwrap_err();
 
-        guard.shutdown().unwrap();
+        guard.shutdown().expect("shutdown succeeds");
 
-        let output = output.lock().unwrap();
-        let output = std::str::from_utf8(&output).unwrap();
+        let output = output.lock().expect("output lock poisoned");
+        let output = std::str::from_utf8(&output).expect("output is UTF-8");
         let output = remap_timestamps_in_console_output(output);
 
         assert_snapshot!(output, @"
@@ -721,14 +720,14 @@ mod tests {
         ");
     }
 
-    /// Regression test for https://github.com/pydantic/logfire-rust/issues/46
+    /// Regression test for <https://github.com/pydantic/logfire-rust/issues/46>
     #[test]
     fn test_console_deadlock() {
         let shutdown_handler = crate::configure()
             .send_to_logfire(false)
             .local()
             .finish()
-            .unwrap();
+            .expect("logfire configured");
 
         let guard = set_local_logfire(shutdown_handler.clone());
 
