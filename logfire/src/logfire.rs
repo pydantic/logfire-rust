@@ -31,7 +31,7 @@ use opentelemetry_sdk::{
         span_processor_with_async_runtime::BatchSpanProcessor,
     },
 };
-use tracing::{Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
+use tracing::{Dispatch, Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, registry::LookupSpan};
 
 #[cfg(feature = "data-dir")]
@@ -73,7 +73,7 @@ pub(crate) struct LogfireInner {
     pub(crate) tracer_provider: SdkTracerProvider,
     pub(crate) tracer: LogfireTracer,
     pub(crate) env_filter: EnvFilter,
-    pub(crate) subscriber: Arc<dyn Subscriber + Send + Sync>,
+    pub(crate) dispatch: Dispatch,
     pub(crate) meter_provider: SdkMeterProvider,
     pub(crate) logger_provider: SdkLoggerProvider,
     pub(crate) enable_tracing_metrics: bool,
@@ -240,13 +240,16 @@ impl Logfire {
             shutdown_sender,
             ..
         } = Self::build_parts(config, env)?;
+        // Creating a dispatch registers its callsites. Reuse it whenever
+        // this pipeline becomes the thread's default subscriber.
+        let dispatch = Dispatch::new(subscriber);
 
         if !local {
             // avoid otel logs firing as these messages are sent regarding "global meter provider"
             // being set
             let _guard = Context::enter_telemetry_suppressed_scope();
 
-            tracing::subscriber::set_global_default(subscriber.clone())?;
+            tracing::dispatcher::set_global_default(dispatch.clone())?;
             let logger = crate::bridges::log::LogfireLogger::init(tracer.clone());
             log::set_logger(logger)?;
             log::set_max_level(logger.max_level());
@@ -268,7 +271,7 @@ impl Logfire {
             tracer_provider,
             tracer,
             env_filter,
-            subscriber,
+            dispatch,
             meter_provider,
             logger_provider,
             enable_tracing_metrics,
@@ -725,7 +728,7 @@ pub fn set_local_logfire(logfire: Logfire) -> LocalLogfireGuard {
     let prior = LOCAL_TRACER
         .with_borrow_mut(|local_logfire| local_logfire.replace(logfire.0.tracer.clone()));
 
-    let tracing_guard = tracing::subscriber::set_default(logfire.0.subscriber.clone());
+    let tracing_guard = tracing::dispatcher::set_default(&logfire.0.dispatch);
 
     LocalLogfireGuard {
         prior,
