@@ -101,6 +101,22 @@
 //! For FIPS, enable the `fips` feature of `rustls` and install
 //! `rustls::crypto::default_fips_provider()` in the same way.
 //!
+//! ### Certificates
+//!
+//! An `https` export verifies the server against the system roots. To export to a server with a
+//! private certificate authority, or one that requires a client certificate (mutual TLS), set the
+//! certificate variables of the
+//! [OTLP exporter specification](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#configuration-options):
+//!
+//! - `OTEL_EXPORTER_OTLP_CERTIFICATE`: a PEM file of the certificates that verify the server.
+//!   They replace the system roots.
+//! - `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` and `OTEL_EXPORTER_OTLP_CLIENT_KEY`: the PEM client
+//!   certificate chain and its private key. Set both or neither.
+//!
+//! Each variable has a per-signal form, such as `OTEL_EXPORTER_OTLP_TRACES_CERTIFICATE`, which
+//! takes precedence. The variables apply to the HTTP and gRPC protocols, and only to an `https`
+//! endpoint. A file that cannot be read or holds no certificate fails the configuration.
+//!
 //! ## Usage Guide
 //!
 //! See the [usage guide][usage] for more detailed information about how to use this SDK to its full potential.
