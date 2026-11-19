@@ -137,6 +137,7 @@ pub(crate) fn span_exporter_with_options(
                 opentelemetry_otlp::SpanExporter::builder().with_http(),
                 endpoint,
                 &TRACES_TLS_ENV_VARS,
+                None,
             )?
             .with_protocol(Protocol::HttpBinary)
             .with_headers(headers_with_user_agent(headers))
@@ -152,6 +153,7 @@ pub(crate) fn span_exporter_with_options(
                 opentelemetry_otlp::SpanExporter::builder().with_http(),
                 endpoint,
                 &TRACES_TLS_ENV_VARS,
+                None,
             )?
             .with_protocol(Protocol::HttpJson)
             .with_headers(headers_with_user_agent(headers))
@@ -247,6 +249,7 @@ pub(crate) fn metric_exporter_with_options(
                     .with_http(),
                 endpoint,
                 &METRICS_TLS_ENV_VARS,
+                None,
             )?
             .with_protocol(Protocol::HttpBinary)
             .with_headers(headers_with_user_agent(headers))
@@ -264,6 +267,7 @@ pub(crate) fn metric_exporter_with_options(
                     .with_http(),
                 endpoint,
                 &METRICS_TLS_ENV_VARS,
+                None,
             )?
             .with_protocol(Protocol::HttpJson)
             .with_headers(headers_with_user_agent(headers))
@@ -348,6 +352,7 @@ pub(crate) fn log_exporter_with_options(
                 opentelemetry_otlp::LogExporter::builder().with_http(),
                 endpoint,
                 &LOGS_TLS_ENV_VARS,
+                None,
             )?
             .with_protocol(Protocol::HttpBinary)
             .with_headers(headers_with_user_agent(headers))
@@ -363,6 +368,7 @@ pub(crate) fn log_exporter_with_options(
                 opentelemetry_otlp::LogExporter::builder().with_http(),
                 endpoint,
                 &LOGS_TLS_ENV_VARS,
+                None,
             )?
             .with_protocol(Protocol::HttpJson)
             .with_headers(headers_with_user_agent(headers))
@@ -615,15 +621,16 @@ fn with_http_tls<B: opentelemetry_otlp::WithHttpConfig>(
     builder: B,
     endpoint: &str,
     vars: &TlsEnvVars,
+    env: Option<&HashMap<String, String>>,
 ) -> Result<B, ConfigureError> {
     if !is_https(endpoint) {
         return Ok(builder);
     }
-    let files = TlsFiles::from_env(vars, None)?;
+    let files = TlsFiles::from_env(vars, env)?;
     if files.is_empty() {
         return Ok(builder);
     }
-    Ok(builder.with_http_client(http_tls_client(&files, vars, export_timeout(vars))?))
+    Ok(builder.with_http_client(http_tls_client(&files, vars, export_timeout(vars, env)?)?))
 }
 
 /// Build a `reqwest` client that verifies the server and identifies itself with `files`.
@@ -651,14 +658,16 @@ fn http_tls_client(
 
 /// The export timeout from `vars`, resolved as `opentelemetry-otlp` resolves it.
 #[cfg(any(feature = "export-http-protobuf", feature = "export-http-json"))]
-fn export_timeout(vars: &TlsEnvVars) -> std::time::Duration {
-    vars.timeout
-        .iter()
-        .find_map(|name| std::env::var(name).ok()?.parse().ok())
-        .map_or(
-            opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT,
-            std::time::Duration::from_millis,
-        )
+fn export_timeout(
+    vars: &TlsEnvVars,
+    env: Option<&HashMap<String, String>>,
+) -> Result<std::time::Duration, ConfigureError> {
+    for name in vars.timeout {
+        if let Some(millis) = get_optional_env(name, env)?.and_then(|value| value.parse().ok()) {
+            return Ok(std::time::Duration::from_millis(millis));
+        }
+    }
+    Ok(opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT)
 }
 
 /// Build the `tonic` endpoint used for gRPC exports.
@@ -673,6 +682,7 @@ fn export_timeout(vars: &TlsEnvVars) -> std::time::Duration {
 fn grpc_endpoint(
     endpoint: &str,
     vars: &TlsEnvVars,
+    env: Option<&HashMap<String, String>>,
 ) -> Result<tonic::transport::Endpoint, ConfigureError> {
     let uri: http::Uri = endpoint
         .try_into()
@@ -683,7 +693,7 @@ fn grpc_endpoint(
     if uri.scheme() == Some(&http::uri::Scheme::HTTPS) {
         require_crypto_provider()?;
         builder = builder
-            .tls_config(grpc_tls_config(TlsFiles::from_env(vars, None)?))
+            .tls_config(grpc_tls_config(TlsFiles::from_env(vars, env)?))
             .map_err(|e| ConfigureError::Other(e.into()))?;
     }
 
@@ -711,7 +721,7 @@ fn grpc_channel(
     vars: &TlsEnvVars,
     options: &ExportOptions,
 ) -> Result<tonic::transport::Channel, ConfigureError> {
-    let endpoint = grpc_endpoint(endpoint, vars)?;
+    let endpoint = grpc_endpoint(endpoint, vars, None)?;
     Ok(match &options.grpc_channel {
         Some(build) => build(endpoint),
         None => endpoint.connect_lazy(),
@@ -857,12 +867,19 @@ mod tls_file_tests {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     }
 
-    fn invalid_parameter(result: Result<TlsFiles, ConfigureError>) -> &'static str {
-        match result {
-            Err(ConfigureError::InvalidConfigurationValue { parameter, .. }) => parameter,
-            Err(other) => panic!("expected an invalid configuration value, got {other}"),
-            Ok(_) => panic!("expected an invalid configuration value, got TLS files"),
-        }
+    /// The message of the error in `result`, or an empty string for a success.
+    fn error_message<T>(result: Result<T, ConfigureError>) -> String {
+        result
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default()
+    }
+
+    fn assert_invalid(message: &str, parameter: &str) {
+        assert!(
+            message.starts_with(&format!("Invalid configuration value for {parameter}: ")),
+            "{message}"
+        );
     }
 
     #[test]
@@ -896,16 +913,16 @@ mod tls_file_tests {
         let pki = Pki::new();
         let mut env = pki.env();
         env.remove("OTEL_EXPORTER_OTLP_CLIENT_KEY");
-        assert_eq!(
-            invalid_parameter(TlsFiles::from_env(&TRACES_TLS_ENV_VARS, Some(&env))),
-            "OTEL_EXPORTER_OTLP_CLIENT_KEY"
+        assert_invalid(
+            &error_message(TlsFiles::from_env(&TRACES_TLS_ENV_VARS, Some(&env))),
+            "OTEL_EXPORTER_OTLP_CLIENT_KEY",
         );
 
         let mut env = pki.env();
         env.remove("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE");
-        assert_eq!(
-            invalid_parameter(TlsFiles::from_env(&TRACES_TLS_ENV_VARS, Some(&env))),
-            "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"
+        assert_invalid(
+            &error_message(TlsFiles::from_env(&TRACES_TLS_ENV_VARS, Some(&env))),
+            "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE",
         );
     }
 
@@ -917,48 +934,121 @@ mod tls_file_tests {
                 "OTEL_EXPORTER_OTLP_TRACES_CERTIFICATE".to_string(),
                 pki.path(file),
             )]);
-            assert_eq!(
-                invalid_parameter(TlsFiles::from_env(&TRACES_TLS_ENV_VARS, Some(&env))),
+            assert_invalid(
+                &error_message(TlsFiles::from_env(&TRACES_TLS_ENV_VARS, Some(&env))),
                 "OTEL_EXPORTER_OTLP_TRACES_CERTIFICATE",
-                "{file}"
             );
         }
     }
 
     #[cfg(any(feature = "export-http-protobuf", feature = "export-http-json"))]
+    #[test]
+    fn export_timeout_follows_the_otlp_variables() {
+        let timeout = |env: &[(&str, &str)]| {
+            let env = env
+                .iter()
+                .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+                .collect::<HashMap<_, _>>();
+            super::export_timeout(&TRACES_TLS_ENV_VARS, Some(&env)).expect("valid variables")
+        };
+        assert_eq!(
+            timeout(&[]),
+            opentelemetry_otlp::OTEL_EXPORTER_OTLP_TIMEOUT_DEFAULT
+        );
+        assert_eq!(
+            timeout(&[("OTEL_EXPORTER_OTLP_TIMEOUT", "2000")]),
+            std::time::Duration::from_secs(2)
+        );
+        assert_eq!(
+            timeout(&[
+                ("OTEL_EXPORTER_OTLP_TIMEOUT", "2000"),
+                ("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", "3000"),
+            ]),
+            std::time::Duration::from_secs(3)
+        );
+    }
+
+    #[cfg(any(feature = "export-http-protobuf", feature = "export-http-json"))]
+    #[test]
+    fn client_key_that_is_not_a_key_is_an_error() {
+        install_crypto_provider();
+        let pki = Pki::new();
+        let files = TlsFiles {
+            certificate: None,
+            client_identity: Some((
+                std::fs::read(pki.path("client.pem")).expect("failed to read the certificate"),
+                b"not a key".to_vec(),
+            )),
+        };
+        assert_invalid(
+            &error_message(super::http_tls_client(
+                &files,
+                &TRACES_TLS_ENV_VARS,
+                std::time::Duration::from_secs(5),
+            )),
+            "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE",
+        );
+    }
+
+    #[cfg(any(feature = "export-http-protobuf", feature = "export-http-json"))]
+    #[test]
+    fn http_exporter_without_tls_files_or_https_keeps_its_client() {
+        let pki = Pki::new();
+        for (endpoint, env) in [
+            ("http://127.0.0.1:4318", pki.env()),
+            ("https://127.0.0.1:4318", HashMap::new()),
+        ] {
+            super::with_http_tls(
+                opentelemetry_otlp::SpanExporter::builder().with_http(),
+                endpoint,
+                &TRACES_TLS_ENV_VARS,
+                Some(&env),
+            )
+            .expect("no TLS files apply");
+        }
+    }
+
+    #[cfg(any(feature = "export-http-protobuf", feature = "export-http-json"))]
     #[tokio::test]
-    async fn http_client_verifies_the_server_and_presents_its_certificate() {
+    async fn http_exporter_verifies_the_server_and_presents_its_certificate() {
+        use opentelemetry_otlp::WithExportConfig as _;
+        use opentelemetry_sdk::trace::SpanExporter as _;
+
         install_crypto_provider();
         let pki = Pki::new();
         let (addr, presented) = pki.serve_once().await;
 
-        let files = TlsFiles::from_env(&TRACES_TLS_ENV_VARS, Some(&pki.env()))
-            .expect("the variables name valid files");
-        let client = super::http_tls_client(
-            &files,
+        let endpoint = format!("https://{addr}");
+        let exporter = super::with_http_tls(
+            opentelemetry_otlp::SpanExporter::builder().with_http(),
+            &endpoint,
             &TRACES_TLS_ENV_VARS,
-            std::time::Duration::from_secs(5),
+            Some(&pki.env()),
         )
-        .expect("failed to build the client");
-        // The server closes the connection after the handshake, so the request itself fails.
-        let _ = client.get(format!("https://{addr}/v1/traces")).send().await;
+        .expect("the variables name valid files")
+        .with_endpoint(format!("{endpoint}/v1/traces"))
+        .build()
+        .expect("failed to build the exporter");
+        // The server closes the connection after the handshake, so the export itself fails and
+        // retries. The test only needs the handshake.
+        tokio::spawn(async move { exporter.export(Vec::new()).await });
 
         assert!(presented.await.expect("the server did not finish"));
     }
 
     #[cfg(feature = "export-grpc")]
     #[tokio::test]
-    async fn grpc_channel_verifies_the_server_and_presents_its_certificate() {
+    async fn grpc_endpoint_verifies_the_server_and_presents_its_certificate() {
         install_crypto_provider();
         let pki = Pki::new();
         let (addr, presented) = pki.serve_once().await;
 
-        let files = TlsFiles::from_env(&TRACES_TLS_ENV_VARS, Some(&pki.env()))
-            .expect("the variables name valid files");
-        let endpoint = tonic::transport::Channel::from_shared(format!("https://{addr}"))
-            .expect("failed to build the endpoint")
-            .tls_config(super::grpc_tls_config(files))
-            .expect("failed to configure TLS");
+        let endpoint = super::grpc_endpoint(
+            &format!("https://{addr}"),
+            &TRACES_TLS_ENV_VARS,
+            Some(&pki.env()),
+        )
+        .expect("the variables name valid files");
         // The server closes the connection after the handshake, so the connection itself fails.
         let _ = tokio::time::timeout(std::time::Duration::from_secs(5), endpoint.connect()).await;
 
@@ -989,7 +1079,7 @@ mod grpc_tls_tests {
             }
         });
 
-        let endpoint = grpc_endpoint(&format!("https://{addr}"), &TRACES_TLS_ENV_VARS)
+        let endpoint = grpc_endpoint(&format!("https://{addr}"), &TRACES_TLS_ENV_VARS, None)
             .expect("failed to build endpoint");
 
         let result =
