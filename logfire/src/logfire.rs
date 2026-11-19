@@ -31,7 +31,7 @@ use opentelemetry_sdk::{
         span_processor_with_async_runtime::BatchSpanProcessor,
     },
 };
-use tracing::{Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
+use tracing::{Dispatch, Subscriber, level_filters::LevelFilter, subscriber::DefaultGuard};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, registry::LookupSpan};
 
 #[cfg(feature = "data-dir")]
@@ -73,11 +73,16 @@ pub(crate) struct LogfireInner {
     pub(crate) tracer_provider: SdkTracerProvider,
     pub(crate) tracer: LogfireTracer,
     pub(crate) env_filter: EnvFilter,
-    pub(crate) subscriber: Arc<dyn Subscriber + Send + Sync>,
+    scoped_subscriber: ScopedSubscriber,
     pub(crate) meter_provider: SdkMeterProvider,
     pub(crate) logger_provider: SdkLoggerProvider,
     pub(crate) enable_tracing_metrics: bool,
     pub(crate) shutdown_sender: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+}
+
+enum ScopedSubscriber {
+    Local(Arc<dyn Subscriber + Send + Sync>),
+    Global(Dispatch),
 }
 
 impl std::fmt::Debug for Logfire {
@@ -241,7 +246,10 @@ impl Logfire {
             ..
         } = Self::build_parts(config, env)?;
 
-        if !local {
+        let scoped_subscriber = if local {
+            // Re-register on entry so a callsite first used outside this scope can become enabled.
+            ScopedSubscriber::Local(subscriber)
+        } else {
             // avoid otel logs firing as these messages are sent regarding "global meter provider"
             // being set
             let _guard = Context::enter_telemetry_suppressed_scope();
@@ -262,13 +270,18 @@ impl Logfire {
             opentelemetry::global::set_text_map_propagator(propagator);
 
             opentelemetry::global::set_meter_provider(meter_provider.clone());
-        }
+
+            // Register a distinct dispatch for scopes. With only one registration,
+            // tracing-core 0.1.36 can cache a thread's no-op override as the sole
+            // subscriber's interest in a new callsite.
+            ScopedSubscriber::Global(Dispatch::new(subscriber))
+        };
 
         Ok(Logfire(Arc::new(LogfireInner {
             tracer_provider,
             tracer,
             env_filter,
-            subscriber,
+            scoped_subscriber,
             meter_provider,
             logger_provider,
             enable_tracing_metrics,
@@ -725,7 +738,10 @@ pub fn set_local_logfire(logfire: Logfire) -> LocalLogfireGuard {
     let prior = LOCAL_TRACER
         .with_borrow_mut(|local_logfire| local_logfire.replace(logfire.0.tracer.clone()));
 
-    let tracing_guard = tracing::subscriber::set_default(logfire.0.subscriber.clone());
+    let tracing_guard = match &logfire.0.scoped_subscriber {
+        ScopedSubscriber::Local(subscriber) => tracing::subscriber::set_default(subscriber.clone()),
+        ScopedSubscriber::Global(dispatch) => tracing::dispatcher::set_default(dispatch),
+    };
 
     LocalLogfireGuard {
         prior,
