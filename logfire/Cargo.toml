@@ -100,6 +100,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 futures-util = "0.3"
 tempfile = "3.20.0"
+# a certificate authority and a TLS server for the OTLP certificate tests
+rcgen = "0.14"
+tokio-rustls = "0.26"
 
 [features]
 default = ["console-timestamps", "data-dir", "export-http-protobuf", "tls-aws-lc"]
