@@ -44,10 +44,18 @@ fn global_recording_scope_routes_and_restores_traces() {
     {
         let _other = logfire::set_local_logfire(other.clone());
         drop(logfire::span!("foreign before"));
-        {
+        let span = {
             let _global = logfire::set_local_logfire(global.clone());
-            drop(logfire::span!("worker global"));
-        }
+            logfire::span!("worker global", completed = tracing::field::Empty)
+        };
+        let finisher = other.clone();
+        std::thread::spawn(move || {
+            let _foreign = logfire::set_local_logfire(finisher);
+            span.record("completed", true);
+            drop(span);
+        })
+        .join()
+        .expect("finish span under a different dispatcher");
         drop(logfire::span!("foreign after"));
     }
 
@@ -65,7 +73,17 @@ fn global_recording_scope_routes_and_restores_traces() {
         child.span_context.trace_id(),
         parent.span_context.trace_id()
     );
-    assert!(spans.iter().any(|s| s.name == "worker global"));
+    let mut deferred = spans.iter().filter(|s| s.name == "worker global");
+    let finished = deferred
+        .next()
+        .expect("span exported to its original pipeline");
+    assert!(
+        finished
+            .attributes
+            .iter()
+            .any(|kv| kv.key.as_str() == "completed" && kv.value == true.into())
+    );
+    assert!(deferred.next().is_none(), "span exported twice");
     assert!(!spans.iter().any(|s| s.name.starts_with("foreign ")));
     let foreign = other_exporter.get_finished_spans().expect("exported spans");
     assert!(foreign.iter().any(|s| s.name == "foreign before"));

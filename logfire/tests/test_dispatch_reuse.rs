@@ -43,10 +43,11 @@ fn concurrent_global_scopes_reuse_registration_and_export_once() {
         tracing_subscriber::registry().with(CountRegistrations(Arc::clone(&registrations))),
     );
     // Warm both the scope and the callsite. Only a rebuild should register the probe again.
-    {
+    let scoped_dispatch = {
         let _warm = logfire::set_local_logfire(global.clone());
         record(-1);
-    }
+        tracing::dispatcher::get_default(Dispatch::downgrade)
+    };
     spans.reset();
     let warmed = registrations.load(Ordering::Relaxed);
     assert!(warmed > 0, "observer must have seen the probe callsite");
@@ -94,4 +95,10 @@ fn concurrent_global_scopes_reuse_registration_and_export_once() {
         .collect();
     sequences.sort_unstable();
     assert_eq!(sequences, (0..THREADS * PER_THREAD).collect::<Vec<_>>());
+
+    drop(global);
+    assert!(
+        scoped_dispatch.upgrade().is_none(),
+        "scoped dispatch leaked"
+    );
 }
