@@ -876,9 +876,9 @@ mod tls_file_tests {
     }
 
     fn assert_invalid(message: &str, parameter: &str) {
-        assert!(
-            message.starts_with(&format!("Invalid configuration value for {parameter}: ")),
-            "{message}"
+        assert_eq!(
+            message.split_once(": ").map(|(prefix, _)| prefix),
+            Some(format!("Invalid configuration value for {parameter}").as_str())
         );
     }
 
