@@ -5,4 +5,4 @@
 
 mod token;
 
-pub use token::{Region, parse_region};
+pub use token::{Region, parse_region, unknown_region, unknown_region_warning};

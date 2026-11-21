@@ -413,11 +413,10 @@ impl Logfire {
                 .get_or_insert_default()
                 .insert("Authorization".to_string(), format!("Bearer {token}"));
 
-            Some(
-                advanced_options
-                    .base_url
-                    .unwrap_or_else(|| Region::from_token(token).base_url().to_owned()),
-            )
+            Some(advanced_options.base_url.unwrap_or_else(|| {
+                warn_on_unknown_region(token);
+                Region::from_token(token).base_url().to_owned()
+            }))
         } else {
             None
         };
@@ -600,6 +599,16 @@ impl ShutdownGuard {
             logfire.shutdown()?;
         }
         Ok(())
+    }
+}
+
+/// Warns on stderr when the token region is unknown, because the data then goes to the US region.
+///
+/// This runs before the tracing pipeline exists, so stderr is the only place the warning shows.
+#[allow(clippy::print_stderr)]
+fn warn_on_unknown_region(token: &str) {
+    if let Some(warning) = logfire_core::unknown_region_warning(token) {
+        eprintln!("{warning}");
     }
 }
 
