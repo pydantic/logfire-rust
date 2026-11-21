@@ -12,6 +12,32 @@ pub fn parse_region(token: &str) -> Option<&str> {
     Some(region)
 }
 
+/// Region segments that map to a known Logfire region.
+const KNOWN_REGIONS: &[&str] = &["us", "eu", "stagingus", "stagingeu"];
+
+/// Returns the region segment of a Logfire token when this SDK does not know it.
+///
+/// [`Region::from_token`] falls back to the US region for such a token, so callers can
+/// use this to warn that data may go to the wrong region. Returns `None` for a known
+/// region and for a token without a region segment (for example a legacy token).
+#[allow(clippy::must_use_candidate)]
+pub fn unknown_region(token: &str) -> Option<&str> {
+    parse_region(token).filter(|region| !KNOWN_REGIONS.contains(region))
+}
+
+/// Returns a warning message when the region of a Logfire token is not known.
+///
+/// The message names the unknown region segment and the US base URL that is used instead.
+#[must_use]
+pub fn unknown_region_warning(token: &str) -> Option<String> {
+    unknown_region(token).map(|region| {
+        format!(
+            "logfire: unrecognised region `{region}` in the Logfire token, sending data to the US region ({}). Set the base URL explicitly if this is wrong.",
+            Region::US_URL
+        )
+    })
+}
+
 /// Logfire data region.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Region {
@@ -65,7 +91,7 @@ impl Region {
 
 #[cfg(test)]
 mod tests {
-    use super::{Region, parse_region};
+    use super::{Region, parse_region, unknown_region, unknown_region_warning};
 
     #[test]
     fn parse_region_extracts_region() {
@@ -99,5 +125,33 @@ mod tests {
     fn from_token_falls_back_to_us() {
         assert_eq!(Region::from_token("pylf_v1_unknown_abc123"), Region::Us);
         assert_eq!(Region::from_token("not-a-valid-token"), Region::Us);
+    }
+
+    #[test]
+    fn unknown_region_reports_unrecognised_segment() {
+        assert_eq!(unknown_region("pylf_v1_unknown_abc123"), Some("unknown"));
+        assert_eq!(unknown_region("pylf_v1_ap_abc123"), Some("ap"));
+    }
+
+    #[test]
+    fn unknown_region_ignores_known_and_legacy_tokens() {
+        for token in [
+            "pylf_v1_us_abc123",
+            "pylf_v1_eu_abc123",
+            "pylf_v1_stagingus_abc123",
+            "pylf_v1_stagingeu_abc123",
+            "not-a-valid-token",
+            "",
+        ] {
+            assert_eq!(unknown_region(token), None, "{token}");
+            assert_eq!(unknown_region_warning(token), None, "{token}");
+        }
+    }
+
+    #[test]
+    fn unknown_region_warning_names_region_and_fallback() {
+        let warning = unknown_region_warning("pylf_v1_ap_abc123").unwrap();
+        assert!(warning.contains("`ap`"), "{warning}");
+        assert!(warning.contains(Region::US_URL), "{warning}");
     }
 }
